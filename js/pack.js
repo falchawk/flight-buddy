@@ -12,10 +12,14 @@
   const KEEP = 2;
   const PARALLEL = 6;
   const BLOBS = 'fb-blobs';
+  const WXO = 'fb-wx-overlay';        // 「WX だけ更新」で取った気象部分（パックの整合性を壊さないよう別保存）
+  const LS_WXO = 'fb.wxo.v1', LS_WXLAST = 'fb.wxLast.v1';
   const cacheName = (id) => `fb-pack-${id}`;
   const packUrl = (m, path) => new URL(`${m.base}${path}`, BASE).href;
   const siteUrl = (p) => new URL(p, BASE).href;
 
+  const wxoMeta = () => { try { return JSON.parse(localStorage.getItem(LS_WXO)) || null; } catch { return null; } };
+  const wxoUrl = (id, path) => new URL(`wxo/${id}/${path}`, BASE).href; // Cache のキーだけに使う合成 URL
   function list() {
     try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch { return []; }
   }
@@ -113,12 +117,120 @@
     l.sort((a, b) => (a.packId < b.packId ? 1 : -1));
     const keep = l.slice(0, KEEP), drop = l.slice(KEEP);
     saveList(keep);
+    { const o = wxoMeta(); if (o && manifest.packId >= o.packId) await clearOverlay(); }
     for (const p of drop) await caches.delete(cacheName(p.packId));
     const names = await caches.keys();
     for (const n of names) if (n.startsWith('fb-pack-') && !keep.some((p) => cacheName(p.packId) === n)) await caches.delete(n);
     await pruneBlobs(keep);
     verified.clear();
     return manifest;
+  }
+
+
+  // ---------------------------------------------------------------- WX だけ更新（気象部分のみ）
+  // 最新パックのうち 気象（選んだ空港の METAR/TAF/ATIS・飛行状態の一覧・WX の図と差分画像）だけを取る。
+  // 時刻表・NOTAM・AIP・ブリーフは取らない。パック本体には触れず、別の Cache（fb-wx-overlay）に置いて、表示する時に重ねる。
+  // 端末は気象の外部サイト（AWC など）には一切アクセスしない。取得元は公開済みパックだけ（新しいデータはボットが SWIM 優先で取ってパックに入れる）。
+  // 気象の優先順位（SWIM → AWC → Ogimet）はボットがパックを作る時に適用済みで、そのまま使う。
+  async function applyOverlay(out, packId, selected) {
+    const o = wxoMeta();
+    if (!o || !(o.packId > packId)) return;
+    try {
+      const c = await caches.open(WXO);
+      const get = async (path) => { const r = await c.match(wxoUrl(o.packId, path)); return r ? r.json() : null; };
+      const wxj = await get('wx.json'), atisj = await get('atis.json'), idxj = await get('index.json');
+      if (!wxj || !atisj || !idxj) return;
+      let n = 0;
+      out.wx = { ...out.wx, ...wxj, airports: { ...(out.wx?.airports || {}) } };
+      out.atis = { ...out.atis, ...atisj, airports: { ...(out.atis?.airports || {}) }, reasons: { ...(out.atis?.reasons || {}) } };
+      out.index = idxj;
+      for (const icao of selected || []) {
+        if (!(o.airports || []).includes(icao)) continue;
+        const d = await get(`ap/${icao}.json`);
+        if (!d) continue;
+        n++;
+        if (d.wx) out.wx.airports[icao] = d.wx;
+        if (d.atis) out.atis.airports[icao] = d.atis; else delete out.atis.airports[icao];
+        if (d.atisReason) out.atis.reasons[icao] = d.atisReason; else delete out.atis.reasons[icao];
+        if (d.series) out.seriesByIcao[icao] = d.series;
+      }
+      if (o.chartsReady) {
+        const ch = await get('charts.json');
+        if (ch) { out.charts = ch; setSeries(out); }
+      }
+      out.wxOverlay = { packId: o.packId, generatedAt: o.generatedAt, savedAt: o.savedAt, airports: n, chartsReady: !!o.chartsReady };
+    } catch (e) { console.warn('WX overlay', e); }
+  }
+  async function clearOverlay() {
+    localStorage.removeItem(LS_WXO);
+    await caches.delete(WXO);
+  }
+  const wxLast = () => { try { return JSON.parse(localStorage.getItem(LS_WXLAST)) || null; } catch { return null; } };
+
+  // 戻り値 {status:'same'|'updated', packId, generatedAt, airports, files, blobsNew, bytes}
+  // onStage(text) で段階を通知。onData() は気象データを保存し終えた時（画像のダウンロード前に画面を更新できる）
+  async function wxRefresh(selected, onStage, onData) {
+    onStage && onStage('最新を確認中');
+    const m = await checkRemote();
+    const stamp = (r) => { const v = { at: new Date().toISOString(), ...r }; localStorage.setItem(LS_WXLAST, JSON.stringify(v)); return v; };
+    const top = list()[0];
+    const o0 = wxoMeta();
+    const have = !!top && top.packId >= m.packId; // 端末に最新パックが丸ごとある（空港の不足分は ensureAirports が取る）
+    const aps = apList(m, selected);
+    if (have || (o0 && o0.packId === m.packId && o0.chartsReady && aps.every((i) => (o0.airports || []).includes(i)))) {
+      return stamp({ status: 'same', packId: m.packId, generatedAt: m.generatedAt, airports: aps.length, files: 0, blobsNew: 0, bytes: 0 });
+    }
+    const cache = await caches.open(WXO);
+    const fileOf = (path) => (m.files || []).find((f) => f.path === path);
+    let bytes = 0, files = 0;
+    const put = async (key, f, trim) => {
+      const url = packUrl(m, f.path);
+      const res = await fetchVerified(url, f.sha256, 'application/json');
+      let body = await res.text(); bytes += f.bytes || body.length; files++;
+      if (trim) body = JSON.stringify(trim(JSON.parse(body)));
+      await cache.put(wxoUrl(m.packId, key), new Response(body, { headers: { 'Content-Type': 'application/json' } }));
+    };
+    onStage && onStage('METAR/TAF/ATIS を取得中');
+    const shared = ['wx.json', 'atis.json', 'index.json'].map(fileOf);
+    if (shared.some((f) => !f)) throw new Error('このパックには気象の目録がありません');
+    await pool(shared, PARALLEL, (f) => put(f.path, f));
+    await pool(aps, PARALLEL, (icao) => put(`ap/${icao}.json`, m.airportFiles[icao], (d) => ({ icao, wx: d.wx, atis: d.atis, atisReason: d.atisReason, series: d.series })));
+    // 気象データは揃った：この時点で重ねて表示できる（図は後から）
+    const prevCharts = o0 && o0.chartsReady ? o0 : null;
+    const meta = { packId: m.packId, generatedAt: m.generatedAt, savedAt: new Date().toISOString(), airports: aps, chartsReady: false, blobs: [], chartsSha: null };
+    localStorage.setItem(LS_WXO, JSON.stringify(meta));
+    onData && await onData();
+    // WX の図：charts.json と、端末にまだ無い画像だけ（差分）
+    onStage && onStage('WX の図を取得中');
+    const cf = fileOf('charts.json');
+    if (cf) {
+      if (prevCharts && prevCharts.chartsSha === cf.sha256) {
+        const old = await (await caches.open(WXO)).match(wxoUrl(prevCharts.packId, 'charts.json'));
+        if (old) await cache.put(wxoUrl(m.packId, 'charts.json'), old.clone());
+        else await put('charts.json', cf);
+      } else await put('charts.json', cf);
+      meta.chartsSha = cf.sha256;
+    }
+    const blobs = (m.blobs || []).concat(...aps.map((i) => m.airportFiles[i].blobs || []));
+    const bc = await caches.open(BLOBS);
+    const haveB = new Set((await bc.keys()).map((r) => r.url));
+    const need = blobs.filter((b) => !haveB.has(siteUrl(b.file)));
+    let done = 0;
+    meta.blobs = blobs.map((b) => b.file);
+    localStorage.setItem(LS_WXO, JSON.stringify(meta)); // 取り終わる前に pruneBlobs で消されないよう先に登録
+    await pool(need, PARALLEL, async (b) => {
+      const name = b.file.split('/').pop();
+      const [sha, ext] = name.split('.');
+      await bc.put(siteUrl(b.file), await fetchVerified(siteUrl(b.file), sha, MIME[ext]));
+      bytes += b.bytes || 0; done++;
+      onStage && onStage(`WX の図を取得中 ${done}/${need.length}`);
+    });
+    // 古い overlay のファイルを片付ける
+    for (const r of await cache.keys()) if (!r.url.includes(`/wxo/${m.packId}/`)) await cache.delete(r);
+    meta.chartsReady = true;
+    meta.savedAt = new Date().toISOString();
+    localStorage.setItem(LS_WXO, JSON.stringify(meta));
+    return stamp({ status: 'updated', packId: m.packId, generatedAt: m.generatedAt, airports: aps.length, files, blobsNew: need.length, bytes });
   }
 
   async function manifestOf(entry) {
@@ -135,10 +247,15 @@
       for (const b of m.blobs || []) want.add(siteUrl(b.file));
       for (const i of p.airports || []) for (const b of m.airportFiles?.[i]?.blobs || []) want.add(siteUrl(b.file));
     }
+    const o = wxoMeta();
+    if (o && keep.every((p) => o.packId > p.packId)) for (const f of o.blobs || []) want.add(siteUrl(f));
     const bc = await caches.open(BLOBS);
     for (const r of await bc.keys()) if (!want.has(r.url)) await bc.delete(r);
   }
 
+  function setSeries(out) {
+    for (const c of out.charts?.categories || []) for (const it of c.items || []) if (it.id === 'apseries') it.product.variants = Object.values(out.seriesByIcao || {});
+  }
   // 空港別ファイルを、画面側が使う元の形（wx.airports / notam.airports / atis.airports / airports.airports / 飛行場時系列）に組み立てる
   async function load(packId, selected) {
     const entry = list().find((p) => p.packId === packId);
@@ -156,7 +273,7 @@
     if (manifest.airportFiles) {
       for (const k of ['wx', 'notam', 'atis', 'airports']) { out[k] = out[k] || {}; out[k].airports = {}; }
       out.atis.reasons = {};
-      const series = [];
+      const series = {};
       for (const icao of apList(manifest, selected)) {
         const r = await cache.match(packUrl(manifest, manifest.airportFiles[icao].path));
         if (!r) continue;
@@ -167,12 +284,14 @@
         if (d.atis) out.atis.airports[icao] = d.atis;
         if (d.atisReason) out.atis.reasons[icao] = d.atisReason;
         if (d.profile) out.airports.airports[icao] = d.profile;
-        if (d.series) series.push(d.series);
+        if (d.series) series[icao] = d.series;
       }
-      for (const c of out.charts?.categories || []) for (const it of c.items || []) if (it.id === 'apseries') it.product.variants = series;
+      out.seriesByIcao = series;
+      setSeries(out);
     } else {
       for (const icao of Object.keys(out.wx?.airports || {})) out.loadedAirports.add(icao); // 旧形式（全空港入り）
     }
+    await applyOverlay(out, packId, selected);
     const bc = await caches.open(BLOBS);
     const blobUrls = new Map();
     out.imageUrl = async (path) => {
@@ -215,8 +334,9 @@
   async function clearAll() {
     for (const n of await caches.keys()) if (n.startsWith('fb-pack-') || n === BLOBS) await caches.delete(n);
     localStorage.removeItem(LS_KEY);
+    await clearOverlay();
     verified.clear();
   }
 
-  window.FBPack = { list, checkRemote, download, load, verify, clearAll, cacheName, deviceBytes };
+  window.FBPack = { list, checkRemote, download, load, verify, clearAll, cacheName, deviceBytes, wxRefresh, wxLast };
 })();

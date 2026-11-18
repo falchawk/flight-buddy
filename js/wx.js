@@ -5,8 +5,15 @@
   // 判定は scripts/flightcat.py と同じ：IFR/VFR の境界は日本の航空法（施行規則第5条第4号：地上視程 5,000m・雲高 300m≒1,000ft）、
   // MVFR/LIFR だけ FAA。視程 < 5,000m = IFR / < 1SM(1,609m) = LIFR、シーリング（BKN/OVC/VV）< 1,000ft = IFR / < 500ft = LIFR。
   // 要素ごとに見て、IFR 以下になっている要素だけを赤にする。（旧版は視程の IFR 境界が 3SM=4,828m）
-  const SM_M = 1609.344, IFR_VIS_M = 5000, IFR_CEIL_FT = 1000, LIFR_CEIL_FT = 500, MVFR_CEIL_FT = 3000, MVFR_VIS_M = 5 * SM_M;
-  function ifrToken(t, prev) {
+  // 空港別：告示で指定された空港（js/vmc-designated.js の strict。現在 0 件）は 視程 8,000m・雲高 1,500ft(450m) が IFR の境界、
+  // MVFR は 8,000m〜5SM・1,500〜3,000ft、LIFR は FAA のまま。それ以外は 5,000m・1,000ft。
+  const SM_M = 1609.344, LIFR_CEIL_FT = 500, MVFR_CEIL_FT = 3000, MVFR_VIS_M = 5 * SM_M;
+  const STRICT = new Set(((window.FB_VMC && window.FB_VMC.strict) || []).map((x) => String(x).toUpperCase()));
+  const NORMAL = { vis: 5000, ceil: 1000, strict: false, text: '航空法 5km/1000ft' };
+  const DESIGNATED = { vis: 8000, ceil: 1500, strict: true, text: '告示空港: 8km/1500ft' };
+  const limitsFor = (icao) => (icao && STRICT.has(String(icao).toUpperCase()) ? DESIGNATED : NORMAL);
+  function ifrToken(t, prev, lim) {
+    const IFR_VIS_M = lim.vis, IFR_CEIL_FT = lim.ceil;
     let m;
     if ((m = t.match(/^(\d{4})M?$/))) return Number(m[1]) < IFR_VIS_M;
     if ((m = t.match(/^(\d{1,2})KM$/))) return Number(m[1]) * 1000 < IFR_VIS_M; // 視程（m）。時刻 dddd/dddd や風は \d{4} だけの形にならない
@@ -17,11 +24,11 @@
   }
   // 1つの文字列を空白で区切り、IFR/LIFR の要因のトークンだけ <span class="hl-ifr"> にする（RMK 以降は対象外）
   function ifrHtml(text, state) {
-    const st = state || { rmk: false, prev: null };
+    const st = state || { rmk: false, prev: null, lim: NORMAL };
     return String(text).split(/(\s+)/).map((t) => {
       if (!t || /^\s+$/.test(t)) return esc(t);
       if (t === 'RMK') st.rmk = true;
-      const hit = !st.rmk && ifrToken(t, st.prev);
+      const hit = !st.rmk && ifrToken(t, st.prev, st.lim || NORMAL);
       st.prev = t;
       return hit ? `<span class="hl-ifr">${esc(t)}</span>` : esc(t);
     }).join('');
@@ -32,8 +39,8 @@
   const TOKEN_CLASS = { BECMG: 'taf-token-becmg', TEMPO: 'taf-token-tempo', FM: 'taf-token-fm', PROB30: 'taf-token-prob', PROB40: 'taf-token-prob' };
   // 変化群キーワード（BECMG/TEMPO/FM/PROB）を TAF と同じ色にし、それ以外のトークンは IFR/LIFR の要因だけ赤にする。
   // found は全文での位置、baseOffset は segment の全文上の開始位置。TAF の各行（変化群）・METAR の本文と傾向（TEMPO/BECMG）に共通。
-  function colorizeText(segment, baseOffset, found) {
-    let out = ''; let cursor = 0; const st = { rmk: false, prev: null };
+  function colorizeText(segment, baseOffset, found, lim) {
+    let out = ''; let cursor = 0; const st = { rmk: false, prev: null, lim: lim || NORMAL };
     for (const tok of found) {
       const relStart = tok.index - baseOffset; const relEnd = tok.end - baseOffset;
       if (relStart < cursor || relStart < 0 || relEnd > segment.length) continue;
@@ -45,13 +52,13 @@
     return out + ifrHtml(segment.slice(cursor), st);
   }
   // METAR：本文はそのまま（改行しない）。TEMPO/BECMG は TAF と同じ色、IFR/LIFR の要因だけ赤
-  function highlight(raw) {
+  function highlight(raw, icao) {
     const text = String(raw || '').trim();
     const found = []; let m; TOKEN_RE.lastIndex = 0;
     while ((m = TOKEN_RE.exec(text))) found.push({ index: m.index, end: m.index + m[1].length, name: m[1] });
-    return colorizeText(text, 0, found);
+    return colorizeText(text, 0, found, limitsFor(icao));
   }
-  function tafRows(text) {
+  function tafRows(text, icao) {
     const found = []; let m; TOKEN_RE.lastIndex = 0;
     while ((m = TOKEN_RE.exec(text))) found.push({ index: m.index, end: m.index + m[1].length, name: m[1] });
     const breakPoints = [0];
@@ -63,7 +70,8 @@
       }
       if (tok.index > 0) breakPoints.push(tok.index);
     }
-    const colorize = (segment, baseOffset) => colorizeText(segment, baseOffset, found);
+    const lim = limitsFor(icao);
+    const colorize = (segment, baseOffset) => colorizeText(segment, baseOffset, found, lim);
     return { found, rows: breakPoints.map((start, i) => {
       const end = i + 1 < breakPoints.length ? breakPoints[i + 1] : text.length;
       const segment = text.slice(start, end);
@@ -72,18 +80,18 @@
       return { trimmed, start: start + leadingWs, html: colorize(trimmed, start + leadingWs) };
     }) };
   }
-  function tafLines(raw) {
+  function tafLines(raw, icao) {
     const text = String(raw || '');
     if (!text) return '';
-    const { found, rows } = tafRows(text);
+    const { found, rows } = tafRows(text, icao);
     if (!found.length) return esc(text);
     return rows.map((r) => r.html).join('\n');
   }
   // DUTY 用：ETD/ETA ± バッファの時間帯に重なる変化群の行を taf-line-relevant で強調（旧版と同じ判定）
-  function tafLinesWithWindow(raw, win) {
+  function tafLinesWithWindow(raw, win, icao) {
     const text = String(raw || '');
     if (!text) return '';
-    const { found, rows } = tafRows(text);
+    const { found, rows } = tafRows(text, icao);
     if (!found.length) return esc(text);
     const has = win && Number.isFinite(win.startEpoch) && Number.isFinite(win.endEpoch) && Number.isFinite(win.anchorEpoch);
     const lead = (seg) => { const mm = seg.match(/^(BECMG|TEMPO|PROB30|PROB40|FM(?=\d))/); return mm ? mm[1] : null; };
@@ -140,14 +148,14 @@
     const hs = [...String(raw).matchAll(/\b(?:BKN|OVC|VV)(\d{3})\b/g)].map((x) => Number(x[1]) * 100);
     return hs.length ? Math.min(...hs) : null;
   }
-  function flightCategory(raw) {
+  function flightCategory(raw, icao) {
     if (!raw) return null;
-    const v = visM(raw), c = ceilFt(raw);
-    const fv = v == null ? null : v < SM_M ? 'LIFR' : v < IFR_VIS_M ? 'IFR' : v <= MVFR_VIS_M ? 'MVFR' : 'VFR';
-    const fc = c == null ? null : c < LIFR_CEIL_FT ? 'LIFR' : c < IFR_CEIL_FT ? 'IFR' : c <= MVFR_CEIL_FT ? 'MVFR' : 'VFR';
+    const lim = limitsFor(icao), v = visM(raw), c = ceilFt(raw);
+    const fv = v == null ? null : v < SM_M ? 'LIFR' : v < lim.vis ? 'IFR' : v <= MVFR_VIS_M ? 'MVFR' : 'VFR';
+    const fc = c == null ? null : c < LIFR_CEIL_FT ? 'LIFR' : c < lim.ceil ? 'IFR' : c <= MVFR_CEIL_FT ? 'MVFR' : 'VFR';
     const rank = { LIFR: 0, IFR: 1, MVFR: 2, VFR: 3 };
     if (!fv || !fc) return fv || fc;
     return rank[fv] <= rank[fc] ? fv : fc;
   }
-  window.FBWx = { esc, highlight, tafLines, tafLinesWithWindow, flightCategory };
+  window.FBWx = { esc, highlight, tafLines, tafLinesWithWindow, flightCategory, limitsFor };
 })();

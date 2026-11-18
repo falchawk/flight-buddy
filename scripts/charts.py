@@ -5,6 +5,7 @@ Flight Buddy charts fetcher（旧 Flight Buddy=wx-brief の WX 図 8分類をそ
 キャッシュして再取得しない。
 """
 import datetime as dt
+import email.utils
 import hashlib
 import json
 import os
@@ -74,14 +75,17 @@ class Fetcher:
             with open(self.cache_path, "w") as f:
                 json.dump(self.urlmap, f)
 
-    def _raw(self, url, timeout=25, retries=2):
+    def _raw(self, url, timeout=25, retries=2, hdrs=None, method="GET"):
+        """hdrs（dict）を渡すと、応答ヘッダー（小文字キー）を入れて返す。method="HEAD" で本文なし。"""
         last = None
         for i in range(retries + 1):
             try:
                 with self.lock:
                     self.stats["requests"] += 1
-                req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*", "Accept-Language": "ja,en;q=0.8"})
+                req = urllib.request.Request(url, method=method, headers={"User-Agent": UA, "Accept": "*/*", "Accept-Language": "ja,en;q=0.8"})
                 with urllib.request.urlopen(req, timeout=timeout) as r:
+                    if hdrs is not None:
+                        hdrs.update({k.lower(): v for k, v in r.headers.items()})
                     return r.status, r.read(), (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
             except urllib.error.HTTPError as e:
                 if e.code in (403, 404, 410):
@@ -110,8 +114,23 @@ class Fetcher:
                 self.stats["bytes_new"] += len(body)
         return rel
 
-    def image(self, url, immutable=False):
-        """画像URLを取得してblobパス(data/blobs/..)を返す。無ければNone。"""
+    @staticmethod
+    def parse_lm(hdrs):
+        try:
+            return email.utils.parsedate_to_datetime(hdrs["last-modified"]).astimezone(dt.timezone.utc)
+        except Exception:  # noqa: BLE001
+            return None
+
+    def lastmod(self, url):
+        """HEAD で Last-Modified（UTC）を返す。取れなければ None。"""
+        h = {}
+        st, _, _ = self._raw(url, retries=1, hdrs=h, method="HEAD")
+        return self.parse_lm(h) if st == 200 else None
+
+    def image(self, url, immutable=False, fresh=None):
+        """画像URLを取得してblobパス(data/blobs/..)を返す。無ければNone。
+        fresh=(下限, 上限)（UTC の datetime）を渡すと、Last-Modified がその範囲にある時だけ採用する（日付の無い URL が毎日上書きされる
+        配信で、まだ作られていない枠が前日の画像を返す問題の対策）。Last-Modified が無い／範囲外なら None。"""
         if immutable:
             with self.lock:
                 hit = self.urlmap.get(url)
@@ -119,9 +138,16 @@ class Fetcher:
                 with self.lock:
                     self.stats["cached"] += 1
                 return hit["f"]
-        st, body, ct = self._raw(url)
+        h = {}
+        st, body, ct = self._raw(url, hdrs=h)
         if st != 200 or not body:
             return None
+        if fresh is not None:
+            lm = self.parse_lm(h)
+            if lm is None or not (fresh[0] <= lm <= fresh[1]):
+                with self.lock:
+                    self.stats["stale"] = self.stats.get("stale", 0) + 1
+                return None
         ext = CT_EXT.get(ct)
         if not ext:
             if body[:4] == b"\x89PNG":
@@ -205,16 +231,213 @@ def surface_charts(F, errors):
 
 
 # =============================================================================== 2. 衛星・雲頂
-def himawari(F, band, errors):
+SAT_BANDS = {"b13": "B13/TBB", "b03": "B03/ALBD", "b08": "B08/TBB"}
+SAT = "https://www.jma.go.jp/bosai/himawari/data/satimg"
+SAT_Z = 5                                   # フルディスクタイルの最大ズーム（z5 = 約4km/px）
+SAT_BOX = (117.0, 152.0, 20.0, 47.5)         # 切り出し範囲 lon_w, lon_e, lat_s, lat_n（旧「日本域」画像とほぼ同じ範囲）
+SAT_LAYOUT = "v1"                            # 合成レイアウトを変えたらここを上げる（キャッシュ無効化）
+
+
+def _merc(lon, lat, z=SAT_Z):
+    """Web メルカトル（256px タイル）のピクセル座標（世界全体の左上基準）"""
+    import math
+    size = 256 * (2 ** z)
+    x = (lon + 180.0) / 360.0 * size
+    r = math.radians(lat)
+    y = (1 - math.log(math.tan(r) + 1 / math.cos(r)) / math.pi) / 2 * size
+    return x, y
+
+
+def _sat_geometry():
+    x0, y1 = _merc(SAT_BOX[0], SAT_BOX[3])
+    x1, y0 = _merc(SAT_BOX[1], SAT_BOX[2])
+    x0, y1, x1, y0 = int(x0), int(y1), int(x1), int(y0)
+    # (left, top, right, bottom) in world px
+    return x0, y1, x1, y0
+
+
+def _tile_bytes(F, url, cache_name=None, timeout=25):
+    """タイル1枚のバイト列。cache_name があればディスクに残して再取得しない（不変の地図タイル用）。"""
+    if cache_name:
+        p = os.path.join(os.path.dirname(F.cache_path), "tiles", cache_name)
+        if os.path.exists(p):
+            with open(p, "rb") as f:
+                return f.read()
+    st, body, _ = F._raw(url, timeout=timeout, retries=2)
+    if st != 200 or not body:
+        return None
+    if cache_name:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p + ".tmp", "wb") as f:
+            f.write(body)
+        os.replace(p + ".tmp", p)
+    return body
+
+
+def _sat_font(size):
+    from PIL import ImageFont
+    for path in ("/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+                 "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf"):
+        if os.path.exists(path):
+            return ImageFont.truetype(path, size)
+    return ImageFont.load_default()
+
+
+def _sat_overlay(F, geom):
+    """海岸線・県境（気象庁 transparent-cities タイル）＋経緯度の点線。範囲は固定なので1回作って使い回す。"""
+    from PIL import Image, ImageDraw
+    import io
+    x0, y0, x1, y1 = geom
+    W, H = x1 - x0, y1 - y0
+    tx0, tx1, ty0, ty1 = x0 // 256, (x1 - 1) // 256, y0 // 256, (y1 - 1) // 256
+    jobs = [(x, y) for x in range(tx0, tx1 + 1) for y in range(ty0, ty1 + 1)]
+    got = F.many(lambda xy: (xy, _tile_bytes(F, f"https://www.jma.go.jp/tile/jma/transparent-cities/{SAT_Z}/{xy[0]}/{xy[1]}.png",
+                                            f"tc_{SAT_Z}_{xy[0]}_{xy[1]}.png")), jobs)
+    ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    for (x, y), b in got:
+        if b:
+            t = Image.open(io.BytesIO(b)).convert("RGBA")
+            ov.paste(t, (x * 256 - x0, y * 256 - y0), t)
+    # 気象庁の海岸線・県境は黒線なので、暗い赤外画像でも見えるよう緑（旧画像と同じ系統）に塗り直す
+    a = ov.getchannel("A").point(lambda v: min(255, int(v * 1.7)))
+    ov = Image.merge("RGBA", (Image.new("L", ov.size, 90), Image.new("L", ov.size, 255), Image.new("L", ov.size, 90), a))
+    d = ImageDraw.Draw(ov)
+    f = _sat_font(11)
+    col = (255, 255, 255, 190)
+    for lon in range(int(-(-SAT_BOX[0] // 10) * 10), int(SAT_BOX[1]) + 1, 10):
+        px = _merc(lon, 30)[0] - x0
+        for yy in range(0, H, 6):
+            d.point((px, yy), fill=col)
+            d.point((px, yy + 1), fill=col)
+        d.text((px + 3, 2), f"{lon}E", fill=col, font=f)
+    for lat in range(int(-(-SAT_BOX[2] // 10) * 10), int(SAT_BOX[3]) + 1, 10):
+        py = _merc(120, lat)[1] - y0
+        for xx in range(0, W, 6):
+            d.point((xx, py), fill=col)
+            d.point((xx + 1, py), fill=col)
+        d.text((3, py + 2), f"{lat}N", fill=col, font=f)
+    return ov, got
+
+
+def himawari_tiles(F, band, errors, step_min=10, hours=2, ovl=None):
+    """気象庁 bosai ひまわり（フルディスク z5 タイル）を targetTimes の最新 basetime から取り、日本域に切り出して合成する。
+    旧 mscweb の jpn_*.jpg は毎日上書きされる URL で約12〜20分遅れるが、こちらは日付入り URL で基準時刻から約5分で出る。
+    戻り値: (frames, 最新basetime or None)。1枚でも取れなければ空。"""
+    from PIL import Image, ImageDraw
+    import io
+    product_path = SAT_BANDS[band]
+    tt = F.text(f"{SAT}/targetTimes_fd.json")
+    try:
+        times = sorted({parse14(e["basetime"]) for e in json.loads(tt) if e.get("basetime") == e.get("validtime")})
+    except Exception:  # noqa: BLE001
+        return [], None
+    if not times:
+        return [], None
+    latest = times[-1]
+    keep = [t for t in times if t >= latest - dt.timedelta(hours=hours) and t.minute % step_min == 0]
+    geom = _sat_geometry()
+    x0, y0, x1, y1 = geom
+    W, H = x1 - x0, y1 - y0
+    tx0, tx1, ty0, ty1 = x0 // 256, (x1 - 1) // 256, y0 // 256, (y1 - 1) // 256
+    # 合成済みフレームはキャッシュ（同じ時刻・バンド・レイアウトなら再合成しない）
+    keyof = lambda t: f"sat:{SAT_LAYOUT}:{band}:{ts14(t)}"
+    todo = []
+    frames_done = {}
+    for t in keep:
+        with F.lock:
+            hit = F.urlmap.get(keyof(t))
+        if hit and os.path.exists(os.path.join(F.blob_dir, os.path.basename(hit["f"]))):
+            frames_done[t] = hit["f"]
+            with F.lock:
+                F.stats["cached"] += 1
+        else:
+            todo.append(t)
+    if todo:
+        jobs = [(t, x, y) for t in todo for x in range(tx0, tx1 + 1) for y in range(ty0, ty1 + 1)]
+        got = F.many(lambda j: (j, _tile_bytes(F, f"{SAT}/{ts14(j[0])}/fd/{ts14(j[0])}/{product_path}/{SAT_Z}/{j[1]}/{j[2]}.jpg")), jobs)
+        tiles = {}
+        for (t, x, y), b in got:
+            tiles.setdefault(t, {})[(x, y)] = b
+        if ovl is None:
+            ovl = _sat_overlay(F, geom)[0]
+        font = _sat_font(12)
+        for t in todo:
+            tl = tiles.get(t, {})
+            if len(tl) != (tx1 - tx0 + 1) * (ty1 - ty0 + 1) or any(v is None for v in tl.values()):
+                continue            # 欠けたタイルがあるフレームは出さない（まだ作成中の可能性）
+            canvas = Image.new("RGB", (W, H), (0, 0, 0))
+            for (x, y), b in tl.items():
+                canvas.paste(Image.open(io.BytesIO(b)).convert("RGB"), (x * 256 - x0, y * 256 - y0))
+            canvas = canvas.convert("RGBA")
+            canvas.alpha_composite(ovl)
+            canvas = canvas.convert("RGB")
+            d = ImageDraw.Draw(canvas)
+            j = t.astimezone(JST)
+            text = f"Himawari {band.upper()}  {j:%Y-%m-%d %H:%M} JST ({t:%H:%M}Z)"
+            tw = d.textlength(text, font=font)
+            d.rectangle((W - tw - 10, H - 20, W, H), fill=(0, 0, 0))
+            d.text((W - tw - 5, H - 18), text, fill=(255, 255, 0), font=font)
+            buf = io.BytesIO()
+            canvas.save(buf, "JPEG", quality=80, optimize=True, progressive=False)
+            rel = F.store(buf.getvalue(), "jpg")
+            frames_done[t] = rel
+            with F.lock:
+                F.urlmap[keyof(t)] = {"f": rel, "t": time.time()}
+    frames = [frame(lbl(t), [frames_done[t]], t, "実況") for t in sorted(frames_done)]
+    return frames, (max(frames_done) if frames_done else None)
+
+
+def himawari_legacy(F, band, errors):
     now = dt.datetime.now(UTC)
     r = now.replace(minute=now.minute // 10 * 10, second=0, microsecond=0)
     cands = [r - dt.timedelta(minutes=10 * i) for i in range(13)]
     cands = [c for c in cands if c >= now - dt.timedelta(hours=2, minutes=5)]
-    res = F.many(lambda t: (t, F.image(f"https://www.data.jma.go.jp/mscweb/data/himawari/img/jpn/jpn_{band}_{t:%H%M}.jpg")), cands)
+    # URL に日付が無く毎日上書きされるため、まだ作られていない枠は前日の画像を返す。Last-Modified が枠の時刻以降（＋1時間以内）のものだけ採用
+    res = F.many(lambda t: (t, F.image(f"https://www.data.jma.go.jp/mscweb/data/himawari/img/jpn/jpn_{band}_{t:%H%M}.jpg",
+                                       fresh=(t, t + dt.timedelta(hours=1)))), cands)
     frames = [frame(lbl(t), [f], t, "実況") for t, f in sorted(res) if f]
     if not frames:
         errors.append(f"ひまわり {band}: 取得できず")
     return frames
+
+
+_SAT_OVL = {}
+SAT_SRC = {}
+_SAT_OVL_LOCK = threading.Lock()
+
+
+def himawari(F, band, errors):
+    """衛星画像。まず bosai タイル合成（新しい）、全滅したら旧 jpn_*.jpg（Last-Modified 検査つき）にフォールバック。"""
+    try:
+        with _SAT_OVL_LOCK:       # 3バンドが並列で呼ぶので、地図タイルの取得・合成は1回だけ
+            if "o" not in _SAT_OVL:
+                _SAT_OVL["o"] = _sat_overlay(F, _sat_geometry())[0]
+            ovl = _SAT_OVL["o"]
+        frames, latest = himawari_tiles(F, band, errors, ovl=ovl)
+    except Exception as e:  # noqa: BLE001
+        log(f"himawari tiles {band}: {type(e).__name__}: {e}")
+        frames = []
+    if frames:
+        SAT_SRC[band] = "tiles"
+        return frames
+    errors.append(f"ひまわり {band}: bosai タイル取得できず（旧画像にフォールバック）")
+    SAT_SRC[band] = "legacy"
+    return himawari_legacy(F, band, errors)
+
+
+def sat_note(band, frames):
+    if not frames:
+        return None
+    last = frames[-1].get("time")
+    try:
+        t = dt.datetime.strptime(last, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        when = f"最新 {t.astimezone(JST):%H:%M} JST（{t:%H:%M}Z）"
+    except Exception:  # noqa: BLE001
+        when = ""
+    if SAT_SRC.get(band) == "tiles":
+        return (f"出典: 気象庁 ひまわり配信タイル（bosai・フルディスク 10分間隔、観測の約5分後に公開）を日本域に切り出して合成、海岸線・県境は気象庁地図。"
+                f"{when}。画像の右下にも JST 時刻を入れています。")
+    return f"出典: 気象庁 ひまわり日本域画像（旧配信。タイル配信が取れなかったため代替）。{when}。"
 
 
 def cloud_top(F, errors):
@@ -442,24 +665,36 @@ def upper_charts(F, errors):
     out["fbjp"] = [frame("FBJP 国内悪天予想図（最新）", [f])] if f else []
     if not f:
         errors.append("FBJP: 取得できず")
+    # 日付の無い URL（fxjp106_12 など）は次の発表まで同じ名前で上書きされ、00 と 12 のどちらが新しいかは URL では分からない。
+    # Last-Modified が新しい方を採り、初期時刻（日付つき）をラベルにする
+    def newest_run(url_of):
+        runs = []
+        for hh in ("12", "00"):
+            lm = F.lastmod(url_of(hh))
+            if lm:
+                init = lm.replace(hour=int(hh), minute=0, second=0, microsecond=0)
+                if init > lm:
+                    init -= dt.timedelta(days=1)
+                runs.append((lm, hh, init))
+        return sorted(runs, reverse=True)
     for key, name in (("fxjp106", "FXJP106"),):
         got = None
-        for hh in ("12", "00"):
+        for lm, hh, init in newest_run(lambda hh: f"{JMA_AIR}/pict/nwp/fxjp106_{hh}.png"):
             got = F.image(f"{JMA_AIR}/pict/nwp/fxjp106_{hh}.png")
             if got:
-                out[key] = [frame(f"{name} {hh}UTC 初期", [got])]
+                out[key] = [frame(f"{name} {init:%d}日{hh}UTC 初期", [got], init)]
                 break
         if not got:
             errors.append(f"{name}: 取得できず")
     for key, name in (("fxfe502", "FXFE502"), ("fxfe5782", "FXFE5782")):
         got = None
-        for hh in ("12", "00"):
+        for lm, hh, init in newest_run(lambda hh: f"https://www.jma.go.jp/bosai/numericmap/data/nwpmap/{key}_{hh}.pdf"):
             try:
                 got = F.pdf_page1_png(f"https://www.jma.go.jp/bosai/numericmap/data/nwpmap/{key}_{hh}.pdf")
             except Exception as e:  # noqa: BLE001
                 errors.append(f"{name}: PDF変換失敗 {e}")
             if got:
-                out[key] = [frame(f"{name} {hh}UTC 初期（PDF 1ページ目）", [got])]
+                out[key] = [frame(f"{name} {init:%d}日{hh}UTC 初期（PDF 1ページ目）", [got], init)]
                 break
         if not got:
             errors.append(f"{name}: 取得できず")
@@ -561,9 +796,9 @@ def build_charts(data_dir, airports, workers=16):
                 variant(k, lab, [s[k]]) for k, lab in (("fsas24", "24時間後"), ("fsas48", "48時間後")) if k in s])},
         ]},
         {"id": "satellite", "label": "衛星画像", "defaultItem": 0, "items": [
-            {"id": "ir", "label": "赤外", "product": single("ひまわり 赤外（B13）", SRC_JMA, parts.get("ir"))},
-            {"id": "vis", "label": "可視", "product": single("ひまわり 可視（B03）", SRC_JMA, parts.get("vis"))},
-            {"id": "wv", "label": "水蒸気", "product": single("ひまわり 水蒸気（B08）", SRC_JMA, parts.get("wv"))},
+            {"id": "ir", "label": "赤外", "product": single("ひまわり 赤外（B13）", SRC_JMA, parts.get("ir"), note=sat_note("b13", parts.get("ir")))},
+            {"id": "vis", "label": "可視", "product": single("ひまわり 可視（B03）", SRC_JMA, parts.get("vis"), note=sat_note("b03", parts.get("vis")))},
+            {"id": "wv", "label": "水蒸気", "product": single("ひまわり 水蒸気（B08）", SRC_JMA, parts.get("wv"), note=sat_note("b08", parts.get("wv")))},
         ]},
         {"id": "radar", "label": "レーダーエコー", "defaultItem": 0, "items": [
             {"id": "nowcast", "label": "ナウキャスト", "product": product("降水ナウキャスト", SRC_JMA, rain.get("nowcast") or [], "a00")},

@@ -48,6 +48,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import charts as chartlib  # noqa: E402
 import swim_staging
 from flightcat import classify_metar  # noqa: E402
+import schedule  # noqa: E402
 import flights_pack  # noqa: E402
 
 
@@ -146,7 +147,7 @@ def fetch_wx(airports, prev_wx):
             "fetchedAt": now,
             "metar": [
                 {"raw": m.get("rawOb"), "obsTime": iso(dt.datetime.fromtimestamp(m["obsTime"], dt.timezone.utc)) if m.get("obsTime") else None,
-                 "fltCat": classify_metar(m.get("rawOb")) or m.get("fltCat"), "type": m.get("metarType")}
+                 "fltCat": classify_metar(m.get("rawOb"), icao) or m.get("fltCat"), "type": m.get("metarType")}
                 for m in ms[:4]
             ],
             "taf": ({"raw": ts[0].get("rawTAF"), "issueTime": ts[0].get("issueTime"),
@@ -176,12 +177,25 @@ def chunks(lst, n):
 def fetch_airport_profiles(airports, cfg, pack_date, stations=None):
     foreign = foreign_airports(cfg)
     static = cfg.get("airport_static", {})
-    info = []
-    for chunk in chunks(airports, 60):
-        try:
-            info += http_get_json(f"{AWC}/airport?ids={','.join(chunk)}&format=json")
-        except Exception as e:  # noqa: BLE001
-            log("空港情報の取得失敗:", e)
+    # NOAA/AWC の空港情報（SWIM AIP に無い空港の参考値）は1日1回（毎日 04:00 JST。scripts/schedule.py）。それ以外の回は保存済みの応答を使う
+    cache_path = os.path.join(DATA, ".cache", "awc_airport.json")
+    cached = read_json(cache_path)
+    if cached and cached.get("airports") == sorted(airports) and not schedule.is_due("noaa_airport"):
+        info = cached.get("info") or []
+        log("NOAA 空港情報: 本日分を取得済み（保存済みの応答を使用）")
+    else:
+        info, failed = [], False
+        for chunk in chunks(airports, 60):
+            try:
+                info += http_get_json(f"{AWC}/airport?ids={','.join(chunk)}&format=json")
+            except Exception as e:  # noqa: BLE001
+                failed = True
+                log("空港情報の取得失敗:", e)
+        if failed and cached and cached.get("info"):
+            info = cached["info"]   # 取れなかった時は前回の応答を流用（次の再試行は60分後）
+        elif info:
+            write_json(cache_path, {"airports": sorted(airports), "info": info, "fetchedAt": iso(dt.datetime.now(dt.timezone.utc))})
+        schedule.record("noaa_airport", bool(info) and not failed)
     by = {a.get("icaoId"): a for a in info}
     out = {"source": "国内：標高・磁気偏差・滑走路・周波数＝SWIM AIP（AD 2.2/2.12/2.18）、空港運用情報＝SWIM／日の出日没＝端末内計算。AIP に無い空港（海外・一部国内）の同項目のみ参考として NOAA（aviationweather.gov）", "airports": {}}
     for icao in airports:
@@ -645,6 +659,10 @@ def build(args):
             "notam": sum(len(a.get("items") or []) for a in (notam_d.get("airports") or {}).values()),
             "profile": sum(1 for t in targets if ((profiles["airports"].get(t) or {}).get("swim") or {}).get("ok")),
             "lostComm": sum(1 for t in targets if (((profiles["airports"].get(t) or {}).get("swim") or {}).get("lostComm") or {}).get("ok")),
+            # 取得元ごとの最終取得時刻（頻度は scripts/schedule.py：プロファイル/ATIS＝15分、NOTAM＝6時間、AIP・NOAA 空港情報＝1日）
+            "fetched": {"atis": atis_d.get("fetchedAt"), "notam": notam_d.get("fetchedAt"),
+                        "profile": ((swim or {}).get("profile") or {}).get("fetchedAt"), "aip": ((swim or {}).get("aip") or {}).get("fetchedAt"),
+                        "noaa": (read_json(os.path.join(DATA, ".cache", "awc_airport.json"), {}) or {}).get("fetchedAt")},
         }
         write_json(os.path.join(pack_dir, "airports.json"), profiles)
 

@@ -33,6 +33,15 @@
 
 const METERS_PER_STATUTE_MILE = 1609.344;
 
+// 告示空港（js/vmc-designated.js の strict。現在 0 件）は IFR の境界が 視程 8,000m・シーリング 1,500ft。正本は scripts/flightcat.py
+const STRICT = (() => {
+  try {
+    const src = require('fs').readFileSync(require('path').join(__dirname, '..', '..', '..', 'js', 'vmc-designated.js'), 'utf8');
+    return new Set((JSON.parse(src.match(/window\.FB_VMC\s*=\s*(\{[\s\S]*?\});/)[1]).strict || []).map((x) => String(x).toUpperCase()));
+  } catch (_e) { return new Set(); }
+})();
+const ifrLimits = (icao) => (icao && STRICT.has(String(icao).toUpperCase()) ? { visM: 8000, ceilFt: 1500 } : { visM: 5000, ceilFt: 1000 });
+
 /**
  * METARの視程グループを探して、統計マイル（sm）に揃えて返す。
  * 見つからなければ null。
@@ -101,18 +110,18 @@ function parseMetarCeilingVisibility(metarText) {
   };
 }
 
-function categoryFromCeiling(ceilingFt) {
+function categoryFromCeiling(ceilingFt, icao) {
   if (ceilingFt === null || ceilingFt === undefined) return null; // 制限なし＝この軸からは判定しない
   if (ceilingFt < 500) return 'LIFR';
-  if (ceilingFt < 1000) return 'IFR';
+  if (ceilingFt < ifrLimits(icao).ceilFt) return 'IFR';
   if (ceilingFt <= 3000) return 'MVFR'; // MVFRは1,000〜3,000ft（3,000ftを含む）、VFRは3,000ft超
   return 'VFR';
 }
 
-function categoryFromVisibility(visibilitySm) {
+function categoryFromVisibility(visibilitySm, icao) {
   if (visibilitySm === null || visibilitySm === undefined) return null;
   if (visibilitySm < 1) return 'LIFR';
-  if (visibilitySm * METERS_PER_STATUTE_MILE < 5000) return 'IFR'; // 航空法施行規則 第5条第4号：地上視程 5,000m
+  if (visibilitySm * METERS_PER_STATUTE_MILE < ifrLimits(icao).visM) return 'IFR'; // 航空法施行規則 第5条第4号：地上視程 5,000m（告示空港は 8,000m）
   if (visibilitySm <= 5) return 'MVFR';
   return 'VFR';
 }
@@ -123,9 +132,9 @@ const CATEGORY_RANK = { LIFR: 0, IFR: 1, MVFR: 2, VFR: 3 };
  * シーリング・視程それぞれから求めた区分のうち、悪い方（より制限が厳しい方）
  * を採用する。どちらも読み取れなかったときは null（＝判定不能）。
  */
-function classifyFlightCategory({ ceilingFt, visibilitySm }) {
-  const fromCeiling = categoryFromCeiling(ceilingFt);
-  const fromVisibility = categoryFromVisibility(visibilitySm);
+function classifyFlightCategory({ ceilingFt, visibilitySm }, icao) {
+  const fromCeiling = categoryFromCeiling(ceilingFt, icao);
+  const fromVisibility = categoryFromVisibility(visibilitySm, icao);
   if (!fromCeiling && !fromVisibility) return null;
   if (!fromCeiling) return fromVisibility;
   if (!fromVisibility) return fromCeiling;
@@ -136,9 +145,9 @@ function classifyFlightCategory({ ceilingFt, visibilitySm }) {
  * METARの生テキストを渡すと、判定結果一式を返す（呼び出し側の一括ヘルパー）。
  * metarTextが空のときは全項目nullを返す（推測はしない）。
  */
-function classifyMetarText(metarText) {
+function classifyMetarText(metarText, icao) {
   const { ceilingFt, visibilitySm } = parseMetarCeilingVisibility(metarText);
-  return { category: classifyFlightCategory({ ceilingFt, visibilitySm }), ceilingFt, visibilitySm };
+  return { category: classifyFlightCategory({ ceilingFt, visibilitySm }, icao), ceilingFt, visibilitySm };
 }
 
 module.exports = {

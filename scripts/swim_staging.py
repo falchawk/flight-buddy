@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from flightcat import classify_metar  # noqa: E402
 
 UTC = dt.timezone.utc
-MAX_AGE_H = {"atis": 1.0, "profile": 3.0, "notam": 6.0, "aip": 24 * 35}  # これより古い部品は使わない
+MAX_AGE_H = {"atis": 1.0, "profile": 3.0, "notam": 13.0, "aip": 24 * 35}  # これより古い部品は使わない（NOTAM は6時間ごとなので、1回取りこぼしても足りる 13h）
 
 
 # 飛行状態の判定は scripts/flightcat.py（日本の航空法優先＋MVFR/LIFR だけ FAA）
@@ -175,7 +175,7 @@ def apply_priority(wx, swim, targets, ogimet_fn=None):
             if awc_m and awc_m.get("obsTime") and obs and awc_m["obsTime"] > obs:
                 e["swimFailReason"] = f"SWIM の METAR（{obs[8:10]}日{obs[11:16]}Z）より AWC の観測が新しいため AWC を表示"
             else:
-                e["metar"] = [{"raw": sm, "obsTime": obs, "source": "SWIM", "fltCat": classify_metar(sm)}] + [
+                e["metar"] = [{"raw": sm, "obsTime": obs, "source": "SWIM", "fltCat": classify_metar(sm, icao)}] + [
                     m for m in (e.get("metar") or []) if not obs or (m.get("obsTime") or "") < obs]
                 e["metarSource"] = "SWIM"
                 e["ok"] = True
@@ -185,7 +185,7 @@ def apply_priority(wx, swim, targets, ogimet_fn=None):
             og = ogimet_fn(icao)
             if og.get("ok"):
                 e["metar"] = [{"raw": og["rawText"], "obsTime": _metar_obs_iso(og["rawText"], now), "source": "OGIMET",
-                               "fltCat": classify_metar(og["rawText"])}]
+                               "fltCat": classify_metar(og["rawText"], icao)}]
                 e["metarSource"] = "OGIMET"
                 e["ok"] = True
             else:
@@ -204,8 +204,8 @@ def apply_priority(wx, swim, targets, ogimet_fn=None):
                 e["ok"] = True
         else:
             e["swimTafFailReason"] = why
-    for e in wx["airports"].values():  # 飛行状態の判定は旧版と同じ（lib/flightCategory.js）
+    for icao_, e in wx["airports"].items():  # 飛行状態の判定は旧版と同じ（lib/flightCategory.js）。告示空港は 8km/1500ft 基準
         for m in e.get("metar") or []:
-            m["fltCat"] = classify_metar(m.get("raw")) or ("VFR" if m is (e.get("metar") or [None])[0] else None)
+            m["fltCat"] = classify_metar(m.get("raw"), icao_) or ("VFR" if m is (e.get("metar") or [None])[0] else None)
     wx["source"] = "SWIM（空港プロファイル）→ AWC（aviationweather.gov）→ Ogimet"
     return wx

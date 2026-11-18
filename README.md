@@ -13,7 +13,7 @@
 ## タブ
 | タブ（旧版と同じ順） | 内容 | 状態 |
 |---|---|---|
-| MAP | 空港の飛行状態（VFR/MVFR/IFR/LIFR）を地図（同梱の Natural Earth＋オンライン時は Esri 背景タイル・地名）に表示。5度の経緯線、現在地、鹿島スタジアム（公式エンブレム）。飛行状態は日本の航空法（施行規則第5条第4号）優先、MVFR/LIFR だけ FAA 基準（scripts/flightcat.py） | 簡易版（航路線・NOTAM影響は未対応） |
+| MAP | 空港の飛行状態（VFR/MVFR/IFR/LIFR）を地図（同梱の Natural Earth＋オンライン時は Esri 背景タイル・地名）に表示。経緯線（旧版と同じ：拡大すると 10°→5°→2°→1°）、現在地、鹿島スタジアム（公式エンブレム。ヘッダーのロゴも同じ）。飛行状態は日本の航空法（施行規則第5条第4号）優先、MVFR/LIFR だけ FAA 基準（scripts/flightcat.py） | 簡易版（航路線・NOTAM影響は未対応） |
 | DUTY | 日付・会社・便番号・バッファ・メモ（端末内保存） | 動作 |
 | WX | 旧版の8分類（地上天気図／衛星画像／レーダーエコー／三十分大気解析／高層天気図／下層悪天／Windy／AIRPORT）。AIRPORT > METAR TAF ATIS に空港ごとの METAR（過去分つき）・TAF・ATIS。IFR/LIFR の要因だけ赤 | 動作（Windy はオンライン専用、ATIS は SWIM ステージング待ち） |
 | BRIEF | 選択空港サマリー＋ボットのブリーフ本文 | 動作 |
@@ -21,13 +21,13 @@
 | NOTAM | 選んだ空港・直近 3H/1D/1W/ALL（古いものは薄く表示） | 動作（SWIM） |
 | AIRPORT | 運用状況・使用滑走路・遅延・飛行場警報（SWIM）、標高・磁気偏差・滑走路・周波数（SWIM AIP）、日の出日没 | 動作 |
 | TAS | ISA 固定の TAS 早見表、kt⇔km/h | 動作（完全オフライン） |
-| SETTINGS | 空港（端末ごと）、表示（自動/ライト/ダーク）、保存済みパック | 動作 |
+| SETTINGS | 空港（端末ごと）、保存済みパック（表示の自動/ライト/ダークはヘッダーのボタン）。ヘッダーの「WX だけ更新」（雲＋矢印）は公開パックの気象部分（選んだ空港の METAR/TAF/ATIS・飛行状態の一覧・WX の図と差分画像）だけを取り、時刻表・NOTAM・AIP は取らない。端末は外部の気象サイトに直接アクセスしない（新しいデータはボットが SWIM 優先で取ってパックに入れる） | 動作 |
 
 ヘッダーに ONLINE/OFFLINE、パックの経過時間、ステータス行に「パック作成時刻（JST/UTC）・最新か保存済み表示か・SAMPLE 有無」を常時表示します。3 時間超で注意、12 時間超で警告バナー。
 
 ## 自動更新（ボット用）
 
-ルーティンから10分ごと（毎時 00/10/20/30/40/50 分）に次を実行します（終了コード 0=成功/スキップ、1=失敗。最後に1行サマリー）。
+ルーティンから15分ごと（毎時 00/15/30/45 分）に次を実行します（終了コード 0=成功/スキップ、1=失敗。最後に1行サマリー）。
 
 ```bash
 python3 /workspace/flight-buddy/scripts/auto_update.py
@@ -39,7 +39,8 @@ python3 /workspace/flight-buddy/scripts/auto_update.py
   端末も新しい画像だけダウンロード（差分）。今回取れなかった種類・地域・高度は前回分を「前回分」印付きで引き継ぎ。
   - 三十分大気解析: 断面図 航空路10＋経度10、平面図 FL410・FL390〜FL110・FL090（ソースは奇数FLのみ、FL400/FL100 は存在しない。既定 FL390／断面 福岡-東京）。
     ANALYSIS＝気象庁 直近25時刻、FORECAST＝MetAir 解析最新時刻から +6h まで。
-  - ひまわり（赤外/可視/水蒸気）・雲頂高度: 直近2時間（10分毎）。ナウキャスト/雷/今後の雨: 全国＋19地域（地図・境界線を重ね表示）。
+  - ひまわり（赤外/可視/水蒸気）: 気象庁 bosai の日付入りタイル（`himawari/data/satimg/targetTimes_fd.json` の最新 basetime、フルディスク z5・10分毎・観測の約5分後に公開）を Pillow で日本域（117–152E, 20–47.5N）に切り出して合成し、海岸線・県境（気象庁 `tile/jma/transparent-cities`）・経緯線・右下に JST 時刻を重ねる。直近2時間。タイルが取れない時だけ旧 `mscweb/.../jpn_*.jpg`（日付なしで毎日上書きされるため Last-Modified が枠の時刻以降のものだけ採用）にフォールバック。雲頂高度: 直近2時間（10分毎）。
+  - 降水ナウキャスト/雷/今後の雨は気象庁 rain.html と同じ `bosai/rain/data/*/time.json`（5分/10分毎）の最新を使用（約5分遅れ）。ナウキャスト/雷/今後の雨: 全国＋19地域（地図・境界線を重ね表示）。
 - SWIM: `/workspace/fb-staging/notam/<ICAO>.json`（USV001 応答）、`atis.json`（LGV062 応答）、`profile/<ICAO>.json`（LGV220 応答）を
   そのまま置けば整形して取り込みます（`{"fetchedAt":"…Z","response":<応答>}` 形式も可）。6時間（ATIS は1.5時間）より古いものは使いません。
   認証情報はこのリポジトリでは扱いません。
@@ -47,7 +48,7 @@ python3 /workspace/flight-buddy/scripts/auto_update.py
 - NOTAM: 整形済み `/workspace/fb-staging/notam.json` があればそれを優先（無ければ上記 SWIM 応答から）。DUTY: `/workspace/fb-staging/duty.json` があれば採用。
 - 中身（METAR/TAF本文・図・ブリーフ・NOTAM）が前回と同じならパックを作らず公開もしない（`changed=no pushed=no`）。
 - 公開: `data/` を `pack-data.tar.gz` にして GitHub Release `pack-data` の asset を差し替え、`Deploy Pages` workflow を起動。
-  **データは git の履歴に入らない**ので、10分ごとに更新してもリポジトリは肥大化しません。
+  **データは git の履歴に入らない**ので、15分ごとに更新してもリポジトリは肥大化しません。
 - 540 秒で強制中断（通常は1分前後）。多重起動はロックでスキップ。`--no-publish`（作るだけ）、`--force`（変化が無くても作る）。
 
 ### 空港の選択（端末ごと）
@@ -126,3 +127,10 @@ MetAir 画像を載せたい場合の選択肢:
 ```bash
 python3 -m http.server 8000   # → http://localhost:8000/
 ```
+
+## 飛行状態の基準（空港別）
+
+- 通常：IFR は 視程 < 5,000m または シーリング < 1,000ft（航空法施行規則第5条第4号）。MVFR/LIFR だけ FAA。
+- 告示空港（同号イ・ロの括弧書き＝管制圏内で国土交通大臣が告示で指定した空港。8km/450m）：IFR は 視程 < 8,000m または シーリング < 1,500ft、MVFR は 8,000m〜5SM・1,500〜3,000ft、LIFR は FAA のまま。
+  **2026-11-18 確認：指定の告示は無く、指定空港は 0 件**（AIP Japan ENR 1.2 §1.2 は全空港 5km/300m。調布・但馬・天草は告示776号で「圏外の空港に 5km/300m を適用」する別の指定）。
+  告示が出たら `js/vmc-designated.js` の `strict` に ICAO を足すだけで、地図・バッジ・IFR 赤・パック分類（scripts/flightcat.py が同じファイルを読む）・凡例が切り替わる。

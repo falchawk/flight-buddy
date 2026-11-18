@@ -65,7 +65,7 @@ let cookieStore = [];
 let loggedIn = false;
 let loginPromise = null;
 
-// Flight Buddy 追加（2026-11-18）：10分ごとの短命プロセスで毎回ログインし直さないよう、
+// Flight Buddy 追加（2026-11-18）：15分ごとの短命プロセスで毎回ログインし直さないよう、
 // Cookie を SWIM_COOKIE_JAR（既定 /workspace/fb-secrets/swim-cookies.json。リポジトリ外・
 // ディレクトリ 700・ファイル 600）に保存して使い回す。ID・パスワードは保存しない。
 const fs = require('fs');
@@ -322,7 +322,7 @@ async function ensureLoggedIn() {
  * へ戻された等）を検知したら、1回だけ再ログインしてやり直す
  * （「セッションはサーバで使い回す。切れたら再ログイン」というご指示のため）。
  */
-// SWIM への同時リクエスト数の上限（全空港を10分ごとに取るため、礼儀として絞る。既定4）
+// SWIM への同時リクエスト数の上限（全空港を15分ごとに取るため、礼儀として絞る。既定4）
 const SWIM_MAX_PARALLEL = Math.max(1, Number(process.env.SWIM_MAX_PARALLEL) || 4);
 let swimActive = 0;
 const swimWaiters = [];

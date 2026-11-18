@@ -6,9 +6,8 @@
 (function () {
   const CAT = { VFR: '#00C853', MVFR: '#2196F3', IFR: '#E53935', LIFR: '#C2185B' }; // wx-brief main public/js/map.js FLIGHT_CATEGORY_COLORS と同じ
   const KASHIMA = [35.9919, 140.6403];
-  const DEER = '<svg viewBox="0 0 100 80" width="20" height="15"><g fill="currentColor"><ellipse cx="45" cy="52" rx="26" ry="14"/><rect x="58" y="26" width="8" height="26" rx="3"/><ellipse cx="66" cy="24" rx="9" ry="7"/><path d="M62 18 L58 6 M62 18 L66 4 M70 18 L74 6 M70 18 L70 4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><rect x="24" y="60" width="4" height="16"/><rect x="34" y="62" width="4" height="16"/><rect x="52" y="62" width="4" height="16"/><rect x="60" y="60" width="4" height="16"/></g></svg>';
-  // 鹿島アントラーズ公式エンブレム（icons/antlers-emblem.png。読み込めない時は上の鹿シルエットに切り替え）
-  const EMBLEM = `<img class="emb" src="icons/antlers-emblem.png" alt="" draggable="false" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span class="deer" style="display:none">${DEER}</span>`;
+  // 鹿島アントラーズ公式エンブレム（空港の点と同じ大きさ＝14px（選択中の点 14px・通常の点 10px）。2x 用に縮小済みの icons/antlers-emblem-32.png。鹿シルエットは廃止）
+  const EMBLEM = '<img class="emb" src="icons/antlers-emblem-32.png" alt="" draggable="false">';
   const PLANE = '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 2 L13.2 8.5 L22 13.5 L22 15.3 L13.2 12.3 L13.5 18.5 L16.5 20.5 L16.5 22 L12 20.8 L7.5 22 L7.5 20.5 L10.5 18.5 L10.8 12.3 L2 15.3 L2 13.5 L10.8 8.5 Z" fill="#29B6F6" stroke="#0d3c5c" stroke-width="0.8" stroke-linejoin="round"/></svg>';
   let map = null, base = null, tiles = null, apLayer = null, grat = null, posMarker = null, fitted = false, tilesWanted = true, geoStarted = false;
   const isLight = () => getComputedStyle(document.documentElement).getPropertyValue('color-scheme').trim() === 'light';
@@ -43,11 +42,11 @@
     const b = document.querySelector('.fb-tiles-btn');
     if (b) { b.classList.toggle('on', want); b.title = navigator.onLine ? '背景タイル（オンライン）' : 'オフライン：同梱の基図のみ'; b.disabled = !navigator.onLine; }
   }
-  // 経緯線は 5度単位（旧版は拡大するほど 2度・1度に細かくなるが、5度に固定。広域（zoom 2 以下）だけ 10度）
+  // 経緯線の間隔は旧版（wx-brief public/js/map.js graticuleStepForZoom）と同じ：zoom ≤4 → 10°、≤6 → 5°、≤8 → 2°、それ以上 → 1°
   function updateGraticule() {
     if (!map) return;
     grat.clearLayers();
-    const step = map.getZoom() <= 2 ? 10 : 5;
+    const z = map.getZoom(), step = z <= 4 ? 10 : z <= 6 ? 5 : z <= 8 ? 2 : 1;
     const b = map.getBounds(), opt = { pane: 'grat', className: 'fb-grat', weight: 1, interactive: false };
     const lbl = (p, text) => L.marker(p, { pane: 'grat', interactive: false, keyboard: false, icon: L.divIcon({ className: 'fb-grat-lbl', html: text, iconSize: [40, 14] }) }).addTo(grat);
     for (let lat = Math.ceil(b.getSouth() / step) * step; lat <= b.getNorth(); lat += step) {
@@ -111,7 +110,7 @@
     base = baseLayer().addTo(map);
     grat = L.layerGroup().addTo(map);
     apLayer = L.layerGroup().addTo(map);
-    L.marker(KASHIMA, { icon: L.divIcon({ className: 'fb-kashima', html: EMBLEM, iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(map).bindPopup('KASHIMA');
+    L.marker(KASHIMA, { icon: L.divIcon({ className: 'fb-kashima', html: EMBLEM, iconSize: [14, 14], iconAnchor: [7, 7] }) }).addTo(map).bindPopup('KASHIMA');
     control('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>', '現在地', 'fb-locate', () => locate(true)).addTo(map);
     control('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>', '背景タイル（オンライン）', 'fb-tiles-btn', () => { tilesWanted = !tilesWanted; try { localStorage.setItem('fb.mapTiles', JSON.stringify(tilesWanted)); } catch (e) { /* */ } syncTiles(); }).addTo(map);
     try { const v = JSON.parse(localStorage.getItem('fb.mapTiles')); if (v === false) tilesWanted = false; } catch (e) { /* */ }

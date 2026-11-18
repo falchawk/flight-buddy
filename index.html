@@ -22,12 +22,20 @@
 <body>
 <div id="app">
   <header class="app-header">
-    <div class="brand">Flight Buddy<span class="brand-deer"><svg viewBox="0 0 100 80" width="22" height="18" aria-hidden="true"><g fill="currentColor"><ellipse cx="45" cy="52" rx="26" ry="14"/><rect x="58" y="26" width="8" height="26" rx="3"/><ellipse cx="66" cy="24" rx="9" ry="7"/><path d="M62 18 L58 6 M62 18 L66 4 M70 18 L74 6 M70 18 L70 4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><rect x="24" y="60" width="4" height="16"/><rect x="34" y="62" width="4" height="16"/><rect x="52" y="62" width="4" height="16"/><rect x="60" y="60" width="4" height="16"/><rect x="18" y="46" width="6" height="4" rx="2"/></g></svg></span></div>
+    <div class="brand"><span class="brand-name">Flight Buddy</span><img class="brand-emb" src="icons/antlers-emblem-66.png" alt="Kashima Antlers" width="21" height="22" draggable="false"></div>
     <div class="header-status">
       <span id="clock" class="pill clock">--</span>
       <span id="net-pill" class="pill">--</span>
       <span id="pack-pill" class="pill">PACK --</span>
     </div>
+    <button id="wx-btn" class="btn-icon" type="button" title="WXだけ更新（METAR/TAF/ATISとWXの図のみ）" aria-label="WXだけ更新">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 13.6h7.2a3 3 0 0 0 .3-5.98A4.3 4.3 0 0 0 6.2 8.5 2.6 2.6 0 0 0 7 13.6z"/><g class="wx-arrow"><path d="M20.4 15.4a3.7 3.7 0 1 0 .3 3.4"/><path d="M20.6 12.9v2.7h-2.7"/></g></svg>
+    </button>
+    <button id="theme-btn" class="btn-icon" type="button" data-mode="auto" title="表示：自動（端末設定）" aria-label="表示：自動（端末設定）。押すとライトに切り替え">
+      <svg class="ic-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 3.8v16.4" /><path d="M12 3.8a8.2 8.2 0 0 1 0 16.4z" fill="currentColor" stroke="none"/></svg>
+      <svg class="ic-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.8v2.2M12 19v2.2M2.8 12H5M19 12h2.2M5.5 5.5l1.6 1.6M16.9 16.9l1.6 1.6M18.5 5.5l-1.6 1.6M7.1 16.9l-1.6 1.6"/></svg>
+      <svg class="ic-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2z"/></svg>
+    </button>
     <button id="refresh-btn" class="btn-icon" title="新しいパックを確認" aria-label="更新">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M5.5 15a8 8 0 0 0 13.9 3M18.5 9A8 8 0 0 0 4.6 6"/></svg>
     </button>
@@ -36,6 +44,7 @@
     <span id="status-text">起動中…</span>
     <span class="disclaimer">参考情報。運航判断の正本は公式資料。</span>
   </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="stale-banner" class="stale-banner hidden"></div>
 
   <main id="pages">
@@ -43,7 +52,7 @@
       <div id="map-box" class="map-box"></div>
       <div class="map-overlay">
         <div class="map-legend"><span class="badge VFR">VFR</span><span class="badge MVFR">MVFR</span><span class="badge IFR">IFR</span><span class="badge LIFR">LIFR</span></div>
-        <div class="map-thresh">IFR：視程 &lt;5000m または 雲高 &lt;1000ft（航空法施行規則§5）<br>MVFR：5000m〜5SM または 1000〜3000ft ／ LIFR：&lt;1SM または &lt;500ft（FAA）</div>
+        <div class="map-thresh">IFR：視程 &lt;5000m または 雲高 &lt;1000ft（航空法施行規則§5）。告示空港（8km/450m）は 視程 &lt;8000m または &lt;1500ft（現在 指定 0 件）<br>MVFR：5000m〜5SM または 1000〜3000ft ／ LIFR：&lt;1SM または &lt;500ft（FAA）</div>
         <div id="map-meta" class="map-meta"></div>
       </div>
     </section>
@@ -136,22 +145,15 @@
       <ul id="ap-results" class="airport-list"></ul>
       <ul id="ap-selected" class="airport-list selected"></ul>
       <div id="ap-sync"></div>
-      <p class="hint">ボットはパックの全空港（METAR/TAF のある国内空港すべて＋日本の航空会社が使う海外空港56）を10分ごとに取得しています。この端末はここで選んだ空港の分だけダウンロード・表示します（端末内の設定。選択を増やした空港はオンライン時に自動で取得。オフラインでは保存済みの空港だけ表示）。下の国別一覧からも追加できます。</p>
+      <p class="hint">ボットはパックの全空港（METAR/TAF のある国内空港すべて＋日本の航空会社が使う海外空港56）を取得しています（METAR/TAF・ATIS・図は15分ごと、NOTAM は6時間ごと＝00/06/12/18時、空港情報と時刻表は1日1回＝4時台）。この端末はここで選んだ空港の分だけダウンロード・表示します（端末内の設定。選択を増やした空港はオンライン時に自動で取得。オフラインでは保存済みの空港だけ表示）。下の国別一覧からも追加できます。</p>
       <div id="ap-browse"></div>
       <h3>FEEDBACK</h3>
       <p class="hint">文章で自由に書いてください。端末に保存され、「Botに送る」で GitHub issue としてボットに渡せます（ボットはブリーフ作成時に参照。オンライン時のみ）。</p>
       <textarea id="feedback-text" rows="6" placeholder="自由に書いてください"></textarea>
       <div class="row"><button id="feedback-save" class="btn">SAVE</button><a id="feedback-send" class="btn" target="_blank" rel="noopener">Botに送る</a><span id="feedback-saved-msg" class="hint hidden">保存しました</span></div>
       <h3>SWIM（ATIS・NOTAM・空港情報）</h3>
-      <p class="hint">SWIM は box 上で10分ごとに国内の全空港を取得（ATIS・NOTAM・空港プロファイル・AIP Lost Comm。AIP は毎回目次で版を確認し、変わった空港だけ PDF を取り直し）。ID・パスワードは box の環境変数だけにあり、この端末とパックには入りません。下は最新パックの取得状況です。</p>
+      <p class="hint">SWIM は box 上で国内の全空港を取得：ATIS と空港プロファイル（METAR/TAF 本文を含む）は15分ごと、NOTAM は6時間ごと（00/06/12/18時 JST）、AIP（AD 2・Lost Comm）は1日1回（4時台 JST。AIRAC の版が変わった空港だけ PDF を取り直し）。取りこぼした時は次の回で追いつきます。ID・パスワードは box の環境変数だけにあり、この端末とパックには入りません。下は最新パックの取得状況です。</p>
       <div id="swim-status" class="hint"></div>
-      <h3>DISPLAY（表示）</h3>
-      <nav id="theme-chips" class="chips theme-chips">
-        <button class="chip" data-theme-opt="auto">自動（端末設定）</button>
-        <button class="chip" data-theme-opt="light">ライト</button>
-        <button class="chip" data-theme-opt="dark">ダーク</button>
-      </nav>
-      <p class="hint" id="theme-note"></p>
       <h3>PACK（オフライン保存）</h3>
       <div id="pack-info" class="card"></div>
       <div class="row">
@@ -199,6 +201,7 @@
 <script src="js/map.js"></script>
 <script src="js/sun.js"></script>
 <script src="js/tas.js"></script>
+<script src="js/vmc-designated.js"></script>
 <script src="js/wx.js"></script>
 <script src="js/pack.js"></script>
 <script src="js/viewer.js"></script>

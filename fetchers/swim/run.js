@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-// Flight Buddy: SWIM（国交省）をサーバー側（box）で取得する入口。scripts/auto_update.py が10分ごとに呼ぶ。
+// Flight Buddy: SWIM（国交省）をサーバー側（box）で取得する入口。scripts/auto_update.py が15分ごとに呼ぶ。
 // 取得コードは wx-brief main（3c60eec）の lib/swimSession.js・fetchers/swim.js・fetchers/swimAip.js をそのまま使う。
 //   ログイン: GET /swim/login（XSRF）→ POST /swim/api/login → redirectUrl を辿る
 //   認証情報は環境変数 SWIM_USER / SWIM_PASS だけ。ログ・ファイル・パックには一切出さない。
 //   Cookie は SWIM_COOKIE_JAR（既定 /workspace/fb-secrets/swim-cookies.json, 600）にだけ保存。
-// 取得間隔: 自動更新（10分ごと）の毎回、ATIS・空港プロファイル(METAR・TAF・運用情報)・NOTAM・AIP(Lost Comm) を全部取る。
-//   ただし手動実行が重なっても SWIM を叩きすぎないよう、前回から5分未満の部品は取らない。--force で無視。
+// 取得間隔: 取る部品は scripts/auto_update.py（scripts/schedule.py）が --parts で渡す。
+//   毎回（15分）＝ atis・profile（空港プロファイルは SWIM の METAR/TAF 本文を含むので毎回）、
+//   6時間ごと（00/06/12/18 JST）＝ notam、1日1回（04:00 JST）＝ aip（AD 2・Lost Comm）。--parts 無しの手動実行は
+//   従来どおり「前回から5分未満の部品は取らない」。--force で無視。国内の空港の組が前回と違う部品は必ず取る。
 //   同時リクエストは SWIM_MAX_PARALLEL（既定4）まで。
 //   AIP は毎回目次（1リクエスト）で各空港の AD 2 PDF の URL（AIRAC 日付入り）を確認し、変わった空港だけ PDF を取り直す
 //   （目次が変わった時だけ PDF の ETag を HEAD で確認＝AMDT の差し替えも拾う）。PDF からは Lost Comm に加え
@@ -21,6 +23,7 @@ const OUT_DIR = opt('--out', '/workspace/fb-staging/swim');
 if (!process.env.AIP_CACHE_DIR) process.env.AIP_CACHE_DIR = path.join(path.dirname(OUT_DIR), 'aip-text'); // AIP AD 2 の PDF 本文キャッシュ（パックには入れない）
 const AIRPORTS = (opt('--airports', '') || '').split(',').map((s) => s.trim().toUpperCase()).filter((s) => /^[A-Z]{4}$/.test(s));
 const FORCE = args.includes('--force');
+const PARTS = opt('--parts', null) === null ? null : new Set(String(opt('--parts', '')).split(',').map((x) => x.trim()).filter(Boolean));
 const MIN = 60 * 1000;
 const INTERVAL = { atis: 5 * MIN, profile: 5 * MIN, notam: 5 * MIN, aip: 5 * MIN };
 const AIP_BUDGET_MS = (Number(process.env.AIP_BUDGET_S) || 90) * 1000;
@@ -50,7 +53,8 @@ const now = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
     if (AIRPORTS.some((a) => !have.has(a))) return true;
     return Date.now() - Date.parse(p.fetchedAt) >= INTERVAL[part];
   };
-  const parts = ['atis', 'profile', 'notam', 'aip'].filter(due);
+  const airportsChanged = (part) => { const p = prev[part]; if (!p || !p.fetchedAt) return true; const have = new Set(p.airports || []); return AIRPORTS.some((a) => !have.has(a)); };
+  const parts = ['atis', 'profile', 'notam', 'aip'].filter((p) => (PARTS ? PARTS.has(p) || airportsChanged(p) || FORCE : due(p)));
   const run = async () => {
     const res = {};
     await Promise.all(parts.map(async (part) => {
@@ -101,5 +105,8 @@ const now = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   const ad2N = out.aip && out.aip.byIcao ? Object.values(out.aip.byIcao).filter((x) => x && x.ad2 && (x.ad2.runways || []).length).length : 0;
   const atisT = AIRPORTS.filter((i) => swim.ATIS_SUPPORTED_ICAO.has(i)).length;
   // 1行・空白区切りの key=value（値に空白なし）。auto_update.py がこの行を読む
-  console.log(`SWIM OK fetched=${parts.join('+') || 'none'} atis=${n('atis')}/${T} profile=${n('profile')}/${T} notam=${out.notam && out.notam.ok ? out.notam.items.length : 'NG'} aip=${n('aip')}/${T} ad2=${ad2N}/${T} atisSupported=${atisT} req=${session.requestCount()} time=${((Date.now() - t0) / 1000).toFixed(0)}s`);
+  // 今回「取れた」部品（AIP は PDF の取得が次回に回った空港が残っていれば未完了）。auto_update.py が次回予定の判定に使う
+  const aipPending = out.aip && out.aip.byIcao ? Object.values(out.aip.byIcao).some((x) => x && (x.pending || x.pendingUrl)) : false;
+  const okParts = parts.filter((p) => res[p] && res[p].ok && !(p === 'aip' && aipPending));
+  console.log(`SWIM OK fetched=${parts.join('+') || 'none'} ok=${okParts.join('+') || 'none'} atis=${n('atis')}/${T} profile=${n('profile')}/${T} notam=${out.notam && out.notam.ok ? out.notam.items.length : 'NG'} aip=${n('aip')}/${T} ad2=${ad2N}/${T} atisSupported=${atisT} req=${session.requestCount()} time=${((Date.now() - t0) / 1000).toFixed(0)}s`);
 })().catch((e) => { console.log(`SWIM FAILED reason=${String((e && e.code) || (e && e.message) || 'error').replace(/\s+/g, '-').slice(0, 40)}`); process.exit(1); });

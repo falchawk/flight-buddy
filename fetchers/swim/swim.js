@@ -476,7 +476,7 @@ async function fetchAirportProfilesFromSwim(icaoCodes) {
       const profile = await fetchAirportProfileForIcao(icao);
       byIcao[icao] = profile;
       if (profile.metarText) {
-        metarByIcao[icao] = { text: profile.metarText, obsTimeMs: Date.now(), category: classifyMetarText(profile.metarText).category };
+        metarByIcao[icao] = { text: profile.metarText, obsTimeMs: Date.now(), category: classifyMetarText(profile.metarText, icao).category };
       }
       if (profile.tafText) {
         tafByIcao[icao] = { text: profile.tafText, category: null };

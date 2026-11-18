@@ -19,7 +19,7 @@ const now = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   const prevPath = process.argv[3] || out; // 前回分（auto_update は別ファイルに書かせて、変わった時だけ差し替える）
   let prev = null;
   try { prev = JSON.parse(fs.readFileSync(prevPath, 'utf8')); } catch (e) { /* 初回 */ }
-  // 重い取得（ODPT 全件＝約500リクエスト、ANA 公式PDF）は HEAVY_H 時間に1回。10分ごとに叩くと ODPT が HTTP 429 を返すため
+  // 重い取得（ODPT 全件＝約500リクエスト、ANA 公式PDF）は HEAVY_H 時間に1回。15分ごとに叩くと ODPT が HTTP 429 を返すため
   const HEAVY_H = Number(process.env.FB_FLIGHTS_HEAVY_H) || 6;
   const fresh = (x) => x && x.ok && x.fetchedAt && Date.now() - Date.parse(x.fetchedAt) < HEAVY_H * 3600e3;
   const byAirline = await fetchAllAirlineSchedules();

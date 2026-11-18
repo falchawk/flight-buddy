@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.1';
+  const APP_VERSION = '1.9.2';
   const REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
@@ -111,6 +111,7 @@
     else src = online ? `保存済みパックを表示中${state.remoteError ? '（最新確認に失敗）' : ''}` : 'オフライン：保存済みパックを表示中';
     if (state.downloading) src += ` ／ 新しいパック保存中 ${state.downloading}`;
     if (m.sample) src += ' ／ SAMPLE含む';
+    { const w = state.pack?.wxOverlay, wl = wxLastText(); if (w) src += ` ／ 気象はパック ${hhmmJ(w.generatedAt)} 分に更新済み`; if (wl) src += ` ／ ${wl}`; }
     $('status-text').textContent = `パック ${fmtJst(m.generatedAt)}（${fmtUtc(m.generatedAt)}）・ ${src}`;
     if (ageH > 3) {
       banner.textContent = ageH > 12 ? `⚠ パックが ${ageText(m.generatedAt)} のものです。最新の公式情報を確認してください。` : `パックは ${ageText(m.generatedAt)} に作成されました。`;
@@ -160,7 +161,7 @@
       const e = wx?.airports?.[icao];
       if (!e || !e.ok) return `<tr><td>${esc(icao)}</td><td colspan="3" class="hint">${e ? '未取得' : esc(missText(icao))}</td></tr>`;
       const mt = e.metar?.[0];
-      const cat = mt ? (window.FBWx.flightCategory(mt.raw) || mt.fltCat) : null;
+      const cat = mt ? (window.FBWx.flightCategory(mt.raw, icao) || mt.fltCat) : null;
       const wind = (mt?.raw || '').match(/\b(\d{3}|VRB)(\d{2,3})(G\d{2,3})?KT\b/);
       const gusts = [...((e.taf?.raw || '').matchAll(/\b(?:\d{3}|VRB)\d{2,3}G(\d{2,3})KT\b/g))].map((m) => Number(m[1]));
       return `<tr><td><strong>${esc(icao)}</strong> <span class="hint">${esc(apName(icao))}</span></td><td>${cat ? `<span class="badge ${cat}">${cat}</span>` : ''}</td><td>${esc(wind ? wind[0] : '--')}</td><td>${gusts.length ? `G${Math.max(...gusts)}` : '--'}</td></tr>`;
@@ -184,7 +185,7 @@
   }
   function renderWxCards(list) {
     const wx = state.pack?.wx, atis = state.pack?.atis;
-    if (wx) list.insertAdjacentHTML('beforeend', `<p class="hint" style="margin:0 14px">取得 ${esc(fmtJst(wx.fetchedAt))} ／ 出所 ${esc(wx.source)}</p><div class="legend" style="margin:4px 14px">TAF：<span class="taf-token-becmg">BECMG</span> <span class="taf-token-tempo">TEMPO</span> <span class="taf-token-fm">FM</span> <span class="taf-token-prob">PROB30/40</span>（旧版と同じ色。ライトモードは見やすいよう同じ色相で濃いめ）。METAR の TEMPO/BECMG も同じ色。<span class="hl-ifr">赤</span>＝IFR/LIFR の要因（視程 5000m 未満・シーリング 1000ft 未満）。MVFR は強調しません。<br>飛行状態：IFR/VFR の境界は日本の航空法（施行規則第5条第4号）＝視程 5000m・雲高 300m(1000ft)。日本に無い MVFR/LIFR だけ FAA 基準。VFR 視程 &gt;5SM かつ シーリング &gt;3000ft ／ MVFR 視程 5000m〜5SM または 1000〜3000ft ／ IFR 視程 &lt;5000m または &lt;1000ft ／ LIFR 視程 &lt;1SM または &lt;500ft。</div>`);
+    if (wx) list.insertAdjacentHTML('beforeend', `<p class="hint" style="margin:0 14px">取得 ${esc(fmtJst(wx.fetchedAt))} ／ 出所 ${esc(wx.source)}</p><div class="legend" style="margin:4px 14px">TAF：<span class="taf-token-becmg">BECMG</span> <span class="taf-token-tempo">TEMPO</span> <span class="taf-token-fm">FM</span> <span class="taf-token-prob">PROB30/40</span>（旧版と同じ色。ライトモードは見やすいよう同じ色相で濃いめ）。METAR の TEMPO/BECMG も同じ色。<span class="hl-ifr">赤</span>＝IFR/LIFR の要因（視程 5000m 未満・シーリング 1000ft 未満）。MVFR は強調しません。<br>飛行状態：IFR/VFR の境界は日本の航空法（施行規則第5条第4号）＝視程 5000m・雲高 300m(1000ft)。国土交通大臣が告示で指定した空港（管制圏内で 8km/450m。<b>告示空港: 8km/1500ft</b>）だけは 視程 8000m・雲高 1500ft(450m) が境界で、MVFR は 8000m〜5SM・1500〜3000ft（<b>現在、指定されている空港は 0 件</b>。AIP Japan ENR 1.2 で確認。指定されると各空港のカードに「告示空港: 8km/1500ft」と出ます）。日本に無い MVFR/LIFR は FAA 基準。VFR 視程 &gt;5SM かつ シーリング &gt;3000ft ／ MVFR 視程 5000m〜5SM または 1000〜3000ft ／ IFR 視程 &lt;5000m または &lt;1000ft ／ LIFR 視程 &lt;1SM または &lt;500ft。</div>`);
     for (const icao of mainAirports()) {
       const e = wx?.airports?.[icao];
       const card = document.createElement('div'); card.className = 'card';
@@ -193,14 +194,14 @@
       else if (!e.ok) body = `<div class="sub-label">METAR</div>${naBox('METAR なし（aviationweather.gov にこの局の配信がありません）')}<div class="sub-label">TAF</div>${naBox('TAF なし（この局は TAF を出していないか配信がありません）')}`;
       else {
         const latest = e.metar?.[0];
-        const cat = latest ? (window.FBWx.flightCategory(latest.raw) || latest.fltCat) : null;
+        const cat = latest ? (window.FBWx.flightCategory(latest.raw, icao) || latest.fltCat) : null;
         body = `${e.carriedOver ? `<p class="hint"><span class="badge stale">STALE</span> 今回の取得に失敗したため前回の値です（${esc(fmtJst(e.fetchedAt))}取得）</p>` : ''}
-          <div class="sub-label">METAR ${latest ? `${esc(fmtUtc(latest.obsTime))}（${esc(fmtJst(latest.obsTime, false))}）` : ''} ${cat ? `<span class="badge ${cat}">${cat}</span>` : ''} <span class="doc-status ${latest ? 'ok' : 'fail'}">${esc(e.metarSource || 'NONE')}</span></div>
-          ${latest ? `<div class="raw">${window.FBWx.highlight(latest.raw)}</div>` : naBox('METAR 未取得')}
+          <div class="sub-label">METAR ${latest ? `${esc(fmtUtc(latest.obsTime))}（${esc(fmtJst(latest.obsTime, false))}）` : ''} ${cat ? `<span class="badge ${cat}">${cat}</span>` : ''} <span class="vmc-basis${window.FBWx.limitsFor(icao).strict ? ' strict' : ''}" title="飛行状態の IFR 境界（航空法施行規則第5条第4号）">${esc(window.FBWx.limitsFor(icao).text)}</span> <span class="doc-status ${latest ? 'ok' : 'fail'}">${esc(e.metarSource || 'NONE')}</span></div>
+          ${latest ? `<div class="raw">${window.FBWx.highlight(latest.raw, icao)}</div>` : naBox('METAR 未取得')}
           ${srcNotes(e, 'metar')}
-          ${e.metar?.length > 1 ? `<details><summary>過去のMETAR（${e.metar.length - 1}件）</summary>${e.metar.slice(1).map((x) => `<div class="raw" style="margin-top:4px">${window.FBWx.highlight(x.raw)}</div>`).join('')}</details>` : ''}
+          ${e.metar?.length > 1 ? `<details><summary>過去のMETAR（${e.metar.length - 1}件）</summary>${e.metar.slice(1).map((x) => `<div class="raw" style="margin-top:4px">${window.FBWx.highlight(x.raw, icao)}</div>`).join('')}</details>` : ''}
           <div class="sub-label">TAF ${e.taf && e.taf.issueTime ? `発表 ${esc(fmtUtc(e.taf.issueTime))} ／ 有効 ${esc(fmtUtc(e.taf.validFrom))}〜${esc(fmtUtc(e.taf.validTo))}` : ''} <span class="doc-status ${e.taf ? 'ok' : 'fail'}">${esc(e.tafSource || 'NONE')}</span></div>
-          ${e.taf ? `<div class="raw">${window.FBWx.tafLines(e.taf.raw)}</div>` : naBox('TAF 未取得')}
+          ${e.taf ? `<div class="raw">${window.FBWx.tafLines(e.taf.raw, icao)}</div>` : naBox('TAF 未取得')}
           ${srcNotes(e, 'taf')}`;
       }
       const a = atis?.airports?.[icao];
@@ -363,15 +364,15 @@
       if (lat == null || lon == null) continue;
       const e = wx[icao], mt = e?.metar?.[0];
       // 選んでいない空港は一覧（index.json）の飛行状態だけ（METAR 本文などは選んだ空港の分だけダウンロード）
-      const cat = mt ? (window.FBWx.flightCategory(mt.raw) || mt.fltCat) : (idx[icao]?.fltCat || null);
+      const cat = mt ? (window.FBWx.flightCategory(mt.raw, icao) || mt.fltCat) : (idx[icao]?.fltCat || null);
       list.push({ icao, lat, lon, cat, sel: sel.includes(icao), name: apName(icao), codes: apCodes(icao),
         popupHtml: () => {
           const n = state.pack?.notam?.airports?.[icao];
           const nn = n?.items?.length;
           return `<div class="pop-title"><b>${esc(apName(icao))}</b> <span class="codes">${esc(apCodes(icao))}</span> ${cat ? `<span class="badge ${cat}">${cat}</span>` : '<span class="badge na">METARなし</span>'}</div>
             ${!e && state.pack?.manifest?.airportFiles ? `<p class="hint">${sel.includes(icao) ? esc(missText(icao)) : 'この空港は選択していません。SETTINGS で選ぶと METAR/TAF・NOTAM などをこの端末にダウンロードします。'}</p>` : ''}
-            ${mt ? `<div class="sub-label">METAR ${esc(fmtUtc(mt.obsTime))}</div><div class="raw">${window.FBWx.highlight(mt.raw)}</div>` : ''}
-            ${e?.taf ? `<div class="sub-label">TAF</div><div class="raw">${window.FBWx.tafLines(e.taf.raw)}</div>` : ''}
+            ${mt ? `<div class="sub-label">METAR ${esc(fmtUtc(mt.obsTime))}</div><div class="raw">${window.FBWx.highlight(mt.raw, icao)}</div>` : ''}
+            ${e?.taf ? `<div class="sub-label">TAF</div><div class="raw">${window.FBWx.tafLines(e.taf.raw, icao)}</div>` : ''}
             ${e ? `<div class="hint" style="margin-top:6px">${state.pack?.notam?.ok ? `NOTAM ${nn != null ? nn + '件' : '未収録'}` : 'NOTAM 未取得'}</div>` : ''}`;
         } });
     }
@@ -402,7 +403,7 @@
     if (fl.carrier !== 'ALL' && !have.some((c) => c.iata2 === fl.carrier)) fl.carrier = 'ALL';
     const q = $('fl-search').value;
     // 収録状況
-    $('fl-status').innerHTML = `<p class="hint">時刻表の取得 ${esc(fmtJst(d.fetchedAt))}（${esc(ageText(d.fetchedAt))}）・ ${d.rows.length}行。${esc(d.note || '')}</p><table class="tbl"><tr><th>会社</th><th>便数</th><th>出典</th></tr>${(d.carriers || []).map((c) => `<tr><td>${esc(c.name)} <span class="codes">${esc(c.iata2 || c.code)}</span></td><td>${c.count ? c.count : '<span class="badge na">未収録</span>'}</td><td class="hint">${c.count ? esc(c.sources.join('・')) + (c.stale ? ' <span class="badge stale">前回分</span>' : '') : esc(c.iata2 ? (c.fail ? '取得失敗' : '取得元なし（今後対応）') : '親会社の便名で運航（JL）')}</td></tr>`).join('')}</table>
+    $('fl-status').innerHTML = `<p class="hint">時刻表の取得 ${esc(fmtJst(d.fetchedAt))}（${esc(ageText(d.fetchedAt))}。1日1回・4時台 JST に全ソースを取得）・ ${d.rows.length}行。${esc(d.note || '')}</p><table class="tbl"><tr><th>会社</th><th>便数</th><th>出典</th></tr>${(d.carriers || []).map((c) => `<tr><td>${esc(c.name)} <span class="codes">${esc(c.iata2 || c.code)}</span></td><td>${c.count ? c.count : '<span class="badge na">未収録</span>'}</td><td class="hint">${c.count ? esc(c.sources.join('・')) + (c.stale ? ' <span class="badge stale">前回分</span>' : '') : esc(c.iata2 ? (c.fail ? '取得失敗' : '取得元なし（今後対応）') : '親会社の便名で運航（JL）')}</td></tr>`).join('')}</table>
       ${d.operators ? `<p class="hint">ODPTで運航会社が分かる便：${Object.entries(d.operators).map(([k, v]) => `${esc(k)} ${v}`).join(' ・ ')}</p>` : ''}`;
     if (!q.trim()) { res.innerHTML = `<p class="hint">便名を入力してください。収録 ${have.map((c) => c.code).join(' ')}</p>`; return; }
     const r = window.FBFlights.search(d, q, { carrier: fl.carrier, date: fl.date });
@@ -453,7 +454,7 @@
       box.innerHTML = `<div class="card-title"><span>${esc(apName(icao))} <span class="hint">${esc(apCodes(icao))}</span></span>${n?.ok && items.length ? `<span class="badge${newCount ? ' new' : ''}">${state.notamHours ? `直近 ${newCount}件 / ` : ''}全${items.length}件</span>` : ''}</div>${body}`;
       list.appendChild(box);
     }
-    if (n?.source) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = `出所：${n.source}${n.fetchedAt ? `（${fmtJst(n.fetchedAt)}取得）` : ''}`; list.appendChild(p); }
+    if (n?.source) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = `出所：${n.source}${n.fetchedAt ? `（${fmtJst(n.fetchedAt)}取得・${ageText(n.fetchedAt)}）` : ''} ／ 6時間ごとに更新（00/06/12/18時 JST）`; list.appendChild(p); }
     if (navigator.onLine) { const p = document.createElement('p'); p.innerHTML = '<a href="https://top.swim.mlit.go.jp" target="_blank" rel="noopener">SWIM portal（公式）を開く ▶</a>'; list.appendChild(p); }
   }
 
@@ -543,7 +544,7 @@
     // 旧版 buildLegTafBlock と同じ：定刻（JST）±バッファに重なる変化群の行を強調
     let wi = null;
     if (hhmm && date && /^R[JO]/.test(icao)) { const t = Date.parse(`${date}T${hhmm}:00+09:00`); if (Number.isFinite(t)) wi = { startEpoch: t - buf * 3600000, endEpoch: t + buf * 3600000, anchorEpoch: t }; }
-    return head + (e.taf ? `<div class="raw">${window.FBWx.tafLinesWithWindow(e.taf.raw, wi)}</div>` : naBox('TAF なし')) + (e.metar?.[0] ? `<div class="raw">${window.FBWx.highlight(e.metar[0].raw)}</div>` : '');
+    return head + (e.taf ? `<div class="raw">${window.FBWx.tafLinesWithWindow(e.taf.raw, wi, icao)}</div>` : naBox('TAF なし')) + (e.metar?.[0] ? `<div class="raw">${window.FBWx.highlight(e.metar[0].raw, icao)}</div>` : '');
   }
   function dutyLeg(f) {
     const d = state.pack?.flights;
@@ -579,7 +580,7 @@
       const ul = $('ap-selected'); ul.innerHTML = '';
       const m = state.pack?.manifest;
       const bytes = m && window.FBPack.deviceBytes ? window.FBPack.deviceBytes(m, wantedAirports()) : 0;
-      $('ap-sync').innerHTML = m ? `<p class="hint">ボットはパックの全 ${m.airports.length} 空港を10分ごとに取得しています。この端末にダウンロードするのは、ここで選んだ空港${dutyAirports().some((i) => !mainAirports().includes(i)) ? '（＋DUTY の区間の空港）' : ''}と共通の図だけです${m.airportFiles ? `（今の選択で約 ${fmtBytes(bytes)}）` : ''}。空港を増やすと、オンライン時にその空港の分だけ追加で取得します。</p>` : '';
+      $('ap-sync').innerHTML = m ? `<p class="hint">ボットはパックの全 ${m.airports.length} 空港を取得しています（METAR/TAF・ATIS・図は15分ごと、NOTAM は6時間ごと、空港情報と時刻表は1日1回）。この端末にダウンロードするのは、ここで選んだ空港${dutyAirports().some((i) => !mainAirports().includes(i)) ? '（＋DUTY の区間の空港）' : ''}と共通の図だけです${m.airportFiles ? `（今の選択で約 ${fmtBytes(bytes)}）` : ''}。空港を増やすと、オンライン時にその空港の分だけ追加で取得します。</p>` : '';
       mainAirports().forEach((icao, i) => {
         const li = document.createElement('li');
         li.innerHTML = `<span>${esc(apName(icao))} <span class="codes">${esc(apCodes(icao))}</span>${!packHas(icao) ? ' <span class="badge na">パック未収録</span>' : (state.pack && !loaded(icao) ? ' <span class="badge na">未ダウンロード</span>' : '')}</span><span><button class="btn btn-danger" data-a="rm">削除</button></span>`;
@@ -703,6 +704,41 @@
     }
   }
 
+  // ---------------------------------------------------------------- WX だけ更新（公開パックの気象部分だけ。端末は外部の気象サイトに直接アクセスしない）
+  let toastTimer = null;
+  function toast(text, bad = false, ms = 6000) {
+    const t = $('toast'); if (!t) return;
+    t.textContent = text; t.className = `toast show${bad ? ' bad' : ''}`;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.className = 'toast'; }, ms);
+  }
+  const hhmmJ = (iso) => fmtJst(iso, false).replace(' JST', 'J');
+  function wxLastText() {
+    const l = window.FBPack.wxLast();
+    return l ? `WX更新 ${hhmmJ(l.at)}（${l.status === 'updated' ? '気象のみ最新化' : '最新でした'}）` : '';
+  }
+  async function wxRefresh() {
+    if (refreshing) return;
+    const btn = $('wx-btn');
+    if (!navigator.onLine) { toast('オフラインです。WXの更新はオンラインで行えます（保存済みの気象を表示中）', true); return; }
+    if (!state.pack?.manifest) { toast('先に右上の「更新」でパックを保存してください', true); return; }
+    refreshing = true; btn.classList.add('spinning'); $('refresh-btn').disabled = true; btn.disabled = true;
+    try {
+      const baseId = state.pack.manifest.packId;
+      const r = await window.FBPack.wxRefresh(wantedAirports(), (t) => { state.downloading = t; renderStatus(); }, async () => { await showPack(baseId); });
+      state.downloading = null;
+      await showPack(baseId);
+      const mb = r.bytes > 1048576 ? `${(r.bytes / 1048576).toFixed(1)}MB` : `${Math.round(r.bytes / 1024)}KB`;
+      toast(r.status === 'same'
+        ? `WX：すでに最新です（パック ${hhmmJ(r.generatedAt)} 作成。新しいデータはボットが約15分ごとに公開）`
+        : `WX 更新 ${hhmmJ(new Date().toISOString())}：${r.airports}空港の METAR/TAF/ATIS＋WXの図（新しい画像 ${r.blobsNew}枚・${mb}）。パック ${hhmmJ(r.generatedAt)} 作成分`);
+    } catch (e) {
+      state.downloading = null;
+      toast(`WXの更新に失敗：${navigator.onLine ? (e.name === 'AbortError' ? 'タイムアウト' : e.message) : 'オフライン'}（保存済みの気象を表示中）`, true);
+    } finally {
+      refreshing = false; btn.classList.remove('spinning'); btn.disabled = false; $('refresh-btn').disabled = false; renderStatus();
+    }
+  }
+
   // ---------------------------------------------------------------- THEME（auto / light / dark）
   const darkMq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
   function applyTheme() {
@@ -713,12 +749,17 @@
     const meta = document.querySelector('meta[name="theme-color"]');
     window.FBMap && window.FBMap.refreshTheme();
     if (meta) meta.setAttribute('content', getComputedStyle(root).getPropertyValue('--bg-panel-solid').trim() || (eff === 'light' ? '#ffffff' : '#10151d'));
-    document.querySelectorAll('#theme-chips .chip').forEach((b) => b.classList.toggle('active', b.dataset.themeOpt === t));
-    const note = $('theme-note');
-    if (note) note.textContent = t === 'auto' ? `端末の設定に合わせます（現在：${eff === 'light' ? 'ライト' : 'ダーク'}）。この端末に保存されます。` : 'この端末に保存されます（オフラインでも有効）。';
+    // ヘッダーのテーマボタン：現在のモードのアイコン＋title/aria-label（押すと 自動→ライト→ダーク→自動）
+    const tb = $('theme-btn');
+    if (tb) {
+      const NAME = { auto: `自動（端末設定。現在：${eff === 'light' ? 'ライト' : 'ダーク'}）`, light: 'ライト', dark: 'ダーク' }, NEXT = { auto: 'light', light: 'dark', dark: 'auto' }, NEXT_NAME = { light: 'ライト', dark: 'ダーク', auto: '自動' };
+      tb.dataset.mode = t;
+      tb.title = `表示：${NAME[t]}（タップで${NEXT_NAME[NEXT[t]]}）`;
+      tb.setAttribute('aria-label', `表示：${NAME[t]}。押すと${NEXT_NAME[NEXT[t]]}に切り替え`);
+    }
   }
   function setupTheme() {
-    document.querySelectorAll('#theme-chips .chip').forEach((b) => { b.onclick = () => { lsSet(LS.theme, b.dataset.themeOpt); applyTheme(); }; });
+    $('theme-btn').onclick = () => { const cur = lsGet(LS.theme, 'auto'); lsSet(LS.theme, cur === 'auto' ? 'light' : cur === 'light' ? 'dark' : 'auto'); applyTheme(); };
     if (darkMq) (darkMq.addEventListener ? darkMq.addEventListener('change', applyTheme) : darkMq.addListener(applyTheme));
     applyTheme();
   }
@@ -736,11 +777,13 @@
     const sm = p.airports?.swimSummary;
     const targets = p.airports?.swimTargets || [];
     if (!sm) { el.textContent = 'このパックには SWIM の集計がありません。'; return; }
-    el.innerHTML = `ボットが10分ごとに取得：国内 ${sm.targets}空港（パックの国内空港すべて）<br>`
-      + `ATIS：${at?.ok ? `${sm.atis}空港（SWIM ATIS の対象は${sm.atisSupported}空港） ・ ${esc(fmtJst(at.fetchedAt))}` : esc(at?.note || '未取得')}<br>`
-      + `NOTAM：${n?.ok ? `${sm.notam}件 ・ ${esc(fmtJst(n.fetchedAt))}` : esc(n?.note || '未取得')}<br>`
-      + `空港プロファイル（METAR/TAF・運用時間など）：${sm.profile}/${sm.targets}空港<br>`
-      + `AIP Lost Communication：${sm.lostComm}/${sm.targets}空港（AIP に該当項目がある空港のみ）<br>`
+    const ft = sm.fetched || {}, age = (t) => (t ? `${esc(fmtJst(t))}（${esc(ageText(t))}）` : '時刻不明');
+    el.innerHTML = `ボットが取得：国内 ${sm.targets}空港（パックの国内空港すべて）。取得元ごとの頻度と最終取得：<br>`
+      + `ATIS（15分ごと）：${at?.ok ? `${sm.atis}空港（SWIM ATIS の対象は${sm.atisSupported}空港） ・ ${age(at.fetchedAt)}` : esc(at?.note || '未取得')}<br>`
+      + `空港プロファイル＝SWIM の METAR/TAF（15分ごと）：${sm.profile}/${sm.targets}空港 ・ ${age(ft.profile)}<br>`
+      + `NOTAM（6時間ごと＝00/06/12/18時 JST）：${n?.ok ? `${sm.notam}件 ・ ${age(n.fetchedAt)}` : esc(n?.note || '未取得')}<br>`
+      + `AIP（AD 2・Lost Communication。1日1回＝4時台 JST）：Lost Comm ${sm.lostComm}/${sm.targets}空港（AIP に該当項目がある空港のみ） ・ ${age(ft.aip)}<br>`
+      + `NOAA 空港情報（参考値。1日1回＝4時台 JST）：${age(ft.noaa)}<br>`
       + `<span class="hint">この端末には SETTINGS で選んだ空港の分だけ保存されます（${targets.length ? `国内の選択 ${mainAirports().filter((i) => targets.includes(i)).length}空港` : ''}）。</span>`;
   }
   async function start() {
@@ -751,6 +794,7 @@
     $('airport-date').onchange = renderAirport;
     document.querySelectorAll('#notam-period .chip').forEach((b) => { b.onclick = () => { state.notamHours = Number(b.dataset.hours); lsSet(LS.notamH, state.notamHours); renderNotam(); }; });
     $('refresh-btn').onclick = () => refresh(false);
+    $('wx-btn').onclick = wxRefresh;
     $('pack-redownload').onclick = () => refresh(true);
     $('pack-clear').onclick = async () => { if (!confirm('保存済みパックを消去しますか？（オフラインで見られなくなります）')) return; await window.FBPack.clearAll(); state.pack = null; renderAll(); };
     window.addEventListener('online', () => { renderStatus(); renderCharts(); refresh(false); });

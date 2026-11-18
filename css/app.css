@@ -162,9 +162,9 @@ label.block{margin-top:14px}
 .chips-scroll::-webkit-scrollbar{display:none}
 .chips-scroll .chip{flex:none}
 /* サブ項目・期間・テーマはセグメント風 */
-.chips-sub,#notam-period,.theme-chips,.vchips{display:flex;flex-wrap:wrap;gap:2px;background:var(--bg-elev);border-radius:12px;padding:3px;margin:8px 0}
-.chips-sub .chip,#notam-period .chip,.theme-chips .chip,.vchips .chip{flex:1 1 auto;background:transparent;color:var(--text);border-radius:9px;padding:7px 10px;font-size:13px;text-align:center}
-.chips-sub .chip.active,#notam-period .chip.active,.theme-chips .chip.active,.vchips .chip.active{background:var(--seg-bg);color:var(--seg-fg);box-shadow:0 1px 3px rgba(0,0,0,.18)}
+.chips-sub,#notam-period,.vchips{display:flex;flex-wrap:wrap;gap:2px;background:var(--bg-elev);border-radius:12px;padding:3px;margin:8px 0}
+.chips-sub .chip,#notam-period .chip .chip,.vchips .chip{flex:1 1 auto;background:transparent;color:var(--text);border-radius:9px;padding:7px 10px;font-size:13px;text-align:center}
+.chips-sub .chip.active,#notam-period .chip.active .chip.active,.vchips .chip.active{background:var(--seg-bg);color:var(--seg-fg);box-shadow:0 1px 3px rgba(0,0,0,.18)}
 .chips-sub:empty{display:none}
 
 /* ---------- CHARTS */
@@ -261,7 +261,8 @@ label.block{margin-top:14px}
 .viewer-stage{flex:1;overflow:hidden;position:relative;touch-action:none}
 #v-content{position:absolute;inset:0}
 
-@media (max-width:440px){.brand{display:none}}
+@media (max-width:410px){.brand{display:none}}
+@media (max-width:440px){.brand-name{display:none}.brand-emb{margin-left:0}}
 
 /* ---------- MAP（Leaflet＋同梱基図） */
 .tab-panel.map-panel{padding:0;overflow:hidden}
@@ -283,9 +284,7 @@ label.block{margin-top:14px}
 .fb-pos.leaflet-marker-icon{position:absolute}
 .fb-pos .halo{position:absolute;inset:0;border-radius:50%;background:rgba(41,182,246,.28)}
 .fb-pos svg{position:absolute;left:9px;top:9px;filter:drop-shadow(0 0 2px rgba(0,0,0,.6))}
-.fb-kashima{color:var(--text-dim)}
-.fb-kashima .emb{width:28px;height:28px;display:block;filter:drop-shadow(0 0 1.5px rgba(0,0,0,.55))}
-.fb-kashima .deer{opacity:.85}
+.fb-kashima .emb{width:14px;height:14px;display:block;object-fit:contain;filter:drop-shadow(0 0 1px rgba(0,0,0,.6))}
 .fb-geo-msg{display:none;position:absolute;z-index:1000;left:50%;top:12px;transform:translateX(-50%);max-width:min(88vw,360px);padding:8px 12px;border-radius:12px;background:var(--bg-card);color:var(--text);box-shadow:var(--shadow);font-size:12px;line-height:1.45;pointer-events:none}
 .fb-map-btn{width:36px;height:36px;border-radius:10px!important;border:none!important;background:var(--bg-panel)!important;color:var(--accent);display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow)}
 .fb-map-btn svg{width:20px;height:20px}
@@ -330,7 +329,7 @@ label.block{margin-top:14px}
 .ap-group{margin:6px 0}
 .ap-group summary{cursor:pointer;padding:10px 4px;font-weight:600}
 
-.brand-deer{display:inline-flex;margin-left:6px;color:var(--accent);vertical-align:-3px}
+.brand-emb{height:22px;width:auto;margin-left:7px;vertical-align:-5px}
 .duty-leg{display:block;margin-top:6px;font-size:13px}
 .duty-leg .raw{margin-top:4px}
 
@@ -362,3 +361,24 @@ label.block{margin-top:14px}
 :root[data-theme="light"]{--taf-becmg:#0875a5;--taf-tempo:#866a1d;--taf-fm:#2f7b4f;--taf-prob:#806b3e}
 @media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--taf-becmg:#0875a5;--taf-tempo:#866a1d;--taf-fm:#2f7b4f;--taf-prob:#806b3e}}
 .map-legend .badge{background:var(--bg-panel);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+
+.vmc-basis{font-size:10px;font-weight:600;color:var(--text-dim);border:1px solid var(--line,currentColor);border-radius:999px;padding:1px 7px;white-space:nowrap}
+.vmc-basis.strict{color:var(--ifr);border-color:var(--ifr)}
+
+/* ヘッダーのテーマ切替（自動→ライト→ダーク）。現在のモードのアイコンだけ表示 */
+#theme-btn{min-width:36px;width:36px;padding:0}
+#theme-btn svg{display:none}
+#theme-btn[data-mode="auto"] .ic-auto,#theme-btn[data-mode="light"] .ic-light,#theme-btn[data-mode="dark"] .ic-dark{display:block}
+.app-header{gap:4px}
+@media (max-width:440px){.app-header{padding-right:4px;padding-left:10px;gap:2px}.header-status{gap:4px;margin-right:2px}.pill{padding:4px 8px;font-size:11.5px}.app-header .btn-icon{min-width:34px;width:34px}.app-header .btn-icon svg{width:21px;height:21px}#wx-btn svg{width:22px;height:22px}}
+
+/* WX だけ更新ボタン（雲＋円形矢印。全体更新とは別アイコン）。回転は矢印だけ */
+#wx-btn{min-width:36px;width:36px;padding:0}
+#wx-btn svg{width:23px;height:23px}
+#wx-btn .wx-arrow{transform-box:fill-box;transform-origin:center}
+#wx-btn.spinning svg{animation:none}
+#wx-btn.spinning .wx-arrow{animation:spin .9s linear infinite}
+#wx-btn:disabled,#refresh-btn:disabled{opacity:.45}
+.toast{position:fixed;left:50%;top:calc(var(--header-h) + env(safe-area-inset-top) + 8px);transform:translate(-50%,-6px);z-index:3000;max-width:min(92vw,420px);padding:9px 14px;border-radius:12px;background:var(--bg-card);color:var(--text);box-shadow:var(--shadow);border:1px solid var(--line-strong);font-size:12.5px;line-height:1.45;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.bad{color:var(--bad-fg);background:var(--bad-bg)}
