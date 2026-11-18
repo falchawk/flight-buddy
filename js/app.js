@@ -46,7 +46,7 @@
   function renderClock() {
     const now = new Date();
     const j = new Date(now.getTime() + 9 * 3600000).toISOString();
-    $('clock').textContent = `${j.slice(11, 16)} JST / ${now.toISOString().slice(11, 16)}Z`;
+    $('clock').textContent = `${j.slice(11, 16)}J ${now.toISOString().slice(11, 16)}Z`;
   }
   function renderStatus() {
     const online = navigator.onLine;

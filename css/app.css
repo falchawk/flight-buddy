@@ -115,4 +115,6 @@ details summary{cursor:pointer;color:var(--text-dim);font-size:12px;margin-top:6
 .viewer-stage img{position:absolute;left:0;top:0;transform-origin:0 0;user-select:none;-webkit-user-select:none;max-width:none}
 
 #status-text{color:var(--text)}
-@media (max-width:380px){.clock{display:none}}
+@media (max-width:440px){.brand{display:none}}
+#ap-search{width:100%}
+.btn{white-space:nowrap}
