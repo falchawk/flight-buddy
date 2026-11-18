@@ -926,6 +926,7 @@ def build_charts(data_dir, airports, workers=16):
         "upper": lambda: upper_charts(F, errors),
         "lowlevel": lambda: low_level(F, errors), "narrow": lambda: narrow(F, errors),
         "apseries": lambda: airport_series(F, airports, errors),
+        "dust": lambda: __import__("dust").products(F, errors),   # 黄砂・PM2.5（scripts/dust.py）。予定外の回は前回の結果
     }
     with ThreadPoolExecutor(max_workers=len(jobs)) as top:
         futs = {k: top.submit(fn) for k, fn in jobs.items()}
@@ -953,7 +954,7 @@ def build_charts(data_dir, airports, workers=16):
             {"id": "ir", "label": "赤外", "product": single("ひまわり 赤外（B13）", SRC_JMA, parts.get("ir"), note=sat_note("b13", parts.get("ir")))},
             {"id": "vis", "label": "可視", "product": single("ひまわり 可視（B03）", SRC_JMA, parts.get("vis"), note=sat_note("b03", parts.get("vis")))},
             {"id": "wv", "label": "水蒸気", "product": single("ひまわり 水蒸気（B08）", SRC_JMA, parts.get("wv"), note=sat_note("b08", parts.get("wv")))},
-        ]},
+        ] + [{"id": i, "label": lab, "product": pr} for i, lab, pr in (parts.get("dust") or [])]},
         {"id": "radar", "label": "レーダーエコー", "defaultItem": 0, "items": [
             {"id": "nowcast", "label": "ナウキャスト", "product": product("降水ナウキャスト", SRC_JMA, rain.get("nowcast") or [], "a00")},
             {"id": "rainfc", "label": "今後の雨", "product": product("今後の雨（降水短時間予報）", SRC_JMA, rain.get("rainfc") or [], "a00")},

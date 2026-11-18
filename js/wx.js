@@ -151,8 +151,9 @@
     const hs = [...String(raw).matchAll(/\b(?:BKN|OVC|VV)(\d{3})\b/g)].map((x) => Number(x[1]) * 100);
     return hs.length ? Math.min(...hs) : null;
   }
-  function flightCategory(raw, icao) {
-    if (!raw) return null;
+  function flightCategory(raw0, icao) {
+    if (!raw0) return null;
+    const raw = String(raw0).split(/\s(?:TEMPO|BECMG|NOSIG|RMK)\b/)[0];   // トレンド(TEMPO/BECMG/NOSIG)と RMK 以降は判定に使わない
     const lim = limitsFor(icao), v = visM(raw), c = ceilFt(raw);
     const fv = v == null ? null : v < SM_M ? 'LIFR' : v < lim.vis ? 'IFR' : v <= MVFR_VIS_M ? 'MVFR' : 'VFR';
     const fc = c == null ? null : c < LIFR_CEIL_FT ? 'LIFR' : c < lim.ceil ? 'IFR' : c <= MVFR_CEIL_FT ? 'MVFR' : 'VFR';

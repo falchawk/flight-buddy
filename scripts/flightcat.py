@@ -117,10 +117,16 @@ def cat_ceil(c, icao=None):
     return "VFR"
 
 
+def observed_part(text):
+    """METAR のうち観測値の部分だけ（トレンド TEMPO/BECMG/NOSIG と RMK 以降は予報・備考なので判定に使わない）。"""
+    return re.split(r"\s(?:TEMPO|BECMG|NOSIG|RMK)\b", text, maxsplit=1)[0]
+
+
 def classify_metar(text, icao=None):
     """METAR 本文から飛行状態。判定できなければ None。icao が告示空港なら 8km/1,500ft 基準。"""
     if not text:
         return None
+    text = observed_part(text)
     fc, fv = cat_ceil(ceil_ft(text), icao), cat_vis(vis_m(text), icao)
     if not fc and not fv:
         return None
