@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 .env
 secrets*
+# データは Release asset で公開（git 履歴に入れない）
+data/
+_site/

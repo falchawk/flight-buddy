@@ -1,0 +1,43 @@
+name: Deploy Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch data pack (release asset)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in 1 2 3 4; do
+            if gh release download pack-data -R "$GITHUB_REPOSITORY" -p pack-data.tar.gz -D /tmp --clobber; then break; fi
+            echo "retry $i"; sleep 10
+          done
+          test -f /tmp/pack-data.tar.gz
+          rm -rf data && tar -xzf /tmp/pack-data.tar.gz
+          test -f data/latest/manifest.json
+          cat data/latest/manifest.json | head -c 300
+      - name: Prepare site
+        run: |
+          mkdir -p _site
+          cp -r index.html manifest.webmanifest sw.js .nojekyll css js icons data _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

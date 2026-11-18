@@ -1,9 +1,12 @@
 {
   "_note": "build_pack.py が取得対象にする空港など。秘密情報（ID・パスワード）は絶対に書かないこと。",
-  "airports": [
+  "airport_set": "japan_all",
+  "default_airports": [
     "RJTT",
     "RJFF"
   ],
+  "extra_airports": [],
+  "sync_repo": "falchawk/flight-buddy",
   "public_repo": true,
   "keep_packs": 3,
   "timezone_offset_hours": 9,

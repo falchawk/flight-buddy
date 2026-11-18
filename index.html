@@ -114,7 +114,8 @@
       <input id="ap-search" type="search" placeholder="名称・IATA・ICAOで検索（例：羽田 / HND / RJTT）" autocomplete="off" />
       <ul id="ap-results" class="airport-list"></ul>
       <ul id="ap-selected" class="airport-list selected"></ul>
-      <p class="hint">パックに入っていない空港は「未収録」と表示されます。取得対象の空港を増やしたい時はボットに伝えてください（config/pack_config.json を更新します）。</p>
+      <div id="ap-sync"></div>
+      <p class="hint">パックには METAR/TAF のある国内空港がすべて入っているので、ここで選んだ空港がそのまま表示されます（端末内の設定。オフラインでも切替可）。リスト外の空港は「Botに同期」で追加できます。</p>
       <h3>PACK（オフライン保存）</h3>
       <div id="pack-info" class="card"></div>
       <div class="row">

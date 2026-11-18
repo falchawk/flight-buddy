@@ -1,6 +1,7 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.0.1';
+  const APP_VERSION = '1.1.0';
+  const SYNC_REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack' };
@@ -34,11 +35,18 @@
   }
   const fmtBytes = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1)}MB` : `${Math.round((b || 0) / 1024)}KB`);
   const airportInfo = (icao) => (window.FB_AIRPORTS || []).find((a) => a.icao === icao) || null;
-  const apName = (icao) => { const a = airportInfo(icao); const p = state.pack?.airports?.airports?.[icao]; return a ? a.name : (p?.name || icao); };
+  const apName = (icao) => { const a = airportInfo(icao); const p = state.pack?.airports?.airports?.[icao]; return a ? a.name : (state.pack?.manifest?.airportNames?.[icao] || p?.name || icao); };
   const apCodes = (icao) => { const a = airportInfo(icao); return a ? `${a.icao} / ${a.iata}` : icao; };
   function mainAirports() {
     if (state.airports && state.airports.length) return state.airports;
-    return state.pack?.manifest?.airports || ['RJTT', 'RJFF'];
+    return state.pack?.manifest?.defaultAirports || ['RJTT', 'RJFF'];
+  }
+  const packHas = (icao) => !state.pack || (state.pack.manifest.airports || []).includes(icao);
+  const missingAirports = () => mainAirports().filter((i) => !packHas(i));
+  function syncUrl() {
+    const list = mainAirports();
+    const body = `AIRPORTS: ${list.join(',')}\n\nFlight Buddy の SETTINGS から送信（このまま Submit してください）。ボットが次回の自動更新でこの空港をパックに追加します。\n未収録: ${missingAirports().join(',') || 'なし'}`;
+    return `https://github.com/${SYNC_REPO}/issues/new?labels=airports-sync&title=${encodeURIComponent('airports-sync: ' + list.join(','))}&body=${encodeURIComponent(body)}`;
   }
   const naBox = (text) => `<span class="na-text">${esc(text || '未取得')}</span>`;
 
@@ -109,7 +117,19 @@
     const b = state.pack?.brief, m = state.pack?.manifest;
     if (!m) { $('brief-meta').textContent = ''; $('brief-body').innerHTML = '<p class="hint">まだパックがありません。オンラインで一度開くと自動で保存されます。</p>'; return; }
     $('brief-meta').innerHTML = `パック作成 ${esc(fmtJst(m.generatedAt))}（${esc(fmtUtc(m.generatedAt))}）${b?.writtenAt ? ` ／ 本文 ${esc(fmtJst(b.writtenAt))}` : ''}${b?.author ? ` ／ ${esc(b.author)}` : ''}`;
-    $('brief-body').innerHTML = b?.ok && b.text ? mdToHtml(b.text) : '<p class="hint">このパックにはボットのブリーフ本文がありません（未作成）。</p>';
+    const wx = state.pack?.wx;
+    const rows = mainAirports().map((icao) => {
+      const e = wx?.airports?.[icao];
+      if (!e || !e.ok) return `<tr><td>${esc(icao)}</td><td colspan="3" class="hint">${e ? '未取得' : 'パック未収録'}</td></tr>`;
+      const mt = e.metar?.[0];
+      const cat = mt ? (mt.fltCat || window.FBWx.flightCategory(mt.raw)) : null;
+      const wind = (mt?.raw || '').match(/\b(\d{3}|VRB)(\d{2,3})(G\d{2,3})?KT\b/);
+      const gusts = [...((e.taf?.raw || '').matchAll(/\b(?:\d{3}|VRB)\d{2,3}G(\d{2,3})KT\b/g))].map((m) => Number(m[1]));
+      return `<tr><td><strong>${esc(icao)}</strong> <span class="hint">${esc(apName(icao))}</span></td><td>${cat ? `<span class="badge ${cat}">${cat}</span>` : ''}</td><td>${esc(wind ? wind[0] : '--')}</td><td>${gusts.length ? `<span class="hl-warn">G${Math.max(...gusts)}</span>` : '--'}</td></tr>`;
+    }).join('');
+    const summary = `<div class="card"><div class="card-title"><span>選択空港サマリー</span><span class="hint">METAR / TAF最大ガスト</span></div><table class="sum-table"><tbody>${rows}</tbody></table></div>`;
+    const carried = b?.ok && b.carriedOver ? `<p class="hint"><span class="badge stale">前回のブリーフ</span> 本文は ${esc(fmtJst(b.writtenAt))} 作成（${esc(ageText(b.writtenAt))}）。METAR/TAF・図は最新パックの内容です。</p>` : '';
+    $('brief-body').innerHTML = summary + carried + `<div class="brief-text">${b?.ok && b.text ? mdToHtml(b.text) : '<p class="hint">このパックにはボットのブリーフ本文がありません（未作成）。</p>'}</div>`;
   }
 
   // ---------------------------------------------------------------- WX
@@ -121,7 +141,7 @@
       const e = wx?.airports?.[icao];
       const card = document.createElement('div'); card.className = 'card';
       let body;
-      if (!e) body = `<p class="hint">このパックに未収録です（次回のボット更新で追加されます）。</p>`;
+      if (!e) body = `<p class="hint"><span class="badge na">パック未収録</span> SETTINGS の「Botに同期」で取得対象に追加できます（オンライン時）。</p>`;
       else if (!e.ok) body = `<p class="hint">未取得：${esc(e.error || '')}</p>`;
       else {
         const latest = e.metar?.[0];
@@ -154,7 +174,7 @@
       b.onclick = () => { state.chartFilter = c; renderCharts(); }; f.appendChild(b);
     });
     const shown = charts.filter((c) => state.chartFilter === 'ALL' || (c.category || 'その他') === state.chartFilter);
-    const items = shown.map((c) => ({ ...c, info: [c.kind || '', c.level || '', c.validTime ? `${fmtUtc(c.validTime)}（${fmtJst(c.validTime, false)}）` : c.validTimeHint || '', c.baseTime ? `初期値 ${fmtUtc(c.baseTime)}` : '', c.source ? `© ${c.source}` : ''].filter(Boolean).join(' ・ ') }));
+    const items = shown.map((c) => ({ ...c, info: [c.kind || '', c.level || '', c.validTime ? `${fmtUtc(c.validTime)}（${fmtJst(c.validTime, false)}・${ageText(c.validTime)}）` : c.validTimeHint || '', c.baseTime ? `初期値 ${fmtUtc(c.baseTime)}` : '', c.source ? `© ${c.source}` : ''].filter(Boolean).join(' ・ ') }));
     if (!shown.length && state.pack) grid.innerHTML = '<p class="hint">図はありません。</p>';
     for (let i = 0; i < items.length; i++) {
       const c = items[i];
@@ -266,9 +286,13 @@
     const search = $('ap-search');
     const renderSel = () => {
       const ul = $('ap-selected'); ul.innerHTML = '';
+      const miss = missingAirports();
+      $('ap-sync').innerHTML = state.pack ? (miss.length
+        ? `<p class="hint"><span class="badge na">パック未収録</span> ${esc(miss.join(', '))}</p><a class="btn btn-primary" href="${syncUrl()}" target="_blank" rel="noopener">Botに同期（GitHub issue を開く）</a><p class="hint">開いたページで Submit すると、次回の自動更新（15分ごと）でパックに追加されます。オンライン時のみ。</p>`
+        : `<p class="hint">選択中の空港はすべてパックに収録済みです（パック収録 ${state.pack.manifest.airports.length} 空港）。</p>`) : '';
       mainAirports().forEach((icao, i) => {
         const li = document.createElement('li');
-        li.innerHTML = `<span>${esc(apName(icao))} <span class="codes">${esc(apCodes(icao))}</span></span><span><button class="btn" data-a="up">↑</button> <button class="btn btn-danger" data-a="rm">削除</button></span>`;
+        li.innerHTML = `<span>${esc(apName(icao))} <span class="codes">${esc(apCodes(icao))}</span>${packHas(icao) ? '' : ' <span class="badge na">パック未収録</span>'}</span><span><button class="btn" data-a="up">↑</button> <button class="btn btn-danger" data-a="rm">削除</button></span>`;
         li.querySelector('[data-a=rm]').onclick = () => { const l = mainAirports().slice(); l.splice(i, 1); state.airports = l; lsSet(LS.airports, l); renderAll(); };
         li.querySelector('[data-a=up]').onclick = () => { if (!i) return; const l = mainAirports().slice(); [l[i - 1], l[i]] = [l[i], l[i - 1]]; state.airports = l; lsSet(LS.airports, l); renderAll(); };
         ul.appendChild(li);
@@ -278,7 +302,10 @@
       const q = search.value.trim().toUpperCase(), qj = search.value.trim();
       const ul = $('ap-results'); ul.innerHTML = '';
       if (!q) return;
-      let res = (window.FB_AIRPORTS || []).filter((a) => a.icao.includes(q) || a.iata.includes(q) || a.name.includes(qj)).slice(0, 10);
+      const base = (window.FB_AIRPORTS || []).slice();
+      const names = state.pack?.manifest?.airportNames || {};
+      Object.keys(names).forEach((icao) => { if (!base.some((x) => x.icao === icao)) base.push({ icao, iata: state.pack?.airports?.airports?.[icao]?.iata || '', name: names[icao] || icao }); });
+      let res = base.filter((a) => a.icao.includes(q) || (a.iata || '').includes(q) || a.name.includes(qj) || a.name.toUpperCase().includes(q)).slice(0, 12);
       if (!res.length && /^[A-Z]{4}$/.test(q)) res = [{ icao: q, iata: '', name: `${q}（リスト外）` }];
       res.forEach((a) => {
         const li = document.createElement('li');

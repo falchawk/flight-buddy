@@ -67,7 +67,7 @@ label.block{margin-top:12px}
 .decode dd{margin:0;color:var(--text)}
 .sub-label{font-size:11px;color:var(--text-dim);margin:8px 0 3px;letter-spacing:.06em}
 details summary{cursor:pointer;color:var(--text-dim);font-size:12px;margin-top:6px}
-.brief-body{background:var(--bg-card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;line-height:1.7;font-size:15px}
+.brief-body{line-height:1.7;font-size:15px}
 .brief-body h1,.brief-body h2,.brief-body h3{font-size:15px;color:var(--cyan);letter-spacing:.03em;margin:14px 0 6px}
 .brief-body ul{padding-left:1.2em;margin:4px 0}
 .brief-body p{margin:6px 0}
@@ -118,3 +118,10 @@ details summary{cursor:pointer;color:var(--text-dim);font-size:12px;margin-top:6
 @media (max-width:440px){.brand{display:none}}
 #ap-search{width:100%}
 .btn{white-space:nowrap}
+
+.sum-table{width:100%;border-collapse:collapse;font-size:13px}
+.sum-table td{padding:5px 4px;border-top:1px solid var(--line);font-family:ui-monospace,Menlo,monospace}
+.sum-table tr:first-child td{border-top:none}
+.brief-text{background:var(--bg-card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+a.btn{display:inline-block;text-decoration:none;margin:4px 0}
+.btn-primary{border-color:var(--cyan)}

@@ -120,14 +120,16 @@ def fetch_wx(airports, prev_wx):
     now = iso(utcnow())
     out = {"source": "aviationweather.gov (NOAA/AWC)", "fetchedAt": now, "airports": {}}
     metars, tafs, err_m, err_t = [], [], None, None
-    try:
-        metars = http_get_json(f"{AWC}/metar?ids={ids}&format=json&hours=3")
-    except Exception as e:  # noqa: BLE001
-        err_m = str(e)
-    try:
-        tafs = http_get_json(f"{AWC}/taf?ids={ids}&format=json")
-    except Exception as e:  # noqa: BLE001
-        err_t = str(e)
+    for chunk in chunks(airports, 60):
+        ids = ",".join(chunk)
+        try:
+            metars += http_get_json(f"{AWC}/metar?ids={ids}&format=json&hours=3")
+        except Exception as e:  # noqa: BLE001
+            err_m = str(e)
+        try:
+            tafs += http_get_json(f"{AWC}/taf?ids={ids}&format=json")
+        except Exception as e:  # noqa: BLE001
+            err_t = str(e)
     for icao in airports:
         ms = sorted([m for m in metars if m.get("icaoId") == icao], key=lambda m: m.get("obsTime", 0), reverse=True)
         ts = [t for t in tafs if t.get("icaoId") == icao]
@@ -139,7 +141,7 @@ def fetch_wx(airports, prev_wx):
             "metar": [
                 {"raw": m.get("rawOb"), "obsTime": iso(dt.datetime.fromtimestamp(m["obsTime"], dt.timezone.utc)) if m.get("obsTime") else None,
                  "fltCat": m.get("fltCat"), "type": m.get("metarType")}
-                for m in ms
+                for m in ms[:4]
             ],
             "taf": ({"raw": ts[0].get("rawTAF"), "issueTime": ts[0].get("issueTime"),
                      "validFrom": iso(dt.datetime.fromtimestamp(ts[0]["validTimeFrom"], dt.timezone.utc)) if ts[0].get("validTimeFrom") else None,
@@ -160,19 +162,26 @@ def fetch_wx(airports, prev_wx):
     return out
 
 
-def fetch_airport_profiles(airports, cfg, pack_date):
+def chunks(lst, n):
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
+
+def fetch_airport_profiles(airports, cfg, pack_date, stations=None):
     static = cfg.get("airport_static", {})
-    try:
-        info = http_get_json(f"{AWC}/airport?ids={','.join(airports)}&format=json")
-    except Exception as e:  # noqa: BLE001
-        log("空港情報の取得失敗:", e)
-        info = []
+    info = []
+    for chunk in chunks(airports, 60):
+        try:
+            info += http_get_json(f"{AWC}/airport?ids={','.join(chunk)}&format=json")
+        except Exception as e:  # noqa: BLE001
+            log("空港情報の取得失敗:", e)
     by = {a.get("icaoId"): a for a in info}
     out = {"source": "aviationweather.gov airport API + 端末内計算(日の出日没)", "airports": {}}
     for icao in airports:
         a = by.get(icao, {})
         st = static.get(icao, {})
-        lat, lon = a.get("lat"), a.get("lon")
+        stn = (stations or {}).get(icao, {})
+        lat, lon = a.get("lat", stn.get("lat")), a.get("lon", stn.get("lon"))
         sun = []
         if lat is not None and lon is not None:
             for d in range(2):
@@ -189,8 +198,8 @@ def fetch_airport_profiles(airports, cfg, pack_date):
                 freqs.append({"type": k.strip(), "mhz": v.strip()})
         out["airports"][icao] = {
             "icao": icao,
-            "iata": a.get("iataId"),
-            "name": a.get("name"),
+            "iata": a.get("iataId") or stn.get("iataId"),
+            "name": a.get("name") or (stations or {}).get(icao, {}).get("site"),
             "lat": lat, "lon": lon,
             "elevationFt": round(a["elev"] * 3.28084) if isinstance(a.get("elev"), (int, float)) else None,
             "magdec": a.get("magdec"),
@@ -335,64 +344,214 @@ def sha256(path):
     return h.hexdigest()
 
 
-def main():
-    ap = argparse.ArgumentParser(description="Flight Buddy オフライン用パックを作る")
-    ap.add_argument("--config", default=os.path.join(ROOT, "config", "pack_config.json"))
-    ap.add_argument("--airports", help="カンマ区切りICAO（configより優先）例: RJTT,RJFF")
-    ap.add_argument("--brief", help="ブリーフ本文のテキスト/Markdownファイル")
-    ap.add_argument("--notam-file", help="NOTAM JSON（形式はREADME参照）")
-    ap.add_argument("--charts-dir", help="図の画像フォルダ（任意で charts.json sidecar）")
-    ap.add_argument("--allow-restricted", action="store_true",
-                    help="restricted(MetAir等)の図も含める。公開リポジトリでは規約違反になり得るので注意")
-    ap.add_argument("--sample-charts", action="store_true", help="見本(SAMPLE)図を入れる")
-    ap.add_argument("--duty-file", help="DUTY情報JSON（任意。ブリーフ表示用）")
-    ap.add_argument("--keep", type=int, help="保持するパック数")
-    ap.add_argument("--publish", action="store_true", help="git add/commit/push まで行う")
-    args = ap.parse_args()
+# ----------------------------------------------------------------------------- airport set
+STATION_CACHE = os.path.join(DATA, ".cache", "stations_jp.json")
+ICAO_RE = re.compile(r"^[A-Z]{4}$")
 
+
+def japan_stations():
+    """aviationweather.gov の局一覧から日本(METAR/TAFあり)を取得。24hキャッシュ、失敗時は古いキャッシュ。"""
+    cached = read_json(STATION_CACHE)
+    if cached and time.time() - cached.get("ts", 0) < 86400:
+        return cached["stations"]
+    try:
+        d = http_get_json(f"{AWC}/stationinfo?bbox=20,122,46,154&format=json", retries=3)
+        st = {s["icaoId"]: {"site": s.get("site"), "iataId": s.get("iataId"), "lat": s.get("lat"), "lon": s.get("lon"),
+                             "siteType": s.get("siteType")}
+              for s in d if s.get("country") == "JP" and set(s.get("siteType") or []) & {"METAR", "TAF"}}
+        if st:
+            write_json(STATION_CACHE, {"ts": time.time(), "stations": st})
+            return st
+    except Exception as e:  # noqa: BLE001
+        log("局一覧の取得失敗:", e)
+    if cached:
+        log("古い局一覧キャッシュを使用")
+        return cached["stations"]
+    return {}
+
+
+def sync_issue_airports(repo):
+    """GitHub issue（label airports-sync、作成者=リポジトリ所有者）の最新1件からICAOを読む。gh が無ければ空。"""
+    owner = repo.split("/")[0]
+    try:
+        out = subprocess.run(["gh", "issue", "list", "-R", repo, "--label", "airports-sync", "--state", "all",
+                              "--author", owner, "--limit", "1", "--json", "number,body,createdAt"],
+                             capture_output=True, text=True, timeout=30, check=True).stdout
+        items = json.loads(out or "[]")
+    except Exception as e:  # noqa: BLE001
+        log("airports-sync issue 読み取り失敗（無視）:", e)
+        return [], None
+    if not items:
+        return [], None
+    body = items[0].get("body") or ""
+    m = re.search(r"AIRPORTS\s*:\s*([A-Za-z0-9 ,]+)", body)
+    toks = re.findall(r"[A-Za-z]{4}", m.group(1) if m else body)
+    icaos = [t.upper() for t in toks if ICAO_RE.match(t.upper())][:40]
+    return icaos, {"issue": items[0]["number"], "createdAt": items[0]["createdAt"], "airports": icaos}
+
+
+def resolve_airports(cfg, override=None):
+    stations = japan_stations()
+    if override:
+        return [a.strip().upper() for a in override.split(",") if a.strip()], stations, None
+    s = set()
+    if cfg.get("airport_set") == "japan_all":
+        s |= set(stations)
+    s |= {a.upper() for a in cfg.get("airports", []) + cfg.get("extra_airports", [])}
+    s |= {a.upper() for a in cfg.get("default_airports", [])}
+    sync = None
+    if cfg.get("sync_repo"):
+        extra, sync = sync_issue_airports(cfg["sync_repo"])
+        s |= set(extra)
+    return sorted(a for a in s if ICAO_RE.match(a)), stations, sync
+
+
+# ----------------------------------------------------------------------------- brief / charts helpers
+def auto_brief_text(wx, focus):
+    lines = ["# 自動サマリー（METAR/TAF）", "ボットのブリーフ本文が更新されていない時の自動生成です。"]
+    for icao in focus:
+        e = wx["airports"].get(icao)
+        if not e or not e.get("ok"):
+            lines.append(f"- **{icao}**：未取得")
+            continue
+        m = (e.get("metar") or [{}])[0]
+        gusts = [int(g) for g in re.findall(r"\d{3}\d{2,3}G(\d{2,3})KT", (e.get("taf") or {}).get("raw") or "")]
+        lines.append(f"- **{icao}** {m.get('fltCat') or ''}：{m.get('raw') or 'METARなし'}"
+                     + (f"（TAF最大ガスト {max(gusts)}kt）" if gusts else ""))
+    return "\n".join(lines)
+
+
+def newest_valid(charts):
+    v = [c.get("validTime") or "" for c in charts]
+    return max(v) if v else ""
+
+
+def staging_charts_meta(charts_dir):
+    sc = read_json(os.path.join(charts_dir, "charts.json"), {}) or {}
+    return sc.get("charts", sc if isinstance(sc, list) else [])
+
+
+def pack_signature(pack_dir):
+    """生成時刻を除いた中身の指紋（変化が無ければ公開をスキップするため）。"""
+    h = hashlib.sha256()
+    wx = read_json(os.path.join(pack_dir, "wx.json"), {})
+    for icao, e in sorted(wx.get("airports", {}).items()):
+        h.update(icao.encode())
+        for m in e.get("metar") or []:
+            h.update((m.get("raw") or "").encode())
+        h.update(((e.get("taf") or {}).get("raw") or "").encode())
+    for name in ("notam.json", "brief.json"):
+        d = read_json(os.path.join(pack_dir, name), {})
+        d.pop("fetchedAt", None)
+        h.update(json.dumps(d, sort_keys=True, ensure_ascii=False).encode())
+    for dirpath, _, names in sorted(os.walk(os.path.join(pack_dir, "charts"))):
+        for n in sorted(names):
+            h.update(n.encode())
+            h.update(sha256(os.path.join(dirpath, n)).encode())
+    return h.hexdigest()
+
+
+# ----------------------------------------------------------------------------- main
+def build(args):
     cfg = read_json(args.config, {}) or {}
-    airports = [a.strip().upper() for a in (args.airports.split(",") if args.airports else cfg.get("airports", []))
-                if a.strip()]
+    airports, stations, sync = resolve_airports(cfg, args.airports)
     if not airports:
-        sys.exit("空港が指定されていません (--airports か config)")
+        raise SystemExit("空港が指定されていません (--airports か config)")
     public_repo = cfg.get("public_repo", True)
     keep = args.keep or cfg.get("keep_packs", 3)
+    default_airports = cfg.get("default_airports") or airports[:2]
 
     now = utcnow()
     pack_id = now.strftime("%Y%m%dT%H%M%SZ")
     pack_dir = os.path.join(DATA, "packs", pack_id)
     os.makedirs(pack_dir, exist_ok=True)
     prev_manifest = read_json(os.path.join(DATA, "latest", "manifest.json"))
-    prev_wx = None
-    if prev_manifest:
-        prev_wx = read_json(os.path.join(DATA, "packs", prev_manifest["packId"], "wx.json"))
+    prev_dir = os.path.join(DATA, "packs", prev_manifest["packId"]) if prev_manifest else None
+    if prev_dir and not os.path.isdir(prev_dir):
+        prev_dir = None
+    prev_wx = read_json(os.path.join(prev_dir, "wx.json")) if prev_dir else None
 
-    log("METAR/TAF取得:", ",".join(airports))
-    wx = fetch_wx(airports, prev_wx)
-    write_json(os.path.join(pack_dir, "wx.json"), wx)
+    try:
+        log(f"METAR/TAF取得: {len(airports)}空港")
+        wx = fetch_wx(airports, prev_wx)
+        write_json(os.path.join(pack_dir, "wx.json"), wx)
+        ok_n = sum(1 for e in wx["airports"].values() if e.get("ok") and not e.get("carriedOver"))
+        if ok_n == 0:
+            raise RuntimeError("METAR/TAF が1空港も取得できませんでした（aviationweather.gov 障害？）")
 
-    log("空港プロファイル作成")
-    profiles = fetch_airport_profiles(airports, cfg, now.astimezone(JST).date())
-    write_json(os.path.join(pack_dir, "airports.json"), profiles)
+        log("空港プロファイル作成")
+        prev_prof = read_json(os.path.join(prev_dir, "airports.json")) if prev_dir else None
+        profiles = fetch_airport_profiles(airports, cfg, now.astimezone(JST).date(), stations)
+        if prev_prof:  # 取得できなかった滑走路等は前回値を流用
+            for icao, p in profiles["airports"].items():
+                pp = prev_prof.get("airports", {}).get(icao)
+                if pp and not p.get("runways"):
+                    for k in ("runways", "freqs", "elevationFt", "magdec", "name", "iata"):
+                        p[k] = p.get(k) or pp.get(k)
+        write_json(os.path.join(pack_dir, "airports.json"), profiles)
 
-    write_json(os.path.join(pack_dir, "notam.json"), load_notams(args.notam_file, airports))
+        notam_file = args.notam_file if args.notam_file and os.path.exists(args.notam_file) else None
+        write_json(os.path.join(pack_dir, "notam.json"), load_notams(notam_file, airports))
 
-    brief = {"ok": False, "text": None, "author": None, "writtenAt": None}
-    if args.brief:
-        with open(args.brief, encoding="utf-8") as f:
-            brief = {"ok": True, "text": f.read(), "author": "Grok Bot",
-                     "writtenAt": iso(dt.datetime.fromtimestamp(os.path.getmtime(args.brief), dt.timezone.utc))}
-    write_json(os.path.join(pack_dir, "brief.json"), brief)
+        # ---- brief
+        prev_brief = read_json(os.path.join(prev_dir, "brief.json")) if prev_dir else None
+        brief = None
+        if args.brief and os.path.exists(args.brief):
+            mtime = iso(dt.datetime.fromtimestamp(os.path.getmtime(args.brief), dt.timezone.utc))
+            if not args.brief_if_newer or not prev_brief or not prev_brief.get("writtenAt") or mtime > prev_brief["writtenAt"] \
+                    or not prev_brief.get("ok"):
+                with open(args.brief, encoding="utf-8") as f:
+                    brief = {"ok": True, "text": f.read(), "author": "Grok Bot", "writtenAt": mtime, "carriedOver": False}
+        if brief is None and prev_brief and prev_brief.get("ok"):
+            brief = dict(prev_brief)
+            brief["carriedOver"] = True
+        if brief is None:
+            brief = {"ok": False, "text": None, "author": None, "writtenAt": None}
+        brief["autoText"] = auto_brief_text(wx, default_airports)
+        write_json(os.path.join(pack_dir, "brief.json"), brief)
 
-    allow_restricted = args.allow_restricted or bool(cfg.get("include_restricted", False))
-    charts, skipped = collect_charts(args.charts_dir, os.path.join(pack_dir, "charts"), allow_restricted, public_repo)
-    if skipped:
-        log(f"restricted のため除外した図 {len(skipped)} 件: {', '.join(skipped)}（含めるには --allow-restricted）")
-    if args.sample_charts:
-        charts += make_sample_charts(os.path.join(pack_dir, "charts"))
-    write_json(os.path.join(pack_dir, "charts.json"), {"charts": charts, "skippedRestricted": skipped})
+        # ---- charts
+        charts, skipped, chart_mode = [], [], "none"
+        allow_restricted = args.allow_restricted or bool(cfg.get("include_restricted", False))
+        prev_charts = (read_json(os.path.join(prev_dir, "charts.json"), {}) or {}).get("charts", []) if prev_dir else []
+        prev_charts = [c for c in prev_charts if not c.get("sample")]
+        use_staging = False
+        if args.charts_dir and os.path.isdir(args.charts_dir):
+            if args.charts_if_newer and prev_charts:
+                st_meta = staging_charts_meta(args.charts_dir)
+                use_staging = bool(st_meta) and newest_valid(st_meta) > newest_valid(prev_charts)
+                if not use_staging:
+                    log("ステージングの図は公開済みより新しくないため前回の図を引き継ぎ")
+            else:
+                use_staging = True
+        if use_staging:
+            charts, skipped = collect_charts(args.charts_dir, os.path.join(pack_dir, "charts"), allow_restricted, public_repo)
+            chart_mode = "new"
+        elif prev_charts and not args.no_carry_charts:
+            os.makedirs(os.path.join(pack_dir, "charts"), exist_ok=True)
+            for c in prev_charts:
+                src = os.path.join(prev_dir, c["file"])
+                if os.path.exists(src):
+                    shutil.copy2(src, os.path.join(pack_dir, c["file"]))
+                    charts.append(c)
+            chart_mode = "carried"
+        if skipped:
+            log(f"restricted のため除外した図 {len(skipped)} 件: {', '.join(skipped)}（含めるには --allow-restricted）")
+        if args.sample_charts:
+            charts += make_sample_charts(os.path.join(pack_dir, "charts"))
+        write_json(os.path.join(pack_dir, "charts.json"), {"charts": charts, "skippedRestricted": skipped, "mode": chart_mode})
 
-    duty = read_json(args.duty_file) if args.duty_file else None
+        duty = read_json(args.duty_file) if args.duty_file else (prev_manifest or {}).get("duty")
+
+        signature = pack_signature(pack_dir)
+        if args.skip_if_unchanged and prev_manifest and prev_manifest.get("signature") == signature:
+            shutil.rmtree(pack_dir)
+            log("前回パックから変化なし → 新しいパックは作りません")
+            return {"changed": False, "packId": prev_manifest["packId"], "airports": len(prev_manifest.get("airports", [])),
+                    "charts": len(prev_charts), "chartMode": "unchanged"}
+    except BaseException:
+        shutil.rmtree(pack_dir, ignore_errors=True)
+        raise
 
     files = []
     for dirpath, _, names in os.walk(pack_dir):
@@ -410,12 +569,16 @@ def main():
         "generator": "scripts/build_pack.py",
         "base": f"data/packs/{pack_id}/",
         "airports": airports,
+        "defaultAirports": default_airports,
+        "airportNames": {i: (stations.get(i) or {}).get("site") for i in airports if stations.get(i)},
+        "sync": sync,
         "sample": any(c.get("sample") for c in charts) or not brief["ok"],
         "duty": duty,
         "sections": {"wx": "wx.json", "notam": "notam.json", "airports": "airports.json",
                      "brief": "brief.json", "charts": "charts.json"},
         "files": files,
         "totalBytes": sum(f["bytes"] for f in files),
+        "signature": signature,
         "previousPackId": prev_manifest["packId"] if prev_manifest else None,
     }
     write_json(os.path.join(pack_dir, "manifest.json"), manifest)
@@ -423,38 +586,44 @@ def main():
         write_json(os.path.join(DATA, "previous", "manifest.json"), prev_manifest)
     write_json(os.path.join(DATA, "latest", "manifest.json"), manifest)
 
-    # 古いパックの削除（latest含めkeep件残す）
     packs_root = os.path.join(DATA, "packs")
     ids = sorted([d for d in os.listdir(packs_root) if os.path.isdir(os.path.join(packs_root, d))], reverse=True)
     for old in ids[keep:]:
         shutil.rmtree(os.path.join(packs_root, old))
         log("古いパックを削除:", old)
-    kept = ids[:keep]
     index = {"schema": SCHEMA, "latest": pack_id, "packs": []}
-    for pid in kept:
+    for pid in ids[:keep]:
         m = read_json(os.path.join(packs_root, pid, "manifest.json"), {})
         index["packs"].append({"packId": pid, "generatedAt": m.get("generatedAt"), "totalBytes": m.get("totalBytes")})
     write_json(os.path.join(DATA, "index.json"), index)
+    ok_wx = sum(1 for e in wx["airports"].values() if e.get("ok") and not e.get("carriedOver"))
+    log(f"完了 packId={pack_id} files={len(files)} size={manifest['totalBytes']}B WX取得OK={ok_wx}/{len(airports)} charts={len(charts)}({chart_mode})")
+    return {"changed": True, "packId": pack_id, "airports": len(airports), "charts": len(charts), "chartMode": chart_mode,
+            "bytes": manifest["totalBytes"]}
 
-    ok_wx = [i for i, e in wx["airports"].items() if e.get("ok") and not e.get("carriedOver")]
-    log(f"完了 packId={pack_id} files={len(files)} size={manifest['totalBytes']}B WX取得OK={ok_wx} charts={len(charts)}")
 
-    if args.publish:
-        def git(*c):
-            subprocess.run(["git", "-C", ROOT, *c], check=True)
-        git("add", "-A", "data")
-        git("commit", "-m", f"pack {pack_id}")
-        for i in range(3):
-            try:
-                git("pull", "--rebase", "-q")
-                git("push", "-q")
-                break
-            except subprocess.CalledProcessError:
-                time.sleep(5 * (i + 1))
-        else:
-            sys.exit("git push に失敗しました")
-        log("push完了")
-    print(pack_id)
+def make_parser():
+    ap = argparse.ArgumentParser(description="Flight Buddy オフライン用パックを作る")
+    ap.add_argument("--config", default=os.path.join(ROOT, "config", "pack_config.json"))
+    ap.add_argument("--airports", help="カンマ区切りICAO（config/同期issueより優先）例: RJTT,RJFF")
+    ap.add_argument("--brief", help="ブリーフ本文のテキスト/Markdownファイル")
+    ap.add_argument("--brief-if-newer", action="store_true", help="--brief が前回より新しい時だけ採用（古ければ前回本文を引き継ぎ）")
+    ap.add_argument("--notam-file", help="NOTAM JSON（形式は examples/notam.sample.json）")
+    ap.add_argument("--charts-dir", help="図の画像フォルダ（任意で charts.json sidecar）")
+    ap.add_argument("--charts-if-newer", action="store_true", help="ステージングの図が公開済みより新しい時だけ差し替え")
+    ap.add_argument("--no-carry-charts", action="store_true", help="新しい図が無い時に前回の図を引き継がない")
+    ap.add_argument("--allow-restricted", action="store_true", help="restricted(MetAir等)の図も含める")
+    ap.add_argument("--sample-charts", action="store_true", help="見本(SAMPLE)図を入れる")
+    ap.add_argument("--duty-file", help="DUTY情報JSON（任意）")
+    ap.add_argument("--keep", type=int, help="保持するパック数")
+    ap.add_argument("--skip-if-unchanged", action="store_true", help="中身が前回と同じならパックを作らない")
+    return ap
+
+
+def main():
+    args = make_parser().parse_args()
+    r = build(args)
+    print(json.dumps(r, ensure_ascii=False))
 
 
 if __name__ == "__main__":

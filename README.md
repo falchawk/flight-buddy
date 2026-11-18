@@ -24,31 +24,39 @@
 
 ヘッダーに ONLINE/OFFLINE、パックの経過時間、ステータス行に「パック作成時刻（JST/UTC）・最新か保存済み表示か・SAMPLE 有無」を常時表示します。3 時間超で注意、12 時間超で警告バナー。
 
-## パックの作り方（ボット用）
+## 自動更新（ボット用）
+
+ルーティンから毎時 00/15/30/45 分に次を実行します（終了コード 0=成功/スキップ、1=失敗。最後に1行サマリー）。
 
 ```bash
-cd /workspace/flight-buddy
-# 典型: ブリーフ本文 + 図フォルダ + push まで
-python3 scripts/build_pack.py \
-  --brief /workspace/fb-work/brief.md \
-  --charts-dir /workspace/metair \
-  --publish
+python3 /workspace/flight-buddy/scripts/auto_update.py
 ```
 
-オプション:
+- 空港: `config/pack_config.json` の `airport_set: "japan_all"`（aviationweather.gov に登録された国内の METAR/TAF 局すべて）＋ `extra_airports` ＋ 同期 issue の空港。
+- 図: `/workspace/metair/latest/`（画像＋`charts.json`）の最新 validTime が公開中より新しければ差し替え。そうでなければ前回の図を引き継ぎ。
+- ブリーフ: `/workspace/fb-staging/brief.md` が前回より新しければ採用。そうでなければ前回の本文を引き継ぎ（アプリに「前回のブリーフ（作成時刻）」と表示）。`autoText`（自動サマリー）は毎回生成。
+- NOTAM: `/workspace/fb-staging/notam.json` があれば採用。DUTY: `/workspace/fb-staging/duty.json` があれば採用。
+- 中身（METAR/TAF本文・図・ブリーフ・NOTAM）が前回と同じならパックを作らず公開もしない（`changed=no pushed=no`）。
+- 公開: `data/` を `pack-data.tar.gz` にして GitHub Release `pack-data` の asset を差し替え、`Deploy Pages` workflow を起動。
+  **データは git の履歴に入らない**ので、15分ごとに更新してもリポジトリは肥大化しません。
+- 240 秒で強制中断。多重起動はロックでスキップ。`--no-publish`（作るだけ）、`--force`（変化が無くても作る）。
 
-- `--airports RJTT,RJFF` … 取得空港（省略時 `config/pack_config.json`）
-- `--brief FILE` … ブリーフ本文（Markdown 風: `#` 見出し, `-` 箇条書き, `**太字**`）
-- `--charts-dir DIR` … 画像フォルダ（png/jpg/gif/webp/svg）。`DIR/charts.json` があればメタデータとして優先（例: `examples/charts.sample.json`）。
-  無ければファイル名から推定（`CS_Fukuoka-Tokyo_ANALYSIS_20261118_0600UTC.png` → 断面図 福岡-東京 解析 06Z 等）。
-- `--allow-restricted` … `restricted: true`（MetAir 由来は既定で restricted）の図も含める。**公開リポジトリでは使わないこと**（下記）。
-- `--sample-charts` … SAMPLE（見本）図を入れる
-- `--notam-file FILE` … NOTAM JSON（形式は `examples/notam.sample.json`）
-- `--duty-file FILE` … `{"date":"2026-11-18","flights":["SFJ70"],"note":"..."}`（BRIEF/DUTY に表示）
-- `--keep N` … リポジトリに残すパック数（既定 3）
-- `--publish` … `git add data && commit && pull --rebase && push`（リトライ付き）
+### 空港の同期（SETTINGS の空港 ⇔ パック）
+- パックは国内の METAR/TAF 局すべて（約130）を含むので、アプリの SETTINGS で選んだ空港がそのまま表示されます（設定は端末内、オフラインでも切替可）。
+- リスト外の空港（海外など）を選ぶと「パック未収録」になり、SETTINGS に **「Botに同期」** ボタンが出ます。
+  押すと `falchawk/flight-buddy` の新規 issue（ラベル `airports-sync`、本文 `AIRPORTS: RJTT,RJFF,...`）が開くので Submit するだけ。
+  `build_pack.py` は所有者（falchawk）が作った最新の `airports-sync` issue を `gh` で読み、その空港を取得対象に加えます。
 
-METAR/TAF は 4 回まで指数バックオフでリトライ。失敗した空港は前回パックの値を `carriedOver`（STALE 表示）で引き継ぎます。
+### 手動でパックを作る
+```bash
+python3 scripts/build_pack.py --brief FILE --charts-dir DIR [--airports RJTT,RJFF] [--notam-file F] [--duty-file F] \
+  [--charts-if-newer] [--brief-if-newer] [--skip-if-unchanged] [--allow-restricted] [--sample-charts] [--keep 3]
+```
+（`build_pack.py` は data/ に書くだけ。公開は `auto_update.py` が行います。）
+
+### デプロイ方式
+GitHub Pages は **GitHub Actions デプロイ**（`.github/workflows/pages.yml`）。main への push か workflow_dispatch で、
+main のアプリ＋Release asset のデータを組み合わせて公開します。ブランチ方式の「1時間10ビルド」ソフト上限は Actions デプロイには適用されません。
 
 ## パック形式（schema `flight-buddy-pack/1`）
 
@@ -92,8 +100,8 @@ data/
 `sw.js` の `VERSION` を上げてください（アプリ本体は cache-first のため）。新しいファイルを追加したら `SHELL` 配列にも追加。
 
 ## MetAir の図について（重要）
-MetAir（気象庁 航空気象情報提供システム）は登録利用者向けで、取得した図を第三者が見られる場所へ再配布することは利用条件に抵触する可能性が高いです。
-このリポジトリは公開（GitHub Pages 無料枠）のため、**MetAir の画像は commit しません**（`build_pack.py` は既定で除外）。
+MetAir（気象庁 航空気象情報提供システム）は登録利用者向けです。ユーザーが MetAir から個別に利用許可を得たため（2026-11-18）、
+`config/pack_config.json` の `include_restricted: true` で MetAir 図を既定で含めています。許可が無くなったら `false` に戻してください。
 
 MetAir 画像を載せたい場合の選択肢:
 1. GitHub Pro 等で **private リポジトリ + Pages** にする（Pages の公開範囲は要確認。Enterprise の private Pages ならアクセス制限可）。
