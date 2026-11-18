@@ -142,11 +142,15 @@ python3 -m http.server 8000   # → http://localhost:8000/
   **2026-11-18 確認：指定の告示は無く、指定空港は 0 件**（AIP Japan ENR 1.2 §1.2 は全空港 5km/300m。調布・但馬・天草は告示776号で「圏外の空港に 5km/300m を適用」する別の指定）。
   告示が出たら `js/vmc-designated.js` の `strict` に ICAO を足すだけで、地図・バッジ・IFR 赤・パック分類（scripts/flightcat.py が同じファイルを読む）・凡例が切り替わる。
 
-## BRIEF の作り方（自動 08:30／手動）
-- 毎日 08:30 JST にボットが本文を作って公開（`scripts/brief_request.py should-run-auto` → 本文を書く → `publish --kind auto`）。15分ごとの更新は本文を書きません。
+## BRIEF の作り方（自動／手動）
+- 自動：15分ごとの更新が毎回 `python3 scripts/brief_request.py should-run-auto` を呼び、終了コード 0 なら本文を書いて `publish --kind auto`（10 は SKIP）。
+  - 狙い時刻 ＝ 今日の最初の運航便（FLT）の STD − 3 時間（JST）。例：SFJ72 が 07:00 発なら 04:00。
+  - 今日の便が無い日、狙い時刻が 08:30 より遅い日（午後便）、今日の `duty_default.json` が無い日は 08:30。
+  - 現在が「狙い時刻 − 13 分」以降で、今日まだ自動を作っていなければ作る（04:00 狙いなら 03:47 の回）。
+  - 今日 03:00 JST 以降に手動（`publish --kind manual`）があれば作らない。今日すでに自動を作っていても作らない。
+  - `should-run-auto --explain` で狙い時刻と理由を表示（個人情報は出ない）。`duty_default.json` は 00:02 の更新で取得（05:02 に再確認）。
 - 手動はチャットでボットに頼みます（`publish --kind manual`）。アプリに依頼ボタンや暗証番号の入力はありません。
-- 今日 03:00 JST 以降に手動で作っていれば 08:30 の自動作成は行いません。
-- アプリは本文の作成時刻と「自動(08:30)／手動」を表示します（brief.json の writtenAt・kind）。
+- アプリは本文の作成時刻と「自動／手動」を表示します（brief.json の writtenAt・kind）。
 
 ## DUTY の自動入力（iFlight）
 

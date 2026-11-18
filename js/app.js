@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.9';
+  const APP_VERSION = '1.9.10';
   const REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
@@ -152,7 +152,7 @@
     if (inList) html += '</ul>';
     return html;
   }
-  const briefKindLabel = (b) => b?.kind === 'auto' ? '自動(08:30)' : b?.kind === 'manual' ? '手動' : '作成方法不明';
+  const briefKindLabel = (b) => b?.kind === 'auto' ? '自動' : b?.kind === 'manual' ? '手動' : '作成方法不明';
   function renderBrief() {
     const b = state.pack?.brief, m = state.pack?.manifest;
     if (!m) { $('brief-meta').textContent = ''; $('brief-body').innerHTML = '<p class="hint">まだパックがありません。オンラインで一度開くと自動で保存されます。</p>'; return; }
@@ -169,7 +169,7 @@
     }).join('');
     const summary = `<div class="card"><div class="card-title"><span>選択空港サマリー</span><span class="hint">METAR / TAF最大ガスト</span></div><table class="sum-table"><tbody>${rows}</tbody></table></div>`;
     const carried = b?.ok && b.carriedOver ? `<p class="hint"><span class="badge stale">前回のブリーフ</span> 本文は ${esc(fmtJst(b.writtenAt))} 作成（${esc(ageText(b.writtenAt))}）。METAR/TAF・図は最新パックの内容です。</p>` : '';
-    $('brief-body').innerHTML = summary + carried + `<div class="brief-text">${b?.ok && b.text ? mdToHtml(b.text) : '<p class="hint">いまのブリーフ本文はまだありません。毎日 08:30（JST）に自動で作られます。</p>'}</div>`;
+    $('brief-body').innerHTML = summary + carried + `<div class="brief-text">${b?.ok && b.text ? mdToHtml(b.text) : '<p class="hint">いまのブリーフ本文はまだありません。自動作成は、その日の初便の3時間前（便が無い日・午後便の日は 08:30）までに行います。</p>'}</div>`;
   }
 
   // ---------------------------------------------------------------- WX

@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""BRIEF 本文の「自動(毎日 08:30 JST)」と「手動(暗証番号つきリクエスト)」の判定・記録・公開。
+"""BRIEF 本文の「自動(初便の3時間前)」と「手動(チャットでの依頼)」の判定・記録・公開。
 
   verify [FILE]            リクエスト本文（stdin か FILE。JSON か「pin: 1234」形式の文章）から暗証番号を取り出し、
                            環境変数 FB_BRIEF_PIN と定数時間で比較する。暗証番号は表示・ログ・保存しない。
                            5回続けて間違えると 30 分ロック。成功したリクエストも約10分に1回まで。
-  should-run-auto          08:30 の自動作成をやるか。今日 03:00 JST 以降に手動ブリーフがあれば SKIP（終了コード 10）。
+  should-run-auto [--explain]
+                           自動作成を「今」やるか（15分ごとの更新が毎回呼ぶ）。狙い時刻＝今日の最初の運航便（FLT）の STD−3時間（JST）。
+                           便が無い日・狙い時刻が 08:30 より遅い日（午後便）・今日の duty_default.json が無い日は 08:30。
+                           現在が「狙い時刻−13分」以降で、今日まだ自動を作っていなければ RUN（終了コード 0）。
+                           今日 03:00 JST 以降に手動があるか、今日すでに自動を作っていれば SKIP（10）。
+                           --explain は狙い時刻と理由を表示（時刻・便名・理由だけ。個人情報なし）。
   record manual|auto       作成時刻を記録（brief_state.json）。
   publish --kind K         /workspace/fb-staging/brief.md を kind(auto/manual)・作成時刻つきでパックに入れて公開
                            （auto_update.py をロック待ちで実行）。成功したら record も行う。
@@ -164,18 +169,59 @@ def cmd_verify(a):
     return 0
 
 
+DUTY_DEFAULT = os.environ.get("FB_DUTY_DEFAULT", "/workspace/fb-staging/duty_default.json")
+DEFAULT_TARGET = (8, 30)     # 便が無い日・午後便の日・duty_default.json が無い日
+LEAD_H, EARLY_MIN = 3, 13    # 初便 STD の 3 時間前が狙い。15分スロットの前倒し 13 分
+
+
+def target_time(t):
+    """狙い時刻（JST の datetime）と理由・便名（任意）を返す。duty_default.json は duty_fetch.py（00:02 の更新）が書く今日の運航便（FLT）だけ。"""
+    j = t.astimezone(JST)
+    today = j.strftime("%Y-%m-%d")
+    default = j.replace(hour=DEFAULT_TARGET[0], minute=DEFAULT_TARGET[1], second=0, microsecond=0)
+    try:
+        with open(DUTY_DEFAULT, encoding="utf-8") as f:
+            dd = json.load(f)
+    except Exception:  # noqa: BLE001
+        return default, "duty_default.json が読めない → 08:30", None
+    if dd.get("date") != today:
+        return default, f"duty_default.json が今日の分ではない（{dd.get('date')}）→ 08:30", None
+    firsts = []
+    for f in dd.get("flights") or []:
+        m = re.fullmatch(r"(\d{2}):(\d{2})", f.get("std") or "")
+        if m:
+            firsts.append((int(m.group(1)) * 60 + int(m.group(2)), f"{f.get('airline') or 'SFJ'}{f.get('flightNumber')}"))
+    if not firsts:
+        return default, "今日は運航便（FLT）なし → 08:30", None
+    mins, name = min(firsts)
+    tgt = j.replace(hour=0, minute=0, second=0, microsecond=0) + dt.timedelta(minutes=mins - LEAD_H * 60)
+    if tgt > default:
+        return default, f"初便 {name} STD {mins // 60:02d}:{mins % 60:02d} −3h は 08:30 より遅い（午後便）→ 08:30", name
+    if tgt < j.replace(hour=0, minute=0, second=0, microsecond=0):
+        tgt = j.replace(hour=0, minute=0, second=0, microsecond=0)
+    return tgt, f"初便 {name} STD {mins // 60:02d}:{mins % 60:02d} −3h", name
+
+
 def cmd_should_run_auto(a):
     t = now()
+    j = t.astimezone(JST)
     st = load()
-    ds = day_start(t)
+    midnight = j.replace(hour=0, minute=0, second=0, microsecond=0)
+    three = midnight.replace(hour=DAY_START_H)
     lm, la = parse(st.get("lastManualAt")), parse(st.get("lastAutoAt"))
-    if lm and lm >= ds:
-        print(f"SKIP manual-done lastManual={jst(lm)}（03:00 JST 以降に手動作成済み）")
+    tgt, why, _ = target_time(t)
+    start = tgt - dt.timedelta(minutes=EARLY_MIN)
+    head = f"target={tgt.strftime('%H:%M')} start={start.strftime('%H:%M')} ({why})"
+    if lm and lm >= three and lm <= j:
+        print(f"SKIP manual-done lastManual={jst(lm)}（今日 03:00 JST 以降に手動作成済み） {head}" if a.explain else f"SKIP manual-done lastManual={jst(lm)}（今日 03:00 JST 以降に手動作成済み）")
         return 10
-    if la and la >= ds:
-        print(f"SKIP auto-done lastAuto={jst(la)}")
+    if la and la >= midnight and la <= j:
+        print(f"SKIP auto-done lastAuto={jst(la)} {head}" if a.explain else f"SKIP auto-done lastAuto={jst(la)}")
         return 10
-    print("RUN")
+    if j < start:
+        print(f"WAIT before-start now={j.strftime('%H:%M')} {head}" if a.explain else f"SKIP not-yet start={start.strftime('%H:%M')}")
+        return 10
+    print(f"RUN now={j.strftime('%H:%M')} {head}" if a.explain else "RUN")
     return 0
 
 
@@ -193,7 +239,7 @@ def cmd_publish(a):
         print("PUBLISH FAILED: /workspace/fb-staging/brief.md がありません（先に本文を書いてください）")
         return 1
     t = now()
-    meta = {"kind": a.kind, "writtenAt": t.strftime("%Y-%m-%dT%H:%M:%SZ"), "slot": "08:30" if a.kind == "auto" else None}
+    meta = {"kind": a.kind, "writtenAt": t.strftime("%Y-%m-%dT%H:%M:%SZ"), "slot": None}
     with open(BRIEF + ".meta.json", "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False)
     last = ""
@@ -219,7 +265,7 @@ def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     v = sub.add_parser("verify"); v.add_argument("file", nargs="?")
-    sub.add_parser("should-run-auto")
+    sr = sub.add_parser("should-run-auto"); sr.add_argument("--explain", action="store_true")
     r = sub.add_parser("record"); r.add_argument("kind", choices=["manual", "auto"])
     p = sub.add_parser("publish"); p.add_argument("--kind", required=True, choices=["manual", "auto"])
     a = ap.parse_args()
