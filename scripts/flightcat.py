@@ -11,6 +11,9 @@
                    MVFR は 8,000m〜5SM かつ/または 1,500〜3,000ft、LIFR は FAA のまま。
                    【2026-11-18 確認：指定の告示は無く、現在 strict は 0 件。出典: AIP Japan ENR 1.2 §1.2（SWIM AIP, AIRAC 2026-10-29）、
                     航空法施行規則第5条第4号、国土交通省告示第776号（平成17年。調布・但馬・天草は圏外の空港に 5km/300m を適用する別の指定）】
+  海外空港        ＝ ICAO が RJ/RO 以外（日本の空港でない）は FAA の基準そのまま：
+                   LIFR: 視程 <1SM または シーリング <500ft ／ IFR: 1SM〜<3SM または 500〜<1,000ft
+                   MVFR: 3〜5SM または 1,000〜3,000ft ／ VFR: >5SM かつ >3,000ft
 視程・シーリングの悪い方を採用する。js/wx.js の flightCategory と同じ判定（変えるときは両方）。
 旧版（wx-brief lib/flightCategory.js）は IFR/VFR の境界が視程 3SM(4,828m)。それ以外の区分は同じ。
 """
@@ -25,6 +28,8 @@ LIFR_VIS_M = M_PER_SM   # 1SM（FAA）
 LIFR_CEIL_FT = 500      # FAA
 MVFR_VIS_M = 5 * M_PER_SM   # 5SM（FAA）
 MVFR_CEIL_FT = 3000     # FAA
+
+FAA_IFR_VIS_M = 3 * M_PER_SM   # 海外空港：IFR は 3SM(4,828m) 未満（FAA）
 
 STRICT_IFR_VIS_M = 8000.0   # 告示空港（施行規則第5条第4号イの括弧書き）
 STRICT_IFR_CEIL_FT = 1500   # 同ロの括弧書き（450m ≒ 1,476ft。METAR は100ft刻みなので 1,500ft 未満と同じ）
@@ -41,8 +46,15 @@ def _load_strict():
 STRICT_AIRPORTS = _load_strict()
 
 
+def is_foreign(icao):
+    """日本の空港（ICAO が RJ/RO で始まる）以外。"""
+    return bool(icao) and not str(icao).upper().startswith(("RJ", "RO"))
+
+
 def limits(icao=None):
-    """空港ごとの IFR 境界 (視程m, シーリングft, 告示空港か)。"""
+    """空港ごとの IFR 境界 (視程m, シーリングft, 告示空港か)。海外空港は FAA（IFR は 3SM・1,000ft 未満）。"""
+    if is_foreign(icao):
+        return FAA_IFR_VIS_M, IFR_CEIL_FT, False
     if icao and str(icao).upper() in STRICT_AIRPORTS:
         return STRICT_IFR_VIS_M, STRICT_IFR_CEIL_FT, True
     return IFR_VIS_M, IFR_CEIL_FT, False

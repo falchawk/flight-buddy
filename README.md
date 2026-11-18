@@ -142,10 +142,8 @@ python3 -m http.server 8000   # → http://localhost:8000/
   **2026-11-18 確認：指定の告示は無く、指定空港は 0 件**（AIP Japan ENR 1.2 §1.2 は全空港 5km/300m。調布・但馬・天草は告示776号で「圏外の空港に 5km/300m を適用」する別の指定）。
   告示が出たら `js/vmc-designated.js` の `strict` に ICAO を足すだけで、地図・バッジ・IFR 赤・パック分類（scripts/flightcat.py が同じファイルを読む）・凡例が切り替わる。
 
-## BRIEF の作り方（自動 08:30／手動リクエスト）
+## BRIEF の作り方（自動 08:30／手動）
 - 毎日 08:30 JST にボットが本文を作って公開（`scripts/brief_request.py should-run-auto` → 本文を書く → `publish --kind auto`）。15分ごとの更新は本文を書きません。
-- 08:30 以外は BRIEF タブのボタン →暗証番号（数字・毎回入力・端末に保存しない）→ 依頼メール（SETTINGS に送り先を保存。この端末の localStorage だけ）。
-  ボットは `verify`（環境変数 FB_BRIEF_PIN と定数時間で比較。5回違いで30分ロック、成功も約10分に1回まで）→ 本文 → `publish --kind manual`。
+- 手動はチャットでボットに頼みます（`publish --kind manual`）。アプリに依頼ボタンや暗証番号の入力はありません。
 - 今日 03:00 JST 以降に手動で作っていれば 08:30 の自動作成は行いません。
 - アプリは本文の作成時刻と「自動(08:30)／手動」を表示します（brief.json の writtenAt・kind）。
-- Grok Bot の Webhook はブラウザ（github.io）からは CORS で呼べないため、依頼はメールです。暗証番号や鍵はこのリポジトリに入れません。

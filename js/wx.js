@@ -11,7 +11,10 @@
   const STRICT = new Set(((window.FB_VMC && window.FB_VMC.strict) || []).map((x) => String(x).toUpperCase()));
   const NORMAL = { vis: 5000, ceil: 1000, strict: false, text: '航空法 5km/1000ft' };
   const DESIGNATED = { vis: 8000, ceil: 1500, strict: true, text: '告示空港: 8km/1500ft' };
-  const limitsFor = (icao) => (icao && STRICT.has(String(icao).toUpperCase()) ? DESIGNATED : NORMAL);
+  // 海外空港（ICAO が RJ/RO 以外）は FAA の基準そのまま：IFR は 3SM 未満または 1,000ft 未満（LIFR <1SM/<500ft、MVFR 3〜5SM/1,000〜3,000ft、VFR >5SM かつ >3,000ft）。scripts/flightcat.py と同じ
+  const FAA = { vis: 3 * SM_M, ceil: 1000, strict: false, faa: true, text: 'FAA基準' };
+  const isForeign = (icao) => !!icao && !/^(RJ|RO)/i.test(String(icao));
+  const limitsFor = (icao) => (isForeign(icao) ? FAA : icao && STRICT.has(String(icao).toUpperCase()) ? DESIGNATED : NORMAL);
   function ifrToken(t, prev, lim) {
     const IFR_VIS_M = lim.vis, IFR_CEIL_FT = lim.ceil;
     let m;
@@ -157,5 +160,5 @@
     if (!fv || !fc) return fv || fc;
     return rank[fv] <= rank[fc] ? fv : fc;
   }
-  window.FBWx = { esc, highlight, tafLines, tafLinesWithWindow, flightCategory, limitsFor };
+  window.FBWx = { esc, highlight, tafLines, tafLinesWithWindow, flightCategory, limitsFor, isForeign };
 })();

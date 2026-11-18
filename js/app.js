@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.6';
+  const APP_VERSION = '1.9.7';
   const REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
@@ -169,7 +169,7 @@
     }).join('');
     const summary = `<div class="card"><div class="card-title"><span>選択空港サマリー</span><span class="hint">METAR / TAF最大ガスト</span></div><table class="sum-table"><tbody>${rows}</tbody></table></div>`;
     const carried = b?.ok && b.carriedOver ? `<p class="hint"><span class="badge stale">前回のブリーフ</span> 本文は ${esc(fmtJst(b.writtenAt))} 作成（${esc(ageText(b.writtenAt))}）。METAR/TAF・図は最新パックの内容です。</p>` : '';
-    $('brief-body').innerHTML = summary + carried + `<div class="brief-text">${b?.ok && b.text ? mdToHtml(b.text) : '<p class="hint">いまのブリーフ本文はまだありません。毎日 08:30（JST）に自動で作られます。今すぐ必要なときは上のボタンから依頼できます。</p>'}</div>`;
+    $('brief-body').innerHTML = summary + carried + `<div class="brief-text">${b?.ok && b.text ? mdToHtml(b.text) : '<p class="hint">いまのブリーフ本文はまだありません。毎日 08:30（JST）に自動で作られます。</p>'}</div>`;
   }
 
   // ---------------------------------------------------------------- WX
@@ -197,7 +197,7 @@
         const latest = e.metar?.[0];
         const cat = latest ? (window.FBWx.flightCategory(latest.raw, icao) || latest.fltCat) : null;
         body = `${e.carriedOver ? `<p class="hint"><span class="badge stale">STALE</span> 今回の取得に失敗したため前回の値です（${esc(fmtJst(e.fetchedAt))}取得）</p>` : (apProf(icao)?.foreign && e.fetchedAt ? `<p class="hint">METAR/TAF 取得 ${esc(fmtJst(e.fetchedAt))}（${esc(ageText(e.fetchedAt))}）・海外空港は1時間ごとに更新</p>` : '')}
-          <div class="sub-label">METAR ${latest ? `${esc(fmtUtc(latest.obsTime))}（${esc(fmtJst(latest.obsTime, false))}）` : ''} ${cat ? `<span class="badge ${cat}">${cat}</span>` : ''} <span class="vmc-basis${window.FBWx.limitsFor(icao).strict ? ' strict' : ''}" title="飛行状態の IFR 境界（航空法施行規則第5条第4号）">${esc(window.FBWx.limitsFor(icao).text)}</span> <span class="doc-status ${latest ? 'ok' : 'fail'}">${esc(e.metarSource || 'NONE')}</span></div>
+          <div class="sub-label">METAR ${latest ? `${esc(fmtUtc(latest.obsTime))}（${esc(fmtJst(latest.obsTime, false))}）` : ''} ${cat ? `<span class="badge ${cat}">${cat}</span>` : ''} <span class="vmc-basis${window.FBWx.limitsFor(icao).strict ? ' strict' : ''}" title="${window.FBWx.limitsFor(icao).faa ? '飛行状態の判定基準（FAA：IFR は 3SM 未満または 1,000ft 未満）' : '飛行状態の IFR 境界（航空法施行規則第5条第4号）'}">${esc(window.FBWx.limitsFor(icao).text)}</span> <span class="doc-status ${latest ? 'ok' : 'fail'}">${esc(e.metarSource || 'NONE')}</span></div>
           ${latest ? `<div class="raw">${window.FBWx.highlight(latest.raw, icao)}</div>` : naBox('METAR 未取得')}
           ${srcNotes(e, 'metar')}
           ${e.metar?.length > 1 ? `<details><summary>過去のMETAR（${e.metar.length - 1}件）</summary>${e.metar.slice(1).map((x) => `<div class="raw" style="margin-top:4px">${window.FBWx.highlight(x.raw, icao)}</div>`).join('')}</details>` : ''}
@@ -706,65 +706,6 @@
   }
 
 
-  // ---------------------------------------------------------------- BRIEF リクエスト（08:30 以外は暗証番号つきの手動作成）
-  // 依頼はメール（mailto）で送る。Grok Bot の Webhook は CORS が github.io を許可していないのでブラウザからは呼べない。
-  // 送り先アドレスは localStorage（この端末だけ）。暗証番号は毎回入力で、変数にも保存しない（送信直後に消す）。
-  const BRIEF_TO_KEY = 'fb.briefTo';
-  const jstMinutes = () => { const j = new Date(Date.now() + 9 * 3600e3); return j.getUTCHours() * 60 + j.getUTCMinutes(); };
-  const inBriefSlot = () => { const t = jstMinutes(); return t >= 8 * 60 + 25 && t <= 9 * 60 + 10; };   // 08:30 の自動作成の時間帯（08:25〜09:10 JST）
-  let briefPoll = 0;
-  function briefStatus(text, cls = '') { const e = $('brief-req-status'); if (e) { e.textContent = text; e.className = `hint ${cls}`; } }
-  function askPin() {
-    return new Promise((resolve) => {
-      const ov = document.createElement('div'); ov.className = 'pin-overlay';
-      ov.innerHTML = `<form class="pin-box" role="dialog" aria-modal="true" aria-labelledby="pin-title"><h3 id="pin-title">暗証番号を入力</h3>
-        <p>自動作成の時刻（毎日 08:30 JST）ではありません。今すぐブリーフを作るには暗証番号を入力してください。</p>
-        <input id="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autocorrect="off" maxlength="12" autofocus enterkeyhint="send" aria-label="暗証番号（数字）" />
-        <div class="pin-err" id="pin-err"></div>
-        <div class="row"><button type="button" class="btn" id="pin-cancel">キャンセル</button><button type="submit" class="btn" id="pin-ok">送信</button></div></form>`;
-      document.body.appendChild(ov);
-      const inp = ov.querySelector('#pin-input'), err = ov.querySelector('#pin-err');
-      const done = (v) => { inp.value = ''; ov.remove(); resolve(v); };
-      inp.oninput = () => { inp.value = inp.value.replace(/[^0-9]/g, ''); err.textContent = ''; };
-      ov.querySelector('#pin-cancel').onclick = () => done(null);
-      ov.onclick = (e) => { if (e.target === ov) done(null); };
-      ov.querySelector('form').onsubmit = (e) => { e.preventDefault(); if (!/^[0-9]{4,12}$/.test(inp.value)) { err.textContent = '数字 4〜12 桁で入力してください'; return; } done(inp.value); };
-      inp.focus(); setTimeout(() => inp.focus(), 50);
-    });
-  }
-  async function pollBrief(baseline) {
-    const my = ++briefPoll, end = Date.now() + 8 * 60e3;
-    while (Date.now() < end && my === briefPoll) {
-      await new Promise((r) => setTimeout(r, 20000));
-      if (my !== briefPoll) return;
-      const mins = Math.round((Date.now() - (end - 8 * 60e3)) / 60e3);
-      if (!navigator.onLine) { briefStatus('オフラインです。電波が戻ると確認を続けます'); continue; }
-      try { await refresh(false); } catch { /* 次の回で再試行 */ }
-      const b = state.pack?.brief;
-      if (b?.ok && b.writtenAt && b.writtenAt !== baseline && b.kind === 'manual') { briefStatus(`新しいブリーフを表示しました（${fmtJst(b.writtenAt)}・手動）`, 'ok'); return; }
-      briefStatus(`メール送信済みなら数分で反映されます（確認中・${mins}分経過）`);
-    }
-    if (my === briefPoll) briefStatus('8分たっても新しいブリーフが出ませんでした。メールを送信したか確認してください。暗証番号の間違い・ロック中（5回違いで30分）・直前の依頼から10分以内の場合も反映されません（アプリには結果が返らないため区別できません）。', 'bad');
-  }
-  function setupBriefRequest() {
-    const to = $('brief-to'); if (to) { to.value = lsGet(BRIEF_TO_KEY, ''); }
-    $('brief-to-save').onclick = () => { const v = to.value.trim(); if (v) lsSet(BRIEF_TO_KEY, v); else localStorage.removeItem(BRIEF_TO_KEY); $('brief-to-msg').classList.remove('hidden'); setTimeout(() => $('brief-to-msg').classList.add('hidden'), 1500); };
-    $('brief-req-btn').onclick = async () => {
-      if (inBriefSlot()) { briefStatus('いまは 08:30 の自動作成の時間帯です。暗証番号は不要です。数分後に最新パックを確認します。'); briefPoll++; refresh(false); return; }
-      const dest = String(lsGet(BRIEF_TO_KEY, '') || '').trim();
-      if (!dest) { briefStatus('依頼の送り先が未設定です。SETTINGS の「BRIEF リクエスト」にメールアドレスを入れてください。', 'bad'); return; }
-      if (!navigator.onLine) { briefStatus('オフラインのため送れません。オンラインにしてからもう一度押してください。', 'bad'); return; }
-      let pin = await askPin();
-      if (!pin) return;
-      const body = JSON.stringify({ pin, requestedAt: new Date().toISOString() });
-      pin = null;
-      const baseline = state.pack?.brief?.writtenAt || null;
-      briefStatus('メール作成画面を開きます。そのまま送信してください（本文は変えないでください）。');
-      location.href = `mailto:${encodeURIComponent(dest).replace(/%40/g, '@')}?subject=${encodeURIComponent('FB-BRIEF-REQUEST')}&body=${encodeURIComponent(body)}`;
-      setTimeout(() => { briefStatus('送信すると数分で反映されます（確認中）'); pollBrief(baseline); }, 1500);
-    };
-  }
-
   // ---------------------------------------------------------------- WX だけ更新（公開パックの気象部分だけ。端末は外部の気象サイトに直接アクセスしない）
   let toastTimer = null;
   function toast(text, bad = false, ms = 6000) {
@@ -850,7 +791,7 @@
   }
   async function start() {
     $('app-version').textContent = `App v${APP_VERSION}`;
-    setupTheme(); setupTabs(); setupTas(); setupDuty(); setupFlights(); setupAirportPicker(); setupFeedback(); setupBriefRequest();
+    setupTheme(); setupTabs(); setupTas(); setupDuty(); setupFlights(); setupAirportPicker(); setupFeedback();
     window.FBViewer.setup();
     $('airport-date').value = state.duty.date || todayJst();
     $('airport-date').onchange = renderAirport;

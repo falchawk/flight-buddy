@@ -53,7 +53,7 @@
       <div id="map-box" class="map-box"></div>
       <div class="map-overlay">
         <div class="map-legend"><span class="badge VFR">VFR</span><span class="badge MVFR">MVFR</span><span class="badge IFR">IFR</span><span class="badge LIFR">LIFR</span></div>
-        <div class="map-thresh">IFR：視程 &lt;5000m または 雲高 &lt;1000ft（航空法施行規則§5）。告示空港（8km/450m）は 視程 &lt;8000m または &lt;1500ft（現在 指定 0 件）<br>MVFR：5000m〜5SM または 1000〜3000ft ／ LIFR：&lt;1SM または &lt;500ft（FAA）</div>
+        <div class="map-thresh">IFR：視程 &lt;5000m または 雲高 &lt;1000ft（航空法施行規則§5）。告示空港（8km/450m）は 視程 &lt;8000m または &lt;1500ft（現在 指定 0 件）<br>MVFR：5000m〜5SM または 1000〜3000ft ／ LIFR：&lt;1SM または &lt;500ft（FAA）<br>海外空港（RJ/RO 以外）は FAA 基準：IFR 1〜&lt;3SM または 500〜&lt;1000ft ／ MVFR 3〜5SM または 1000〜3000ft ／ VFR &gt;5SM かつ &gt;3000ft</div>
         <div id="map-meta" class="map-meta"></div>
       </div>
     </section>
@@ -61,10 +61,6 @@
     <section id="tab-brief" class="tab-panel">
       <h2>BRIEF</h2>
       <div id="brief-meta" class="hint"></div>
-      <div id="brief-req" class="brief-req">
-        <button id="brief-req-btn" class="btn" type="button">ブリーフを今すぐ作成（リクエスト）</button>
-        <div id="brief-req-status" class="hint" role="status" aria-live="polite"></div>
-      </div>
       <div id="brief-body" class="brief-body"></div>
     </section>
 
@@ -151,10 +147,6 @@
       <div id="ap-sync"></div>
       <p class="hint">ボットはパックの全空港（METAR/TAF のある国内空港すべて＋日本の航空会社が過去・現在に使った海外空港。国別一覧から選べます）を取得しています（国内：METAR/TAF・ATIS・図は15分ごと、NOTAM は6時間ごと＝00/06/12/18時、空港情報と時刻表は1日1回＝4時台。海外：METAR/TAF は1時間ごと、空港情報は週1回＝月曜4時台）。この端末はここで選んだ空港の分だけダウンロード・表示します（端末内の設定。選択を増やした空港はオンライン時に自動で取得。オフラインでは保存済みの空港だけ表示）。下の国別一覧からも追加できます。</p>
       <div id="ap-browse"></div>
-      <h3>BRIEF リクエスト</h3>
-      <p class="hint">BRIEF の本文は毎日 08:30（JST）に自動で作られます。それ以外の時刻に作るときは、BRIEF タブのボタンから暗証番号を入れて依頼します（暗証番号は毎回入力・端末には保存しません）。依頼はブラウザから Grok Bot の Webhook を直接呼べない（CORS で拒否される）ため、メールで送ります。送り先のメールアドレスはこの端末だけに保存され、公開リポジトリには入りません。</p>
-      <input id="brief-to" type="email" placeholder="依頼の送り先メールアドレス（ボットの受信箱）" autocomplete="off" autocapitalize="off" spellcheck="false" />
-      <div class="row"><button id="brief-to-save" class="btn" type="button">SAVE</button><span id="brief-to-msg" class="hint hidden">保存しました</span></div>
       <h3>FEEDBACK</h3>
       <p class="hint">文章で自由に書いてください。端末に保存され、「Botに送る」で GitHub issue としてボットに渡せます（ボットはブリーフ作成時に参照。オンライン時のみ）。</p>
       <textarea id="feedback-text" rows="6" placeholder="自由に書いてください"></textarea>
