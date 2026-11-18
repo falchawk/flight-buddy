@@ -140,7 +140,7 @@ def _clean(text):
     return (text or "").strip() or None
 
 
-def apply_priority(wx, swim, targets, ogimet_fn=None):
+def apply_priority(wx, swim, targets, ogimet_fn=None, fetched=None):
     """wx-brief main と同じ優先順位で、targets（SWIM 対象空港）の METAR/TAF の出典を決める。
     SWIM の空港プロファイルは SWIM への負荷を抑えるため30分ごとの取得なので、AWC の観測（発表）の方が
     新しい時だけ AWC を採る（同時刻以前なら必ず SWIM）。全空港に metarSource/tafSource/category を付ける。"""
@@ -149,6 +149,8 @@ def apply_priority(wx, swim, targets, ogimet_fn=None):
     pr = (swim or {}).get("profile") or {}
     by = pr.get("byIcao") or {}
     for icao, e in wx["airports"].items():
+        if fetched is not None and icao not in fetched:
+            continue   # 今回は問い合わせなかった海外空港（前回の値をそのまま。出典ラベルも前回のまま）
         e["metarSource"] = "AWC" if e.get("metar") else None
         e["tafSource"] = "AWC" if e.get("taf") else None
         if e.get("metar"):
@@ -179,10 +181,14 @@ def apply_priority(wx, swim, targets, ogimet_fn=None):
                     m for m in (e.get("metar") or []) if not obs or (m.get("obsTime") or "") < obs]
                 e["metarSource"] = "SWIM"
                 e["ok"] = True
+                if e.get("carriedOver"):   # 今回 SWIM から新しい報が取れたので「前回の値」ではない
+                    e.pop("carriedOver", None)
+                    e["error"] = None
+                    e["fetchedAt"] = wx.get("fetchedAt")
         else:
             e["swimFailReason"] = why
         if not e.get("metar") and ogimet_fn:
-            og = ogimet_fn(icao)
+            og = ogimet_fn(icao) or {"ok": False, "reason": "未確認"}
             if og.get("ok"):
                 e["metar"] = [{"raw": og["rawText"], "obsTime": _metar_obs_iso(og["rawText"], now), "source": "OGIMET",
                                "fltCat": classify_metar(og["rawText"], icao)}]
@@ -202,8 +208,24 @@ def apply_priority(wx, swim, targets, ogimet_fn=None):
                 e["taf"] = {"raw": st, "issueTime": None, "validFrom": None, "validTo": None, "source": "SWIM"}
                 e["tafSource"] = "SWIM"
                 e["ok"] = True
+                if e.get("carriedOver"):
+                    e.pop("carriedOver", None)
+                    e["error"] = None
+                    e["fetchedAt"] = wx.get("fetchedAt")
         else:
             e["swimTafFailReason"] = why
+    # SWIM 対象外（海外など）で、今回 AWC に問い合わせて METAR が無かった空港は Ogimet の結果を採る
+    for icao, e in wx["airports"].items():
+        if icao in targets or (fetched is not None and icao not in fetched) or e.get("metar") or not ogimet_fn:
+            continue
+        og = ogimet_fn(icao)
+        if og and og.get("ok"):
+            e["metar"] = [{"raw": og["rawText"], "obsTime": _metar_obs_iso(og["rawText"], now), "source": "OGIMET",
+                           "fltCat": classify_metar(og["rawText"], icao)}]
+            e["metarSource"] = "OGIMET"
+            e["ok"] = True
+        elif og:
+            e["ogimetFailReason"] = og.get("reason")
     for icao_, e in wx["airports"].items():  # 飛行状態の判定は旧版と同じ（lib/flightCategory.js）。告示空港は 8km/1500ft 基準
         for m in e.get("metar") or []:
             m["fltCat"] = classify_metar(m.get("raw"), icao_) or ("VFR" if m is (e.get("metar") or [None])[0] else None)

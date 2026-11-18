@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.4';
+  const APP_VERSION = '1.9.5';
   const REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
@@ -54,7 +54,7 @@
   const apName = (icao) => { const a = airportInfo(icao); const p = apIdx(icao); return a ? a.name : (state.pack?.manifest?.airportNames?.[icao] || p?.name || icao); };
   const apCodes = (icao) => { const a = airportInfo(icao); const p = apIdx(icao); const iata = a?.iata || p?.iata; return iata ? `${icao} / ${iata}` : icao; };
   const apProf = (icao) => state.pack?.airports?.airports?.[icao] || apIdx(icao) || null;
-  const COUNTRY_JA = { Japan: '日本', Taiwan: '台湾', 'South Korea': '韓国', Korea: '韓国', China: '中国', 'Hong Kong': '香港', Macau: 'マカオ', Philippines: 'フィリピン', Thailand: 'タイ', Vietnam: 'ベトナム', Singapore: 'シンガポール', Malaysia: 'マレーシア', Indonesia: 'インドネシア', India: 'インド', Australia: 'オーストラリア', 'United States': 'アメリカ', USA: 'アメリカ', Guam: 'グアム', 'Northern Mariana Islands': '北マリアナ諸島', France: 'フランス', Germany: 'ドイツ', Spain: 'スペイン', Sweden: 'スウェーデン', Austria: 'オーストリア', Greece: 'ギリシャ', Bulgaria: 'ブルガリア', 'United Arab Emirates': 'アラブ首長国連邦', Canada: 'カナダ', 'United Kingdom': 'イギリス', Russia: 'ロシア', Mongolia: 'モンゴル', Cambodia: 'カンボジア', Myanmar: 'ミャンマー', 'New Zealand': 'ニュージーランド', Ireland: 'アイルランド', Netherlands: 'オランダ', Italy: 'イタリア', Azerbaijan: 'アゼルバイジャン', Brazil: 'ブラジル', 'Cabo Verde': 'カーボベルデ', Cyprus: 'キプロス', 'Guam (US)': 'グアム（米）', Kazakhstan: 'カザフスタン', 'Northern Mariana Islands (US)': '北マリアナ諸島（米）', Palau: 'パラオ', Portugal: 'ポルトガル' };
+  const COUNTRY_JA = { Japan: '日本', Taiwan: '台湾', 'South Korea': '韓国', Korea: '韓国', China: '中国', 'Hong Kong': '香港', Macau: 'マカオ', Philippines: 'フィリピン', Thailand: 'タイ', Vietnam: 'ベトナム', Singapore: 'シンガポール', Malaysia: 'マレーシア', Indonesia: 'インドネシア', India: 'インド', Australia: 'オーストラリア', 'United States': 'アメリカ', USA: 'アメリカ', Guam: 'グアム', 'Northern Mariana Islands': '北マリアナ諸島', France: 'フランス', Germany: 'ドイツ', Spain: 'スペイン', Sweden: 'スウェーデン', Austria: 'オーストリア', Greece: 'ギリシャ', Bulgaria: 'ブルガリア', 'United Arab Emirates': 'アラブ首長国連邦', Canada: 'カナダ', 'United Kingdom': 'イギリス', Russia: 'ロシア', Mongolia: 'モンゴル', Cambodia: 'カンボジア', Myanmar: 'ミャンマー', 'New Zealand': 'ニュージーランド', Ireland: 'アイルランド', Netherlands: 'オランダ', Italy: 'イタリア', Azerbaijan: 'アゼルバイジャン', Brazil: 'ブラジル', 'Cabo Verde': 'カーボベルデ', Cyprus: 'キプロス', 'Guam (US)': 'グアム（米）', Kazakhstan: 'カザフスタン', 'Northern Mariana Islands (US)': '北マリアナ諸島（米）', Palau: 'パラオ', Portugal: 'ポルトガル', Pakistan: 'パキスタン', Switzerland: 'スイス', 'New Caledonia': 'ニューカレドニア', Belgium: 'ベルギー', Finland: 'フィンランド', Oman: 'オマーン', Fiji: 'フィジー', Bahrain: 'バーレーン', Denmark: 'デンマーク', Iceland: 'アイスランド', Turkey: 'トルコ', Croatia: 'クロアチア', Iran: 'イラン', Egypt: 'エジプト', 'Saudi Arabia': 'サウジアラビア', Qatar: 'カタール', Venezuela: 'ベネズエラ', Latvia: 'ラトビア', Kuwait: 'クウェート', Mexico: 'メキシコ', Lebanon: 'レバノン', 'United States Minor Outlying Islands': 'アメリカ領小離島' };
   const countryJa = (c) => COUNTRY_JA[c] || c || '不明';
   // 画面に出す順は旧版と同じ北→南（緯度が高い方が先、同じなら経度が大きい＝東が先）。手動の並べ替えはしない
   const apPos = (icao) => { const a = airportInfo(icao), p = apIdx(icao); return { lat: a?.lat ?? p?.lat ?? -999, lon: a?.lon ?? p?.lon ?? -999 }; };
@@ -195,7 +195,7 @@
       else {
         const latest = e.metar?.[0];
         const cat = latest ? (window.FBWx.flightCategory(latest.raw, icao) || latest.fltCat) : null;
-        body = `${e.carriedOver ? `<p class="hint"><span class="badge stale">STALE</span> 今回の取得に失敗したため前回の値です（${esc(fmtJst(e.fetchedAt))}取得）</p>` : ''}
+        body = `${e.carriedOver ? `<p class="hint"><span class="badge stale">STALE</span> 今回の取得に失敗したため前回の値です（${esc(fmtJst(e.fetchedAt))}取得）</p>` : (apProf(icao)?.foreign && e.fetchedAt ? `<p class="hint">METAR/TAF 取得 ${esc(fmtJst(e.fetchedAt))}（${esc(ageText(e.fetchedAt))}）・海外空港は1時間ごとに更新</p>` : '')}
           <div class="sub-label">METAR ${latest ? `${esc(fmtUtc(latest.obsTime))}（${esc(fmtJst(latest.obsTime, false))}）` : ''} ${cat ? `<span class="badge ${cat}">${cat}</span>` : ''} <span class="vmc-basis${window.FBWx.limitsFor(icao).strict ? ' strict' : ''}" title="飛行状態の IFR 境界（航空法施行規則第5条第4号）">${esc(window.FBWx.limitsFor(icao).text)}</span> <span class="doc-status ${latest ? 'ok' : 'fail'}">${esc(e.metarSource || 'NONE')}</span></div>
           ${latest ? `<div class="raw">${window.FBWx.highlight(latest.raw, icao)}</div>` : naBox('METAR 未取得')}
           ${srcNotes(e, 'metar')}
@@ -580,7 +580,7 @@
       const ul = $('ap-selected'); ul.innerHTML = '';
       const m = state.pack?.manifest;
       const bytes = m && window.FBPack.deviceBytes ? window.FBPack.deviceBytes(m, wantedAirports()) : 0;
-      $('ap-sync').innerHTML = m ? `<p class="hint">ボットはパックの全 ${m.airports.length} 空港を取得しています（METAR/TAF・ATIS・図は15分ごと、NOTAM は6時間ごと、空港情報と時刻表は1日1回）。この端末にダウンロードするのは、ここで選んだ空港${dutyAirports().some((i) => !mainAirports().includes(i)) ? '（＋DUTY の区間の空港）' : ''}と共通の図だけです${m.airportFiles ? `（今の選択で約 ${fmtBytes(bytes)}）` : ''}。空港を増やすと、オンライン時にその空港の分だけ追加で取得します。</p>` : '';
+      $('ap-sync').innerHTML = m ? `<p class="hint">ボットはパックの全 ${m.airports.length} 空港を取得しています（国内：METAR/TAF・ATIS・図は15分ごと、NOTAM は6時間ごと、空港情報と時刻表は1日1回。海外：METAR/TAF は1時間ごと、空港情報は週1回）。この端末にダウンロードするのは、ここで選んだ空港${dutyAirports().some((i) => !mainAirports().includes(i)) ? '（＋DUTY の区間の空港）' : ''}と共通の図だけです${m.airportFiles ? `（今の選択で約 ${fmtBytes(bytes)}）` : ''}。空港を増やすと、オンライン時にその空港の分だけ追加で取得します。</p>` : '';
       mainAirports().forEach((icao, i) => {
         const li = document.createElement('li');
         li.innerHTML = `<span>${esc(apName(icao))} <span class="codes">${esc(apCodes(icao))}</span>${!packHas(icao) ? ' <span class="badge na">パック未収録</span>' : (state.pack && !loaded(icao) ? ' <span class="badge na">未ダウンロード</span>' : '')}</span><span><button class="btn btn-danger" data-a="rm">削除</button></span>`;
@@ -783,7 +783,8 @@
       + `空港プロファイル＝SWIM の METAR/TAF（15分ごと）：${sm.profile}/${sm.targets}空港 ・ ${age(ft.profile)}<br>`
       + `NOTAM（6時間ごと＝00/06/12/18時 JST）：${n?.ok ? `${sm.notam}件 ・ ${age(n.fetchedAt)}` : esc(n?.note || '未取得')}<br>`
       + `AIP（AD 2・Lost Communication。1日1回＝4時台 JST）：Lost Comm ${sm.lostComm}/${sm.targets}空港（AIP に該当項目がある空港のみ） ・ ${age(ft.aip)}<br>`
-      + `NOAA 空港情報（参考値。1日1回＝4時台 JST）：${age(ft.noaa)}<br>`
+      + `NOAA 空港情報・国内（参考値。1日1回＝4時台 JST）：${age(ft.noaa)}<br>`
+      + `海外空港：METAR/TAF は1時間ごと（直近の取得 ${age(ft.wxForeign)}）、空港情報（NOAA）は週1回＝月曜4時台 JST（${age(ft.noaaForeign)}）。海外の ATIS・NOTAM は対象外<br>`
       + `<span class="hint">この端末には SETTINGS で選んだ空港の分だけ保存されます（${targets.length ? `国内の選択 ${mainAirports().filter((i) => targets.includes(i)).length}空港` : ''}）。</span>`;
   }
   async function start() {

@@ -1,11 +1,15 @@
 """取得元ごとの「実行する時刻（due）」の判定。自動更新（15分ごと）の各回で、どの取得元を取るかをここで決める。
 
-  毎回（15分ごと）   METAR/TAF（SWIM 空港プロファイル→AWC→Ogimet）・ATIS・図（WX の画像）
+  毎回（15分ごと）   国内の METAR/TAF（SWIM 空港プロファイル→AWC→Ogimet）・ATIS・図（WX の画像）
   6時間ごと          SWIM NOTAM            … 毎日 00:00 / 06:00 / 12:00 / 18:00 JST
-  1日1回             空港情報              … 毎日 04:00 JST（SWIM AIP AD 2＋Lost Comm、NOAA/AWC 空港情報＝参考値）
+  1日1回             国内の空港情報         … 毎日 04:00 JST（SWIM AIP AD 2＋Lost Comm、NOAA/AWC 空港情報＝参考値）
+  1時間に1回          海外空港の METAR/TAF   … 毎正時以降の最初の回（海外は取らない回は前回の値と取得時刻をそのまま引き継ぐ）
+  週1回              海外空港の空港情報(NOAA) … 毎週月曜 04:00 JST
   1日1回             時刻表（全ソース）     … 毎日 04:30 JST（ODPT 全件・ANA 公式PDF・空港の発着案内・各社PDF・rararakt）
   ※ SWIM の空港プロファイルは METAR/TAF 本文を含む唯一の SWIM の応答なので、毎回取る（SWIM 優先を保つため）。
 
+実行は :02 / :17 / :32 / :47（JST）。予定時刻（00/06/12/18時・04:00・04:30・毎正時）は「予定時刻以降の最初の回」で取るので、
+実行時刻が数分ずれていても問題ない（例: 00:00 の NOTAM は 00:02 の回、毎正時の海外 WX は :02 の回）。
 「予定時刻」を過ぎてから一度も成功していなければ due（＝取りこぼしても次の回で追いつく）。
 失敗した時は 60 分あけて再試行（15分ごとに叩き続けない）。成功／試行の記録は staging の due-state.json。
 """
@@ -24,9 +28,11 @@ SCHEDULE = {
     "notam": [(0, 0), (6, 0), (12, 0), (18, 0)],
     "aip": [(4, 0)],
     "noaa_airport": [(4, 0)],
+    "noaa_airport_foreign": [(0, 4, 0)],   # 週1回（毎週月曜 04:00 JST）。(曜日, 時, 分)、曜日は 0=月
+    "wx_foreign": [(h, 0) for h in range(24)],   # 海外空港の METAR/TAF は1時間に1回（毎正時。15分ごとの実行のうち :00 以降の最初の回）
     "flights": [(4, 30)],
 }
-LABEL = {"atis": "ATIS", "profile": "METAR/TAF(SWIM)", "notam": "NOTAM", "aip": "AIP", "noaa_airport": "空港情報(NOAA)", "flights": "時刻表"}
+LABEL = {"noaa_airport_foreign": "海外空港情報(NOAA)", "wx_foreign": "海外METAR/TAF", "atis": "ATIS", "profile": "METAR/TAF(SWIM)", "notam": "NOTAM", "aip": "AIP", "noaa_airport": "空港情報(NOAA)", "flights": "時刻表"}
 
 
 def now_utc():
@@ -34,14 +40,25 @@ def now_utc():
     return dt.datetime.strptime(v, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc) if v else dt.datetime.now(dt.timezone.utc)
 
 
+def _slot_times(day_date, slots):
+    """その日（JST）に当たる予定時刻。slots の要素は (時, 分)＝毎日、(曜日, 時, 分)＝毎週。"""
+    for sl in slots:
+        if len(sl) == 3:
+            wd, h, m = sl
+            if day_date.weekday() != wd:
+                continue
+        else:
+            h, m = sl
+        yield dt.datetime(day_date.year, day_date.month, day_date.day, h, m, tzinfo=JST)
+
+
 def latest_slot(now, slots):
     """now 以前で最も新しい予定時刻（UTC aware）。"""
     j = now.astimezone(JST)
     best = None
-    for day in (0, -1):
+    for day in range(0, -9, -1):
         d = (j + dt.timedelta(days=day)).date()
-        for h, m in slots:
-            t = dt.datetime(d.year, d.month, d.day, h, m, tzinfo=JST)
+        for t in _slot_times(d, slots):
             if t <= j and (best is None or t > best):
                 best = t
     return best.astimezone(dt.timezone.utc)
@@ -50,10 +67,9 @@ def latest_slot(now, slots):
 def next_slot(now, slots):
     j = now.astimezone(JST)
     best = None
-    for day in (0, 1):
+    for day in range(0, 9):
         d = (j + dt.timedelta(days=day)).date()
-        for h, m in slots:
-            t = dt.datetime(d.year, d.month, d.day, h, m, tzinfo=JST)
+        for t in _slot_times(d, slots):
             if t > j and (best is None or t < best):
                 best = t
     return best
@@ -121,8 +137,9 @@ def describe(state, now=None):
     now = now or now_utc()
     out = {}
     for p, slots in SCHEDULE.items():
-        if slots:
-            out[p] = next_slot(now, slots).strftime("%H:%M")
+        if slots and p != "wx_foreign":
+            nx = next_slot(now, slots)
+            out[p] = nx.strftime("%H:%M") if len(slots[0]) == 2 else nx.strftime("%a%H:%M")
     return out
 
 

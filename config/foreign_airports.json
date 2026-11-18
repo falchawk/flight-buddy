@@ -1,5 +1,5 @@
 {
- "_note": "日本の航空会社が運航・フェリー等で使う海外空港（ユーザー決定 2026-11-18）。airports=確認済み、unverified=出典が弱いもの。excluded は使わない。",
+ "_note": "日本の航空会社が運航・フェリー等で使う海外空港（ユーザー決定 2026-11-18）。airports=確認済み、unverified=出典が弱いもの。excluded は使わない。 2026-11-18追記: 日本の航空会社が過去・現在に就航した全空港96件を追加（verified=false は出典が弱い）。",
  "generated": "2026-11-18",
  "airports": {
   "RCTP": {
@@ -837,6 +837,2378 @@
    "verified": false,
    "source": "https://www.aussieairliners.org/a320/vh-yxu/vh-yxu.html",
    "note": "元データは YPAS と記載していたが、出典（aussieairliners.org VH-YXU/JA06JJ）は「It arrived at Alice Springs … Ferry route: Tokyo - Manila - Darwin - Alice Springs」。Alice Springs の ICAO は YBAS（IATA ASP）なので訂正（2026-11-18）"
+  },
+  "YMML": {
+   "icao": "YMML",
+   "iata": "MEL",
+   "name": "Melbourne Airport",
+   "country": "Australia",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "JAL NW26 official timetable pages + press release 2026-08-18",
+   "sources": [
+    "JAL NW26 official timetable pages + press release 2026-08-18"
+   ],
+   "lat": -37.6707,
+   "lon": 144.8379,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Melbourne"
+  },
+  "YPPH": {
+   "icao": "YPPH",
+   "iata": "PER",
+   "name": "Perth International Airport",
+   "country": "Australia",
+   "airlines": [
+    "NH",
+    "JL"
+   ],
+   "kind": [
+    "scheduled",
+    "former"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": -31.9403,
+   "lon": 115.967,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Perth"
+  },
+  "YSSY": {
+   "icao": "YSSY",
+   "iata": "SYD",
+   "name": "Sydney Kingsford Smith International Airport",
+   "country": "Australia",
+   "airlines": [
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18"
+   ],
+   "lat": -33.9461,
+   "lon": 151.177,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Sydney (Mascot)"
+  },
+  "EBBR": {
+   "icao": "EBBR",
+   "iata": "BRU",
+   "name": "Brussels Airport",
+   "country": "Belgium",
+   "airlines": [
+    "NH"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18"
+   ],
+   "lat": 50.9014,
+   "lon": 4.4844,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Zaventem"
+  },
+  "CYVR": {
+   "icao": "CYVR",
+   "iata": "YVR",
+   "name": "Vancouver International Airport",
+   "country": "Canada",
+   "airlines": [
+    "JL",
+    "NH",
+    "ZG"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18",
+    "ZIPAIR notices + MLIT NW26 (KUL starts 2026-10-20; SJC 2026-12-18..03-26 seasonal)"
+   ],
+   "lat": 49.1939,
+   "lon": -123.184,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Vancouver"
+  },
+  "ZBAA": {
+   "icao": "ZBAA",
+   "iata": "PEK",
+   "name": "Beijing Capital International Airport",
+   "country": "China",
+   "airlines": [
+    "IJ",
+    "JL",
+    "NH",
+    "NH-cargo"
+   ],
+   "kind": [
+    "scheduled",
+    "cargo"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18",
+    "NCA W26 timetable (ANA-operated freighters NH84xx/85xx)",
+    "Spring Japan NW26 notices (Jan-Mar 2027 seasonal; NGB resumes 2026-11-08)"
+   ],
+   "lat": 40.0773,
+   "lon": 116.5967,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Beijing"
+  },
+  "ZBTJ": {
+   "icao": "ZBTJ",
+   "iata": "TSN",
+   "name": "Tianjin Binhai International Airport",
+   "country": "China",
+   "airlines": [
+    "IJ",
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "scheduled",
+    "former"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+    "JAL NW26 official timetable pages + press release 2026-08-18",
+    "Spring Japan NW26 notices (Jan-Mar 2027 seasonal; NGB resumes 2026-11-08)"
+   ],
+   "lat": 39.1244,
+   "lon": 117.346,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Tianjin"
+  },
+  "ZGGG": {
+   "icao": "ZGGG",
+   "iata": "CAN",
+   "name": "Guangzhou Baiyun International Airport",
+   "country": "China",
+   "airlines": [
+    "JL",
+    "NH",
+    "NH-cargo"
+   ],
+   "kind": [
+    "scheduled",
+    "cargo"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18",
+    "NCA W26 timetable (ANA-operated freighters NH84xx/85xx)"
+   ],
+   "lat": 23.3924,
+   "lon": 113.299,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Guangzhou (Huadu)"
+  },
+  "ZGSZ": {
+   "icao": "ZGSZ",
+   "iata": "SZX",
+   "name": "Shenzhen Bao'an International Airport",
+   "country": "China",
+   "airlines": [
+    "NH"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18"
+   ],
+   "lat": 22.6395,
+   "lon": 113.8033,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Shenzhen"
+  },
+  "ZSHC": {
+   "icao": "ZSHC",
+   "iata": "HGH",
+   "name": "Hangzhou Xiaoshan International Airport",
+   "country": "China",
+   "airlines": [
+    "NH",
+    "JL"
+   ],
+   "kind": [
+    "scheduled",
+    "former"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 30.2361,
+   "lon": 120.4289,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Hangzhou"
+  },
+  "ZSNB": {
+   "icao": "ZSNB",
+   "iata": "NGB",
+   "name": "Ningbo Lishe International Airport",
+   "country": "China",
+   "airlines": [
+    "IJ"
+   ],
+   "kind": [
+    "scheduled",
+    "former"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "a_current_scheduled_pax",
+   "source": "Spring Japan NW26 notices (Jan-Mar 2027 seasonal; NGB resumes 2026-11-08)",
+   "sources": [
+    "Spring Japan NW26 notices (Jan-Mar 2027 seasonal; NGB resumes 2026-11-08)",
+    "Wikipedia Spring Japan (but resumes Nov 2026, counted current)"
+   ],
+   "lat": 29.8267,
+   "lon": 121.462,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Ningbo"
+  },
+  "ZSQD": {
+   "icao": "ZSQD",
+   "iata": "TAO",
+   "name": "Qingdao Jiaodong International Airport",
+   "country": "China",
+   "airlines": [
+    "NH",
+    "NH-cargo"
+   ],
+   "kind": [
+    "scheduled",
+    "cargo",
+    "former"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+    "NCA W26 timetable (ANA-operated freighters NH84xx/85xx)"
+   ],
+   "lat": 36.362,
+   "lon": 120.0882,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Qingdao (Jiaozhou)"
+  },
+  "ZSSS": {
+   "icao": "ZSSS",
+   "iata": "SHA",
+   "name": "Shanghai Hongqiao International Airport",
+   "country": "China",
+   "airlines": [
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18"
+   ],
+   "lat": 31.1981,
+   "lon": 121.3343,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Shanghai (Minhang)"
+  },
+  "ZYHB": {
+   "icao": "ZYHB",
+   "iata": "HRB",
+   "name": "Harbin Taiping International Airport",
+   "country": "China",
+   "airlines": [
+    "IJ"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "a_current_scheduled_pax",
+   "source": "Spring Japan NW26 notices (Jan-Mar 2027 seasonal; NGB resumes 2026-11-08)",
+   "sources": [
+    "Spring Japan NW26 notices (Jan-Mar 2027 seasonal; NGB resumes 2026-11-08)"
+   ],
+   "lat": 45.6234,
+   "lon": 126.25,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Harbin"
+  },
+  "ZYTL": {
+   "icao": "ZYTL",
+   "iata": "DLC",
+   "name": "Dalian Zhoushuizi International Airport",
+   "country": "China",
+   "airlines": [
+    "JL",
+    "NH",
+    "NH-cargo"
+   ],
+   "kind": [
+    "scheduled",
+    "cargo"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18",
+    "NCA W26 timetable (ANA-operated freighters NH84xx/85xx)"
+   ],
+   "lat": 38.9657,
+   "lon": 121.5385,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Dalian (Ganjingzi)"
+  },
+  "EFHK": {
+   "icao": "EFHK",
+   "iata": "HEL",
+   "name": "Helsinki Vantaa Airport",
+   "country": "Finland",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "JAL NW26 official timetable pages + press release 2026-08-18",
+   "sources": [
+    "JAL NW26 official timetable pages + press release 2026-08-18"
+   ],
+   "lat": 60.3184,
+   "lon": 24.9633,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Helsinki (Vantaa)"
+  },
+  "LFPG": {
+   "icao": "LFPG",
+   "iata": "CDG",
+   "name": "Charles de Gaulle International Airport",
+   "country": "France",
+   "airlines": [
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18"
+   ],
+   "lat": 49.009,
+   "lon": 2.5541,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Paris (Roissy-en-France, Val-d'Oise)"
+  },
+  "EDDF": {
+   "icao": "EDDF",
+   "iata": "FRA",
+   "name": "Frankfurt Main Airport",
+   "country": "Germany",
+   "airlines": [
+    "JL",
+    "NH",
+    "KZ"
+   ],
+   "kind": [
+    "scheduled",
+    "cargo"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18",
+    "NCA W26 timetable"
+   ],
+   "lat": 50.0267,
+   "lon": 8.5584,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Frankfurt am Main"
+  },
+  "EDDM": {
+   "icao": "EDDM",
+   "iata": "MUC",
+   "name": "Munich Airport",
+   "country": "Germany",
+   "airlines": [
+    "NH"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18"
+   ],
+   "lat": 48.3538,
+   "lon": 11.7861,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Munich"
+  },
+  "VABB": {
+   "icao": "VABB",
+   "iata": "BOM",
+   "name": "Chhatrapati Shivaji Maharaj International Airport",
+   "country": "India",
+   "airlines": [
+    "NH",
+    "JL"
+   ],
+   "kind": [
+    "scheduled",
+    "former"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 19.0887,
+   "lon": 72.8679,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Mumbai"
+  },
+  "VIDP": {
+   "icao": "VIDP",
+   "iata": "DEL",
+   "name": "Indira Gandhi International Airport",
+   "country": "India",
+   "airlines": [
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18"
+   ],
+   "lat": 28.5556,
+   "lon": 77.0952,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "New Delhi"
+  },
+  "VOBL": {
+   "icao": "VOBL",
+   "iata": "BLR",
+   "name": "Kempegowda International Airport Bengaluru",
+   "country": "India",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "JAL NW26 official timetable pages + press release 2026-08-18",
+   "sources": [
+    "JAL NW26 official timetable pages + press release 2026-08-18"
+   ],
+   "lat": 13.1979,
+   "lon": 77.7063,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Bengaluru"
+  },
+  "WIII": {
+   "icao": "WIII",
+   "iata": "CGK",
+   "name": "Soekarno-Hatta International Airport",
+   "country": "Indonesia",
+   "airlines": [
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18"
+   ],
+   "lat": -6.1256,
+   "lon": 106.656,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Jakarta"
+  },
+  "LIMC": {
+   "icao": "LIMC",
+   "iata": "MXP",
+   "name": "Milan Malpensa International Airport",
+   "country": "Italy",
+   "airlines": [
+    "NH",
+    "KZ",
+    "JL"
+   ],
+   "kind": [
+    "scheduled",
+    "cargo",
+    "former"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "NCA W26 timetable",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 45.6306,
+   "lon": 8.7281,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Ferno (VA)"
+  },
+  "MMMX": {
+   "icao": "MMMX",
+   "iata": "MEX",
+   "name": "Mexico City Benito Juárez International Airport",
+   "country": "Mexico",
+   "airlines": [
+    "NH",
+    "JL"
+   ],
+   "kind": [
+    "scheduled",
+    "former"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 19.4358,
+   "lon": -99.0703,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Mexico City"
+  },
+  "LTFM": {
+   "icao": "LTFM",
+   "iata": "IST",
+   "name": "İstanbul Airport",
+   "country": "Turkey",
+   "airlines": [
+    "NH"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18"
+   ],
+   "lat": 41.2749,
+   "lon": 28.7321,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Istanbul"
+  },
+  "EGLL": {
+   "icao": "EGLL",
+   "iata": "LHR",
+   "name": "London Heathrow Airport",
+   "country": "United Kingdom",
+   "airlines": [
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18"
+   ],
+   "lat": 51.4707,
+   "lon": -0.4599,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "London"
+  },
+  "KBOS": {
+   "icao": "KBOS",
+   "iata": "BOS",
+   "name": "Boston Logan International Airport",
+   "country": "United States",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "JAL NW26 official timetable pages + press release 2026-08-18",
+   "sources": [
+    "JAL NW26 official timetable pages + press release 2026-08-18"
+   ],
+   "lat": 42.362,
+   "lon": -71.0079,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Boston"
+  },
+  "KDFW": {
+   "icao": "KDFW",
+   "iata": "DFW",
+   "name": "Dallas Fort Worth International Airport",
+   "country": "United States",
+   "airlines": [
+    "JL",
+    "KZ"
+   ],
+   "kind": [
+    "scheduled",
+    "cargo"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "JAL NW26 official timetable pages + press release 2026-08-18",
+   "sources": [
+    "JAL NW26 official timetable pages + press release 2026-08-18",
+    "NCA W26 timetable"
+   ],
+   "lat": 32.8968,
+   "lon": -97.038,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Dallas-Fort Worth"
+  },
+  "KIAD": {
+   "icao": "KIAD",
+   "iata": "IAD",
+   "name": "Washington Dulles International Airport",
+   "country": "United States",
+   "airlines": [
+    "NH"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18"
+   ],
+   "lat": 38.9445,
+   "lon": -77.4558,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Dulles"
+  },
+  "KIAH": {
+   "icao": "KIAH",
+   "iata": "IAH",
+   "name": "George Bush Intercontinental Airport",
+   "country": "United States",
+   "airlines": [
+    "NH",
+    "ZG"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "ZIPAIR notices + MLIT NW26 (KUL starts 2026-10-20; SJC 2026-12-18..03-26 seasonal)"
+   ],
+   "lat": 29.9844,
+   "lon": -95.3414,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Houston"
+  },
+  "KJFK": {
+   "icao": "KJFK",
+   "iata": "JFK",
+   "name": "John F. Kennedy International Airport",
+   "country": "United States",
+   "airlines": [
+    "JL",
+    "NH",
+    "KZ"
+   ],
+   "kind": [
+    "scheduled",
+    "cargo"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18",
+    "NCA W26 timetable"
+   ],
+   "lat": 40.6394,
+   "lon": -73.7793,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "New York"
+  },
+  "KLAX": {
+   "icao": "KLAX",
+   "iata": "LAX",
+   "name": "Los Angeles International Airport",
+   "country": "United States",
+   "airlines": [
+    "JL",
+    "NH",
+    "ZG",
+    "KZ",
+    "NH-cargo"
+   ],
+   "kind": [
+    "scheduled",
+    "cargo"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18",
+    "NCA W26 timetable",
+    "NCA W26 timetable (ANA-operated freighters NH84xx/85xx)",
+    "ZIPAIR notices + MLIT NW26 (KUL starts 2026-10-20; SJC 2026-12-18..03-26 seasonal)"
+   ],
+   "lat": 33.9425,
+   "lon": -118.408,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Los Angeles"
+  },
+  "KORD": {
+   "icao": "KORD",
+   "iata": "ORD",
+   "name": "Chicago O'Hare International Airport",
+   "country": "United States",
+   "airlines": [
+    "JL",
+    "NH",
+    "KZ",
+    "NH-cargo"
+   ],
+   "kind": [
+    "scheduled",
+    "cargo"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18",
+    "NCA W26 timetable",
+    "NCA W26 timetable (ANA-operated freighters NH84xx/85xx)"
+   ],
+   "lat": 41.9786,
+   "lon": -87.9048,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Chicago"
+  },
+  "KSAN": {
+   "icao": "KSAN",
+   "iata": "SAN",
+   "name": "San Diego International Airport",
+   "country": "United States",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "JAL NW26 official timetable pages + press release 2026-08-18",
+   "sources": [
+    "JAL NW26 official timetable pages + press release 2026-08-18"
+   ],
+   "lat": 32.7336,
+   "lon": -117.19,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "San Diego"
+  },
+  "KSEA": {
+   "icao": "KSEA",
+   "iata": "SEA",
+   "name": "Seattle–Tacoma International Airport",
+   "country": "United States",
+   "airlines": [
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18"
+   ],
+   "lat": 47.4479,
+   "lon": -122.3103,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Seattle"
+  },
+  "KSFO": {
+   "icao": "KSFO",
+   "iata": "SFO",
+   "name": "San Francisco International Airport",
+   "country": "United States",
+   "airlines": [
+    "JL",
+    "NH",
+    "ZG"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18",
+    "ZIPAIR notices + MLIT NW26 (KUL starts 2026-10-20; SJC 2026-12-18..03-26 seasonal)"
+   ],
+   "lat": 37.6198,
+   "lon": -122.3748,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "San Francisco"
+  },
+  "KSJC": {
+   "icao": "KSJC",
+   "iata": "SJC",
+   "name": "Mineta San Jose International Airport",
+   "country": "United States",
+   "airlines": [
+    "ZG",
+    "NH"
+   ],
+   "kind": [
+    "scheduled",
+    "former"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+    "ZIPAIR notices + MLIT NW26 (KUL starts 2026-10-20; SJC 2026-12-18..03-26 seasonal)"
+   ],
+   "lat": 37.3625,
+   "lon": -121.9292,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "San Jose"
+  },
+  "PHNL": {
+   "icao": "PHNL",
+   "iata": "HNL",
+   "name": "Daniel K. Inouye International Airport",
+   "country": "United States",
+   "airlines": [
+    "JL",
+    "NH",
+    "ZG"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18",
+    "ZIPAIR notices + MLIT NW26 (KUL starts 2026-10-20; SJC 2026-12-18..03-26 seasonal)"
+   ],
+   "lat": 21.3184,
+   "lon": -157.9257,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Honolulu, Oahu"
+  },
+  "VVTS": {
+   "icao": "VVTS",
+   "iata": "SGN",
+   "name": "Tan Son Nhat International Airport",
+   "country": "Vietnam",
+   "airlines": [
+    "JL",
+    "NH",
+    "JW"
+   ],
+   "kind": [
+    "scheduled",
+    "former"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "a_current_scheduled_pax",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18",
+    "JAL NW26 official timetable pages + press release 2026-08-18",
+    "Vanilla Air (defunct 2019, merged into Peach) - Wikipedia"
+   ],
+   "lat": 10.8188,
+   "lon": 106.652,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Ho Chi Minh City"
+  },
+  "ZSAM": {
+   "icao": "ZSAM",
+   "iata": "XMN",
+   "name": "Xiamen Gaoqi International Airport",
+   "country": "China",
+   "airlines": [
+    "NH-cargo",
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "cargo",
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "cargo_only_current",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+    "NCA W26 timetable (ANA-operated freighters NH84xx/85xx)",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 24.5439,
+   "lon": 118.1275,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Xiamen"
+  },
+  "EHAM": {
+   "icao": "EHAM",
+   "iata": "AMS",
+   "name": "Amsterdam Airport Schiphol",
+   "country": "Netherlands",
+   "airlines": [
+    "KZ",
+    "JL"
+   ],
+   "kind": [
+    "cargo",
+    "former"
+   ],
+   "verified": true,
+   "confidence": "high",
+   "tier": "cargo_only_current",
+   "source": "NCA W26 timetable",
+   "sources": [
+    "NCA W26 timetable",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 52.3086,
+   "lon": 4.7639,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Amsterdam"
+  },
+  "VDTI": {
+   "icao": "VDTI",
+   "iata": "KTI",
+   "name": "Techo International Airport (successor to closed Phnom Penh Pochentong VDPP/PNH)",
+   "country": "Cambodia",
+   "airlines": [
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "b_recent_dated_former_or_charter",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)"
+   ],
+   "lat": 11.36,
+   "lon": 104.9213,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Phnom Penh",
+   "notes": [
+    "旧プノンペン空港(VDPP)は2025年閉鎖。後継のテチョ国際空港(IATA KTI)を表示"
+   ]
+  },
+  "ZHHH": {
+   "icao": "ZHHH",
+   "iata": "WUH",
+   "name": "Wuhan Tianhe International Airport",
+   "country": "China",
+   "airlines": [
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "b_recent_dated_former_or_charter",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)"
+   ],
+   "lat": 30.7748,
+   "lon": 114.2137,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Wuhan (Huangpi)"
+  },
+  "ZUUU": {
+   "icao": "ZUUU",
+   "iata": "CTU",
+   "name": "Chengdu Shuangliu International Airport",
+   "country": "China",
+   "airlines": [
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "b_recent_dated_former_or_charter",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)"
+   ],
+   "lat": 30.5583,
+   "lon": 103.946,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Chengdu (Shuangliu)"
+  },
+  "ZYTX": {
+   "icao": "ZYTX",
+   "iata": "SHE",
+   "name": "Shenyang Taoxian International Airport",
+   "country": "China",
+   "airlines": [
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "b_recent_dated_former_or_charter",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)"
+   ],
+   "lat": 41.6398,
+   "lon": 123.4837,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Shenyang"
+  },
+  "EDDL": {
+   "icao": "EDDL",
+   "iata": "DUS",
+   "name": "Düsseldorf Airport",
+   "country": "Germany",
+   "airlines": [
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "b_recent_dated_former_or_charter",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 51.2895,
+   "lon": 6.7668,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Düsseldorf"
+  },
+  "VOMM": {
+   "icao": "VOMM",
+   "iata": "MAA",
+   "name": "Chennai International Airport",
+   "country": "India",
+   "airlines": [
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "b_recent_dated_former_or_charter",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)"
+   ],
+   "lat": 12.99,
+   "lon": 80.1693,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Chennai"
+  },
+  "VYYY": {
+   "icao": "VYYY",
+   "iata": "RGN",
+   "name": "Yangon International Airport",
+   "country": "Myanmar",
+   "airlines": [
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "b_recent_dated_former_or_charter",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 16.9073,
+   "lon": 96.1332,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Yangon"
+  },
+  "OOMS": {
+   "icao": "OOMS",
+   "iata": "MCT",
+   "name": "Muscat International Airport",
+   "country": "Oman",
+   "airlines": [
+    "NH"
+   ],
+   "kind": [
+    "charter"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "b_recent_dated_former_or_charter",
+   "source": "AviationWire 2026-03-13: ANA government evacuation charter NH1982 Muscat-Mumbai (one-off, 2026-03-12)",
+   "sources": [
+    "AviationWire 2026-03-13: ANA government evacuation charter NH1982 Muscat-Mumbai (one-off, 2026-03-12)"
+   ],
+   "lat": 23.6002,
+   "lon": 58.2853,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Muscat/Seeb",
+   "notes": [
+    "one-off govt charter"
+   ]
+  },
+  "OTHH": {
+   "icao": "OTHH",
+   "iata": "DOH",
+   "name": "Hamad International Airport",
+   "country": "Qatar",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "b_recent_dated_former_or_charter",
+   "source": "JAL press release 2026-08-18",
+   "sources": [
+    "JAL press release 2026-08-18"
+   ],
+   "lat": 25.2731,
+   "lon": 51.6081,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Doha",
+   "notes": [
+    "Haneda-Doha suspended through NW26 (since 2026-02); FY2027 resumption targeted"
+   ]
+  },
+  "UHWW": {
+   "icao": "UHWW",
+   "iata": "VVO",
+   "name": "Vladivostok International Airport",
+   "country": "Russia",
+   "airlines": [
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "b_recent_dated_former_or_charter",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 43.3963,
+   "lon": 132.1482,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Artyom"
+  },
+  "KMCO": {
+   "icao": "KMCO",
+   "iata": "MCO",
+   "name": "Orlando International Airport",
+   "country": "United States",
+   "airlines": [
+    "ZG"
+   ],
+   "kind": [
+    "charter"
+   ],
+   "verified": true,
+   "confidence": "medium",
+   "tier": "b_recent_dated_former_or_charter",
+   "source": "Wikipedia Zipair table: charter 2026-02-23..03-10",
+   "sources": [
+    "Wikipedia Zipair table: charter 2026-02-23..03-10"
+   ],
+   "lat": 28.4294,
+   "lon": -81.309,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Orlando"
+  },
+  "YBBN": {
+   "icao": "YBBN",
+   "iata": "BNE",
+   "name": "Brisbane International Airport",
+   "country": "Australia",
+   "airlines": [
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": -27.3842,
+   "lon": 153.117,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Brisbane"
+  },
+  "YBCS": {
+   "icao": "YBCS",
+   "iata": "CNS",
+   "name": "Cairns International Airport",
+   "country": "Australia",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": -16.8789,
+   "lon": 145.7495,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Cairns"
+  },
+  "YPAD": {
+   "icao": "YPAD",
+   "iata": "ADL",
+   "name": "Adelaide International Airport",
+   "country": "Australia",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": -34.9475,
+   "lon": 138.5334,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Adelaide"
+  },
+  "OBBI": {
+   "icao": "OBBI",
+   "iata": "BAH",
+   "name": "Bahrain International Airport",
+   "country": "Bahrain",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 26.2673,
+   "lon": 50.6376,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Manama"
+  },
+  "SBBE": {
+   "icao": "SBBE",
+   "iata": "BEL",
+   "name": "Val de Cans/Júlio Cezar Ribeiro International Airport",
+   "country": "Brazil",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": -1.3793,
+   "lon": -48.4762,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Belém"
+  },
+  "SBGL": {
+   "icao": "SBGL",
+   "iata": "GIG",
+   "name": "Rio de Janeiro Galeão – Tom Jobim International Airport",
+   "country": "Brazil",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": -22.81,
+   "lon": -43.2506,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Rio De Janeiro"
+  },
+  "SBGR": {
+   "icao": "SBGR",
+   "iata": "GRU",
+   "name": "São Paulo/Guarulhos–Governor André Franco Montoro International Airport",
+   "country": "Brazil",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": -23.4313,
+   "lon": -46.47,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "São Paulo"
+  },
+  "SBKP": {
+   "icao": "SBKP",
+   "iata": "VCP",
+   "name": "Viracopos International Airport",
+   "country": "Brazil",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": -23.0074,
+   "lon": -47.1345,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Campinas"
+  },
+  "CYYC": {
+   "icao": "CYYC",
+   "iata": "YYC",
+   "name": "Calgary International Airport",
+   "country": "Canada",
+   "airlines": [
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)"
+   ],
+   "lat": 51.1188,
+   "lon": -114.0099,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Calgary"
+  },
+  "ZLXY": {
+   "icao": "ZLXY",
+   "iata": "XIY",
+   "name": "Xi'an Xianyang International Airport",
+   "country": "China",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 34.4422,
+   "lon": 108.7624,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Xi'an"
+  },
+  "EKCH": {
+   "icao": "EKCH",
+   "iata": "CPH",
+   "name": "Copenhagen Kastrup Airport",
+   "country": "Denmark",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 55.6179,
+   "lon": 12.656,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Copenhagen"
+  },
+  "HECA": {
+   "icao": "HECA",
+   "iata": "CAI",
+   "name": "Cairo International Airport",
+   "country": "Egypt",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 30.1115,
+   "lon": 31.3967,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Cairo"
+  },
+  "NFFN": {
+   "icao": "NFFN",
+   "iata": "NAN",
+   "name": "Nadi International Airport",
+   "country": "Fiji",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": -17.7618,
+   "lon": 177.4378,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Nadi"
+  },
+  "LFPO": {
+   "icao": "LFPO",
+   "iata": "ORY",
+   "name": "Paris-Orly Airport",
+   "country": "France",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 48.7295,
+   "lon": 2.359,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Paris (Orly, Val-de-Marne)"
+  },
+  "EDDH": {
+   "icao": "EDDH",
+   "iata": "HAM",
+   "name": "Hamburg Helmut Schmidt Airport",
+   "country": "Germany",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 53.6304,
+   "lon": 9.9882,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Hamburg"
+  },
+  "BIKF": {
+   "icao": "BIKF",
+   "iata": "KEF",
+   "name": "Keflavik International Airport",
+   "country": "Iceland",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 63.985,
+   "lon": -22.6056,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Reykjavík"
+  },
+  "WADD": {
+   "icao": "WADD",
+   "iata": "DPS",
+   "name": "Denpasar I Gusti Ngurah Rai International Airport",
+   "country": "Indonesia",
+   "airlines": [
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": -8.7484,
+   "lon": 115.1671,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Kuta, Badung"
+  },
+  "OIII": {
+   "icao": "OIII",
+   "iata": "THR",
+   "name": "Mehrabad International Airport",
+   "country": "Iran",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 35.6892,
+   "lon": 51.3144,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Tehran"
+  },
+  "LIRF": {
+   "icao": "LIRF",
+   "iata": "FCO",
+   "name": "Rome–Fiumicino Leonardo da Vinci International Airport",
+   "country": "Italy",
+   "airlines": [
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 41.8045,
+   "lon": 12.252,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Rome"
+  },
+  "OKKK": {
+   "icao": "OKKK",
+   "iata": "KWI",
+   "name": "Kuwait International Airport",
+   "country": "Kuwait",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 29.2245,
+   "lon": 47.9698,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Kuwait City"
+  },
+  "OLBA": {
+   "icao": "OLBA",
+   "iata": "BEY",
+   "name": "Beirut Rafic Hariri International Airport",
+   "country": "Lebanon",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 33.8198,
+   "lon": 35.4874,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Beirut"
+  },
+  "VYNT": {
+   "icao": "VYNT",
+   "iata": "NYT",
+   "name": "Nay Pyi Taw International Airport",
+   "country": "Myanmar",
+   "airlines": [
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)"
+   ],
+   "lat": 19.6235,
+   "lon": 96.201,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Naypyitaw"
+  },
+  "NWWW": {
+   "icao": "NWWW",
+   "iata": "NOU",
+   "name": "La Tontouta International Airport",
+   "country": "New Caledonia",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": -22.0146,
+   "lon": 166.213,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Nouméa (La Tontouta)"
+  },
+  "NZAA": {
+   "icao": "NZAA",
+   "iata": "AKL",
+   "name": "Auckland International Airport",
+   "country": "New Zealand",
+   "airlines": [
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": -37.012,
+   "lon": 174.7863,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Auckland"
+  },
+  "OPKC": {
+   "icao": "OPKC",
+   "iata": "KHI",
+   "name": "Jinnah International Airport",
+   "country": "Pakistan",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 24.9065,
+   "lon": 67.1608,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Karachi"
+  },
+  "RPLC": {
+   "icao": "RPLC",
+   "iata": "CRK",
+   "name": "Clark International Airport / Clark Air Base",
+   "country": "Philippines",
+   "airlines": [
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)"
+   ],
+   "lat": 15.186,
+   "lon": 120.56,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Mabalacat"
+  },
+  "RPVM": {
+   "icao": "RPVM",
+   "iata": "CEB",
+   "name": "Mactan Cebu International Airport",
+   "country": "Philippines",
+   "airlines": [
+    "JL",
+    "JW",
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+    "Vanilla Air (defunct 2019, merged into Peach) - Wikipedia",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 10.3093,
+   "lon": 123.9797,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Cebu City/Lapu-Lapu City"
+  },
+  "UHHH": {
+   "icao": "UHHH",
+   "iata": "KHV",
+   "name": "Khabarovsk Novy Airport",
+   "country": "Russia",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 48.5283,
+   "lon": 135.1886,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Khabarovsk"
+  },
+  "UUDD": {
+   "icao": "UUDD",
+   "iata": "DME",
+   "name": "Domodedovo International Airport",
+   "country": "Russia",
+   "airlines": [
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 55.4088,
+   "lon": 37.9063,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Moscow"
+  },
+  "UUEE": {
+   "icao": "UUEE",
+   "iata": "SVO",
+   "name": "Sheremetyevo International Airport",
+   "country": "Russia",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 55.9775,
+   "lon": 37.3867,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Moscow"
+  },
+  "OEJN": {
+   "icao": "OEJN",
+   "iata": "JED",
+   "name": "King Abdulaziz International Airport",
+   "country": "Saudi Arabia",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 21.6802,
+   "lon": 39.1574,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Jeddah"
+  },
+  "LEMD": {
+   "icao": "LEMD",
+   "iata": "MAD",
+   "name": "Adolfo Suárez Madrid–Barajas Airport",
+   "country": "Spain",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 40.4934,
+   "lon": -3.5722,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Madrid"
+  },
+  "LSZH": {
+   "icao": "LSZH",
+   "iata": "ZRH",
+   "name": "Zürich Airport",
+   "country": "Switzerland",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 47.4581,
+   "lon": 8.5481,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Zurich"
+  },
+  "VTBD": {
+   "icao": "VTBD",
+   "iata": "DMK",
+   "name": "Don Mueang International Airport",
+   "country": "Thailand",
+   "airlines": [
+    "JL",
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 13.9126,
+   "lon": 100.607,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Bangkok"
+  },
+  "KATL": {
+   "icao": "KATL",
+   "iata": "ATL",
+   "name": "Hartsfield Jackson Atlanta International Airport",
+   "country": "United States",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 33.6367,
+   "lon": -84.4281,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Atlanta"
+  },
+  "KLAS": {
+   "icao": "KLAS",
+   "iata": "LAS",
+   "name": "Harry Reid International Airport",
+   "country": "United States",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 36.0834,
+   "lon": -115.1518,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Las Vegas"
+  },
+  "KMIA": {
+   "icao": "KMIA",
+   "iata": "MIA",
+   "name": "Miami International Airport",
+   "country": "United States",
+   "airlines": [
+    "NH"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)",
+   "sources": [
+    "ANA international route page (updated 2026-08-20) + ANA HD release 2026-08-18 (運航休止/開設延期) + Wikipedia (cross-check)"
+   ],
+   "lat": 25.796,
+   "lon": -80.2898,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Miami"
+  },
+  "KMSY": {
+   "icao": "KMSY",
+   "iata": "MSY",
+   "name": "Louis Armstrong New Orleans International Airport",
+   "country": "United States",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 29.9934,
+   "lon": -90.2647,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "New Orleans"
+  },
+  "SVMI": {
+   "icao": "SVMI",
+   "iata": "CCS",
+   "name": "Maiquetía Simón Bolívar International Airport",
+   "country": "Venezuela",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "medium-low",
+   "tier": "b_longtail_historic_wiki",
+   "source": "Wikipedia (cross-check) JAL destinations list (Terminated)",
+   "sources": [
+    "Wikipedia (cross-check) JAL destinations list (Terminated)"
+   ],
+   "lat": 10.6022,
+   "lon": -66.9912,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Maiquetía"
+  },
+  "VDSA": {
+   "icao": "VDSA",
+   "iata": "SAI",
+   "name": "Siem Reap-Angkor International Airport",
+   "country": "Cambodia",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "charter"
+   ],
+   "verified": false,
+   "confidence": "low",
+   "tier": "b_longtail_historic_LOW",
+   "source": "JAL charter page (jal.co.jp/.../charter): example tour-charter destinations Latvia(Riga), Croatia(Dubrovnik assumed), Cambodia(Angkor/Siem Reap assumed) - no dated schedule",
+   "sources": [
+    "JAL charter page (jal.co.jp/.../charter): example tour-charter destinations Latvia(Riga), Croatia(Dubrovnik assumed), Cambodia(Angkor/Siem Reap assumed) - no dated schedule"
+   ],
+   "lat": 13.3697,
+   "lon": 104.2238,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Siem Reap",
+   "notes": [
+    "airport inferred from country/city text"
+   ]
+  },
+  "LDDU": {
+   "icao": "LDDU",
+   "iata": "DBV",
+   "name": "Dubrovnik Ruđer Bošković Airport",
+   "country": "Croatia",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "charter"
+   ],
+   "verified": false,
+   "confidence": "low",
+   "tier": "b_longtail_historic_LOW",
+   "source": "JAL charter page (jal.co.jp/.../charter): example tour-charter destinations Latvia(Riga), Croatia(Dubrovnik assumed), Cambodia(Angkor/Siem Reap assumed) - no dated schedule",
+   "sources": [
+    "JAL charter page (jal.co.jp/.../charter): example tour-charter destinations Latvia(Riga), Croatia(Dubrovnik assumed), Cambodia(Angkor/Siem Reap assumed) - no dated schedule"
+   ],
+   "lat": 42.5622,
+   "lon": 18.2655,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Dubrovnik",
+   "notes": [
+    "airport inferred from country/city text"
+   ]
+  },
+  "EVRA": {
+   "icao": "EVRA",
+   "iata": "RIX",
+   "name": "Riga International Airport",
+   "country": "Latvia",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "charter"
+   ],
+   "verified": false,
+   "confidence": "low",
+   "tier": "b_longtail_historic_LOW",
+   "source": "JAL charter page (jal.co.jp/.../charter): example tour-charter destinations Latvia(Riga), Croatia(Dubrovnik assumed), Cambodia(Angkor/Siem Reap assumed) - no dated schedule",
+   "sources": [
+    "JAL charter page (jal.co.jp/.../charter): example tour-charter destinations Latvia(Riga), Croatia(Dubrovnik assumed), Cambodia(Angkor/Siem Reap assumed) - no dated schedule"
+   ],
+   "lat": 56.9208,
+   "lon": 23.9707,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Riga",
+   "notes": [
+    "airport inferred from country/city text"
+   ]
+  },
+  "PWAK": {
+   "icao": "PWAK",
+   "iata": "AWK",
+   "name": "Wake Island Airfield",
+   "country": "United States Minor Outlying Islands",
+   "airlines": [
+    "JL"
+   ],
+   "kind": [
+    "former"
+   ],
+   "verified": false,
+   "confidence": "low",
+   "tier": "b_longtail_historic_LOW",
+   "source": "Wikipedia (cross-check) JAL list (Wake Island Airfield; 1950s transpacific tech stop)",
+   "sources": [
+    "Wikipedia (cross-check) JAL list (Wake Island Airfield; 1950s transpacific tech stop)"
+   ],
+   "lat": 19.2824,
+   "lon": 166.6366,
+   "coordNote": "座標は OurAirports（2026-11-18 取得）",
+   "city": "Wake Island",
+   "notes": [
+    "historic tech stop"
+   ]
   }
  }
 }

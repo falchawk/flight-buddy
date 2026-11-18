@@ -23,6 +23,7 @@ Flight Buddy pack builder
   （通常は scripts/auto_update.py から呼ばれる）
 """
 import argparse
+import concurrent.futures
 import datetime as dt
 import hashlib
 import json
@@ -122,24 +123,47 @@ def fix_sun_day(t, local_date):
 
 
 # ----------------------------------------------------------------------------- fetchers
-def fetch_wx(airports, prev_wx):
-    ids = ",".join(airports)
+NIL_RE = re.compile(r"\bNIL\s*=?\s*$")
+
+
+def is_real_report(raw):
+    """'METAR RJAI NIL'（観測なし）は報ではない。"""
+    return bool(raw) and not NIL_RE.search(raw.strip())
+
+
+def fetch_wx(airports, prev_wx, foreign=frozenset()):
+    """METAR/TAF（AWC）。国内は毎回（15分ごと）。海外空港は1時間に1回だけ（schedule の wx_foreign。新規追加の空港は直ちに）。
+    海外で今回取らない空港は、前回パックの値をそのまま（取得時刻 fetchedAt も前回のまま）引き継ぐ。
+    戻り値 (wx, fetched=今回 AWC に問い合わせた空港の集合)。"""
     now = iso(utcnow())
+    prev_ap = (prev_wx or {}).get("airports", {})
+    foreign_due = schedule.is_due("wx_foreign")
+    fetch_list, reused = [], []
+    for icao in airports:
+        if icao in foreign and not foreign_due and icao in prev_ap:
+            reused.append(icao)
+        else:
+            fetch_list.append(icao)
     out = {"source": "aviationweather.gov (NOAA/AWC)", "fetchedAt": now, "airports": {}}
     metars, tafs, err_m, err_t = [], [], None, None
-    for chunk in chunks(airports, 60):
+    failed_chunks = 0
+    for chunk in chunks(fetch_list, 40):
         ids = ",".join(chunk)
         try:
-            metars += http_get_json(f"{AWC}/metar?ids={ids}&format=json&hours=3")
+            metars += http_get_json(f"{AWC}/metar?ids={ids}&format=json&hours=12")   # 3時間だと夜間閉鎖の空港が空になるので12時間
         except Exception as e:  # noqa: BLE001
             err_m = str(e)
+            failed_chunks += 1
         try:
             tafs += http_get_json(f"{AWC}/taf?ids={ids}&format=json")
         except Exception as e:  # noqa: BLE001
             err_t = str(e)
-    for icao in airports:
-        ms = sorted([m for m in metars if m.get("icaoId") == icao], key=lambda m: m.get("obsTime", 0), reverse=True)
-        ts = [t for t in tafs if t.get("icaoId") == icao]
+            failed_chunks += 1
+    for icao in reused:
+        out["airports"][icao] = prev_ap[icao]
+    for icao in fetch_list:
+        ms = sorted([m for m in metars if m.get("icaoId") == icao and is_real_report(m.get("rawOb"))], key=lambda m: m.get("obsTime", 0), reverse=True)
+        ts = [t for t in tafs if t.get("icaoId") == icao and is_real_report(t.get("rawTAF"))]
         ts.sort(key=lambda t: t.get("issueTime", ""), reverse=True)
         entry = {
             "icao": icao,
@@ -156,17 +180,41 @@ def fetch_wx(airports, prev_wx):
                     if ts else None),
             "error": None,
         }
+        if icao in foreign:
+            entry["cadence"] = "1h"
         if not entry["ok"]:
             entry["error"] = err_m or err_t or "該当データなし"
-            prev = (prev_wx or {}).get("airports", {}).get(icao)
+            prev = prev_ap.get(icao)
             if prev and prev.get("ok"):
-                log(f"{icao}: 取得失敗のため前回パックの値を引き継ぎ（STALE表示）")
                 prev = dict(prev)
-                prev["carriedOver"] = True
-                prev["error"] = entry["error"]
-                entry = prev
+                prev["metar"] = [m for m in prev.get("metar") or [] if is_real_report(m.get("raw"))]   # 過去の 'METAR xxxx NIL' は引き継がない
+                if prev["metar"] or prev.get("taf"):
+                    log(f"{icao}: 取得失敗のため前回パックの値を引き継ぎ（STALE表示）")
+                    prev["carriedOver"] = True
+                    prev["error"] = entry["error"]
+                    entry = prev
         out["airports"][icao] = entry
-    return out
+    n_foreign_fetched = sum(1 for i in fetch_list if i in foreign)
+    if foreign_due and n_foreign_fetched:
+        schedule.record("wx_foreign", failed_chunks == 0 or any(out["airports"][i].get("ok") and not out["airports"][i].get("carriedOver") for i in fetch_list if i in foreign))
+    log(f"AWC: 国内 {len(fetch_list) - n_foreign_fetched} 空港＋海外 {n_foreign_fetched} 空港を取得、海外 {len(reused)} 空港は前回の値を引き継ぎ（海外は1時間ごと）")
+    return out, set(fetch_list)
+
+
+def ogimet_prefetch(icaos, workers=8):
+    """AWC に METAR が無い空港だけ Ogimet に問い合わせる（並列）。報なしの結果は60分キャッシュして叩き続けない。"""
+    path = os.path.join(DATA, ".cache", "ogimet.json")
+    cache = read_json(path, {}) or {}
+    now_t = time.time()
+    todo = [i for i in icaos if not (cache.get(i) and now_t - cache[i].get("t", 0) < 3600)]
+    res = {}
+    if todo:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+            for i, r in zip(todo, ex.map(fetch_ogimet, todo)):
+                res[i] = r
+                cache[i] = {"t": now_t, "r": r} if not r.get("ok") else {"t": 0, "r": r}
+        write_json(path, {k: v for k, v in cache.items() if now_t - v.get("t", 0) < 7200})
+    return {i: (res.get(i) or (cache.get(i) or {}).get("r") or {"ok": False, "reason": "未取得"}) for i in icaos}
 
 
 def chunks(lst, n):
@@ -177,15 +225,18 @@ def chunks(lst, n):
 def fetch_airport_profiles(airports, cfg, pack_date, stations=None):
     foreign = foreign_airports(cfg)
     static = cfg.get("airport_static", {})
-    # NOAA/AWC の空港情報（SWIM AIP に無い空港の参考値）は1日1回（毎日 04:00 JST。scripts/schedule.py）。それ以外の回は保存済みの応答を使う
-    cache_path = os.path.join(DATA, ".cache", "awc_airport.json")
-    cached = read_json(cache_path)
-    if cached and cached.get("airports") == sorted(airports) and not schedule.is_due("noaa_airport"):
-        info = cached.get("info") or []
-        log("NOAA 空港情報: 本日分を取得済み（保存済みの応答を使用）")
-    else:
+    # NOAA/AWC の空港情報（SWIM AIP に無い空港の参考値）。国内は1日1回（毎日 04:00 JST）、海外空港は週1回（毎週月曜 04:00 JST）。
+    # 取らない回は保存済みの応答を使う（scripts/schedule.py）。空港の顔ぶれが変わった時（config 追加）は取り直す。
+    def noaa_info(group, part, cache_name):
+        cache_path = os.path.join(DATA, ".cache", cache_name)
+        cached = read_json(cache_path)
+        if not group:
+            return []
+        if cached and cached.get("airports") == sorted(group) and not schedule.is_due(part):
+            log(f"NOAA 空港情報（{part}）: 取得済み（{cached.get('fetchedAt')}）の応答を使用")
+            return cached.get("info") or []
         info, failed = [], False
-        for chunk in chunks(airports, 60):
+        for chunk in chunks(group, 60):
             try:
                 info += http_get_json(f"{AWC}/airport?ids={','.join(chunk)}&format=json")
             except Exception as e:  # noqa: BLE001
@@ -194,8 +245,11 @@ def fetch_airport_profiles(airports, cfg, pack_date, stations=None):
         if failed and cached and cached.get("info"):
             info = cached["info"]   # 取れなかった時は前回の応答を流用（次の再試行は60分後）
         elif info:
-            write_json(cache_path, {"airports": sorted(airports), "info": info, "fetchedAt": iso(dt.datetime.now(dt.timezone.utc))})
-        schedule.record("noaa_airport", bool(info) and not failed)
+            write_json(cache_path, {"airports": sorted(group), "info": info, "fetchedAt": iso(dt.datetime.now(dt.timezone.utc))})
+        schedule.record(part, bool(info) and not failed)
+        return info
+    info = noaa_info([i for i in airports if i not in foreign], "noaa_airport", "awc_airport.json") \
+        + noaa_info([i for i in airports if i in foreign], "noaa_airport_foreign", "awc_airport_foreign.json")
     by = {a.get("icaoId"): a for a in info}
     out = {"source": "国内：標高・磁気偏差・滑走路・周波数＝SWIM AIP（AD 2.2/2.12/2.18）、空港運用情報＝SWIM／日の出日没＝端末内計算。AIP に無い空港（海外・一部国内）の同項目のみ参考として NOAA（aviationweather.gov）", "airports": {}}
     for icao in airports:
@@ -404,6 +458,8 @@ def fetch_ogimet(icao):
         return {"ok": False, "reason": "直近時間帯の本文が0件でした"}
     cols = rows[-1].split(",")
     raw = re.sub(r"=\s*$", "", cols[6] if len(cols) > 6 else "").strip()
+    if raw and not is_real_report(raw):
+        return {"ok": False, "reason": "Ogimet の応答が NIL（観測なし）でした"}
     return {"ok": True, "rawText": raw} if raw else {"ok": False, "reason": "CSVの本文列が空でした"}
 
 
@@ -570,10 +626,12 @@ def build(args):
 
     try:
         log(f"METAR/TAF取得: {len(airports)}空港")
-        wx = fetch_wx(airports, prev_wx)
+        wx, fetched = fetch_wx(airports, prev_wx, frozenset(foreign_airports(cfg)))
         swim = swim_staging.load_swim(args.swim_dir) if args.swim_dir else None
         targets = swim_targets(cfg, airports)
-        swim_staging.apply_priority(wx, swim, [t for t in targets if t in airports], fetch_ogimet)
+        # AWC に METAR が無い空港（今回問い合わせた分だけ）は Ogimet を並列に1回だけ確認（報なしは60分キャッシュ）
+        og = ogimet_prefetch([i for i in fetched if not (wx["airports"].get(i) or {}).get("metar")])
+        swim_staging.apply_priority(wx, swim, [t for t in targets if t in airports], lambda i: og.get(i), fetched)
         write_json(os.path.join(pack_dir, "wx.json"), wx)
         ok_n = sum(1 for e in wx["airports"].values() if e.get("ok") and not e.get("carriedOver"))
         if ok_n == 0:
@@ -662,7 +720,9 @@ def build(args):
             # 取得元ごとの最終取得時刻（頻度は scripts/schedule.py：プロファイル/ATIS＝15分、NOTAM＝6時間、AIP・NOAA 空港情報＝1日）
             "fetched": {"atis": atis_d.get("fetchedAt"), "notam": notam_d.get("fetchedAt"),
                         "profile": ((swim or {}).get("profile") or {}).get("fetchedAt"), "aip": ((swim or {}).get("aip") or {}).get("fetchedAt"),
-                        "noaa": (read_json(os.path.join(DATA, ".cache", "awc_airport.json"), {}) or {}).get("fetchedAt")},
+                        "noaa": (read_json(os.path.join(DATA, ".cache", "awc_airport.json"), {}) or {}).get("fetchedAt"),
+                        "noaaForeign": (read_json(os.path.join(DATA, ".cache", "awc_airport_foreign.json"), {}) or {}).get("fetchedAt"),
+                        "wxForeign": max([e.get("fetchedAt") or "" for i, e in wx["airports"].items() if i in foreign_airports(cfg)] or [""]) or None},
         }
         write_json(os.path.join(pack_dir, "airports.json"), profiles)
 
