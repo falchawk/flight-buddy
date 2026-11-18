@@ -7,7 +7,9 @@ Flight Buddy 自動更新（ルーティン用の入口）
 1. 多重起動防止ロック
 2. 端末内の data/ が無ければ公開中のパック（Release asset）から復元
 3. build_pack で新しいパックを作成（全国の空港 + 同期issueの空港、METAR/TAF、NOTAMファイルがあれば）
-   - 図: /workspace/metair/latest/（charts.json付き）が公開済みより新しければ差し替え、でなければ前回を引き継ぎ
+   - 図: 旧 Flight Buddy の8分類（地上天気図・衛星・レーダー・三十分大気解析・高層・下層悪天・Windy・AIRPORT）を
+         気象庁 / MetAir / n-kishou から plain HTTP で並列取得（ログイン不要。ブラウザ不要）
+   - SWIM: /workspace/fb-staging/{notam/<ICAO>.json, atis.json, profile/<ICAO>.json}（ボットが保存した応答）を読み込み
    - ブリーフ: /workspace/fb-staging/brief.md が前回より新しければ採用、でなければ前回本文を引き継ぎ（＋自動サマリー）
    - 中身が前回と同じなら何もしない（公開しない）
 4. data/ を tar.gz にして GitHub Release "pack-data" の asset を差し替え → Pages デプロイ workflow を起動
@@ -34,7 +36,7 @@ ASSET = "pack-data.tar.gz"
 WORKFLOW = "pages.yml"
 DATA = os.path.join(ROOT, "data")
 LOCK = "/tmp/flight-buddy-auto-update.lock"
-HARD_TIMEOUT_S = 240
+HARD_TIMEOUT_S = 720  # 15分間隔に収める（ロックで多重起動も防止）
 
 
 def log(*a):
@@ -63,10 +65,10 @@ def restore_from_release():
 
 
 def make_tarball(path):
-    with tarfile.open(path, "w:gz") as t:
+    with tarfile.open(path, "w:gz", compresslevel=1) as t:
         def flt(ti):
             return None if "/.cache" in ti.name else ti
-        for name in ("latest", "previous", "packs", "index.json"):
+        for name in ("latest", "previous", "packs", "blobs", "index.json"):
             p = os.path.join(DATA, name)
             if os.path.exists(p):
                 t.add(p, arcname=f"data/{name}", filter=flt)
@@ -97,7 +99,8 @@ def publish():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--charts-dir", default="/workspace/metair/latest")
+    ap.add_argument("--charts-dir", help="任意: 追加の図フォルダ（通常は不要）")
+    ap.add_argument("--swim-dir", default="/workspace/fb-staging")
     ap.add_argument("--brief", default="/workspace/fb-staging/brief.md")
     ap.add_argument("--notam-file", default="/workspace/fb-staging/notam.json")
     ap.add_argument("--duty-file", default="/workspace/fb-staging/duty.json")
@@ -118,10 +121,12 @@ def main():
         return 0
     try:
         restore_from_release()
-        argv = ["--keep", "3", "--brief-if-newer", "--charts-if-newer"]
+        argv = ["--keep", "3", "--brief-if-newer"]
         if not a.force:
             argv.append("--skip-if-unchanged")
-        if os.path.isdir(a.charts_dir):
+        if os.path.isdir(a.swim_dir):
+            argv += ["--swim-dir", a.swim_dir]
+        if a.charts_dir and os.path.isdir(a.charts_dir):
             argv += ["--charts-dir", a.charts_dir]
         if os.path.exists(a.brief):
             argv += ["--brief", a.brief]
@@ -130,12 +135,18 @@ def main():
         if os.path.exists(a.duty_file):
             argv += ["--duty-file", a.duty_file]
         r = build_pack.build(build_pack.make_parser().parse_args(argv))
-        pushed = False
+        pushed, size = False, 0
         if r["changed"] and not a.no_publish:
-            publish()
+            size = publish()
             pushed = True
-        print(f"FLIGHT-BUDDY OK pack={r['packId']} airports={r['airports']} charts={r['charts']}({r['chartMode']}) "
+        errs = r.get("chartErrors") or []
+        st = r.get("chartStats") or {}
+        print(f"FLIGHT-BUDDY OK pack={r['packId']} airports={r['airports']} frames={r['charts']}({r['chartMode']}) "
+              f"images={r.get('blobs', '-')} packMB={(r.get('bytes') or 0) / 1e6:.1f} tarMB={size / 1e6:.1f} "
+              f"fetch={st.get('seconds', '-')}s req={st.get('requests', '-')} chartErrors={len(errs)} "
               f"changed={'yes' if r['changed'] else 'no'} pushed={'yes' if pushed else 'no'} time={time.time() - t0:.0f}s")
+        for e in errs[:20]:
+            print("  chart-error:", e)
         return 0
     except BaseException as e:  # noqa: BLE001
         print(f"FLIGHT-BUDDY FAILED: {type(e).__name__}: {e} (time={time.time() - t0:.0f}s)")

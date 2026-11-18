@@ -1,10 +1,10 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.1.0';
+  const APP_VERSION = '1.2.0';
   const SYNC_REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
-  const LS = { airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack' };
+  const LS = { airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel' };
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
   const lsSet = (k, v) => localStorage.setItem(k, JSON.stringify(v));
   const AIRLINES = ['SFJ', 'ANA', 'JAL', 'SNJ', 'ADO', 'SKY', 'APJ', 'JJP', 'FDA', 'IBX'];
@@ -17,7 +17,6 @@
     airports: lsGet(LS.airports, null),
     duty: lsGet(LS.duty, { date: todayJst(), buffer: 2, airline: 'SFJ', flights: [], note: '' }),
     notamHours: lsGet(LS.notamH, 24),
-    chartFilter: 'ALL',
   };
 
   function todayJst() { return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10); }
@@ -160,30 +159,143 @@
     }
   }
 
-  // ---------------------------------------------------------------- CHARTS
-  async function renderCharts() {
-    const charts = state.pack?.charts?.charts || [];
-    const grid = $('chart-grid'); grid.innerHTML = '';
-    const skipped = state.pack?.charts?.skippedRestricted || [];
-    $('charts-meta').innerHTML = state.pack ? `${charts.length}枚（端末に保存済み・オフライン表示可）${charts.some((c) => c.sample) ? ' ／ <span class="badge sample">SAMPLE</span> は表示確認用の見本です' : ''}${skipped.length ? ` ／ 公開不可のため除外 ${skipped.length}枚` : ''}` : 'パックがありません。';
-    const cats = ['ALL', ...new Set(charts.map((c) => c.category || 'その他'))];
-    const f = $('chart-filters'); f.innerHTML = '';
-    if (!cats.includes(state.chartFilter)) state.chartFilter = 'ALL';
-    cats.forEach((c) => {
-      const b = document.createElement('button'); b.className = `chip${c === state.chartFilter ? ' active' : ''}`; b.textContent = c;
-      b.onclick = () => { state.chartFilter = c; renderCharts(); }; f.appendChild(b);
-    });
-    const shown = charts.filter((c) => state.chartFilter === 'ALL' || (c.category || 'その他') === state.chartFilter);
-    const items = shown.map((c) => ({ ...c, info: [c.kind || '', c.level || '', c.validTime ? `${fmtUtc(c.validTime)}（${fmtJst(c.validTime, false)}・${ageText(c.validTime)}）` : c.validTimeHint || '', c.baseTime ? `初期値 ${fmtUtc(c.baseTime)}` : '', c.source ? `© ${c.source}` : ''].filter(Boolean).join(' ・ ') }));
-    if (!shown.length && state.pack) grid.innerHTML = '<p class="hint">図はありません。</p>';
-    for (let i = 0; i < items.length; i++) {
-      const c = items[i];
-      const card = document.createElement('div'); card.className = 'chart-card';
-      card.innerHTML = `<div class="thumb"><img alt="" /></div><div class="meta"><div class="t">${esc(c.title)} ${c.sample ? '<span class="badge sample">SAMPLE</span>' : ''}</div><div class="hint">${esc(c.info)}</div></div>`;
-      card.onclick = () => window.FBViewer.open(items, i, state.pack.imageUrl);
-      grid.appendChild(card);
-      state.pack.imageUrl(c.file).then((u) => { card.querySelector('img').src = u; });
+  // ---------------------------------------------------------------- CHARTS（旧 Flight Buddy の8分類）
+  const chartSel = lsGet(LS.chartSel, { cat: null, item: {}, variant: {}, group: {} });
+  const frameIdx = {}; // `${cat}/${item}/${variant}` -> index（パック切替でリセット）
+  let chartsPackId = null;
+  const saveSel = () => lsSet(LS.chartSel, chartSel);
+  function chip(label, active, onclick, extra = '') {
+    const b = document.createElement('button'); b.className = `chip${active ? ' active' : ''}${extra}`; b.textContent = label; b.onclick = onclick; return b;
+  }
+  function frameAge(fr) {
+    if (!fr.time) return '';
+    const t = new Date(fr.time).getTime();
+    if (t > Date.now()) return '';
+    return ageText(fr.time);
+  }
+  function legacyCategory(extra) {
+    return { id: 'extra', label: 'その他', defaultItem: 0, items: extra.map((c, i) => ({ id: `x${i}`, label: c.title || c.id,
+      product: { type: 'series', title: c.title, source: c.source, variants: [{ id: 'main', label: c.title, defaultFrame: 0,
+        frames: [{ label: [c.kind, c.level, c.validTime ? fmtUtc(c.validTime) : ''].filter(Boolean).join(' ・ '), images: [{ file: c.file }] }] }] } })) };
+  }
+  function chartCats() {
+    const ch = state.pack?.charts;
+    if (!ch) return [];
+    const cats = (ch.categories || []).slice();
+    if (ch.extra?.length) cats.push(legacyCategory(ch.extra));
+    return cats;
+  }
+  function renderCharts() {
+    const ch = state.pack?.charts;
+    const meta = $('charts-meta'), catsNav = $('chart-cats'), itemsNav = $('chart-items'), vbox = $('chart-variants'), body = $('chart-body');
+    catsNav.innerHTML = ''; itemsNav.innerHTML = ''; vbox.innerHTML = ''; body.innerHTML = '';
+    if (state.pack?.manifest?.packId !== chartsPackId) { for (const k of Object.keys(frameIdx)) delete frameIdx[k]; chartsPackId = state.pack?.manifest?.packId; }
+    if (!ch) { meta.textContent = 'パックがありません。'; return; }
+    const cats = chartCats();
+    if (!cats.length) { meta.innerHTML = '<span class="hint">このパックには図がありません（旧形式のパック）。更新をお待ちください。</span>'; return; }
+    const errs = ch.errors || [];
+    meta.innerHTML = `取得 ${esc(fmtJst(ch.fetchedAt))}（${esc(ageText(ch.fetchedAt))}）・ 端末に保存済み（Windy 以外はオフライン表示可）${errs.length ? ` <details class="chart-errors"><summary>今回取得できなかった図 ${errs.length}件</summary><div class="hint">${errs.map(esc).join('<br>')}</div></details>` : ''}`;
+    let cat = cats.find((c) => c.id === chartSel.cat) || cats[0];
+    cats.forEach((c) => catsNav.appendChild(chip(c.label, c === cat, () => { chartSel.cat = c.id; saveSel(); renderCharts(); })));
+    const items = cat.items || [];
+    let item = items.find((it) => it.id === chartSel.item[cat.id]) || items[cat.defaultItem || 0] || items[0];
+    if (items.length > 1) items.forEach((it) => itemsNav.appendChild(chip(it.label, it === item, () => { chartSel.item[cat.id] = it.id; saveSel(); renderCharts(); })));
+    if (!item) return;
+    renderProduct(cat, item, vbox, body);
+  }
+  function renderProduct(cat, item, vbox, body) {
+    const p = item.product || {};
+    const key = `${cat.id}/${item.id}`;
+    const panel = document.createElement('div'); panel.className = 'chart-panel';
+    const head = (extra = '') => `<div class="chart-head"><span class="t">${esc(p.title || item.label)}</span><span class="hint">${p.source ? `© ${esc(p.source)}` : ''}${extra}</span></div>`;
+    if (p.type === 'online') {
+      const online = navigator.onLine;
+      panel.innerHTML = head() + (online
+        ? `<iframe class="windy-frame" src="${esc(p.embedUrl)}" loading="lazy" referrerpolicy="no-referrer" title="Windy"></iframe>`
+        : '<div class="offline-box">オフラインでは表示不可<div class="hint" style="font-weight:400;margin-top:6px">Windy はオンライン専用です（端末には保存しません）。</div></div>')
+        + `<div class="chart-note hint">${esc(p.note || '')} ${p.officialUrl ? `<a class="btn" href="${esc(p.officialUrl)}" target="_blank" rel="noopener">Windy で開く ↗</a>` : ''}</div>`;
+      body.appendChild(panel); return;
     }
+    if (p.type === 'wxtext') { renderWxText(panel, head); body.appendChild(panel); return; }
+    let variants = (p.variants || []).slice();
+    if (item.id === 'apseries') {
+      const sel = mainAirports();
+      const mine = sel.map((i) => variants.find((v) => v.id === i)).filter(Boolean);
+      const missing = sel.filter((i) => !variants.some((v) => v.id === i));
+      variants = mine;
+      if (!mine.length) { panel.innerHTML = head() + `<div class="chart-stage"><p class="hint">選択空港（${esc(sel.join(', '))}）の飛行場時系列予報はこのパックにありません。</p></div>`; body.appendChild(panel); return; }
+      if (missing.length) vbox.insertAdjacentHTML('beforeend', `<div class="hint">時系列予報なし：${esc(missing.join(', '))}</div>`);
+    }
+    if (!variants.length) { panel.innerHTML = head() + '<div class="chart-stage"><p class="hint">今回は取得できませんでした（前回分もありません）。</p></div>'; body.appendChild(panel); return; }
+    // グループ（例：断面図（航空路）/ 断面図（経度）/ 平面図）
+    const groups = [...new Set(variants.map((v) => v.group).filter(Boolean))];
+    let v = variants.find((x) => x.id === chartSel.variant[key]) || variants.find((x) => x.id === p.defaultVariant) || variants[0];
+    if (groups.length > 1) {
+      const gwrap = document.createElement('div'); gwrap.className = 'vchips';
+      groups.forEach((g) => gwrap.appendChild(chip(g, g === v.group, () => {
+        chartSel.group[key] = g;
+        const remembered = variants.find((x) => x.group === g && x.id === (chartSel.group[`${key}:${g}`]));
+        const def = variants.find((x) => x.group === g && x.id === p.defaultVariant);
+        chartSel.variant[key] = (remembered || def || variants.find((x) => x.group === g)).id; saveSel(); renderCharts();
+      })));
+      vbox.appendChild(gwrap);
+    }
+    const inGroup = variants.filter((x) => !groups.length || x.group === v.group);
+    const pick = (id) => { chartSel.variant[key] = id; if (v.group) chartSel.group[`${key}:${v.group}`] = id; saveSel(); renderCharts(); };
+    if (inGroup.length > 10) {
+      const s = document.createElement('select');
+      s.innerHTML = inGroup.map((x) => `<option value="${esc(x.id)}"${x === v ? ' selected' : ''}>${esc(x.label)}${x.carriedOver ? '（前回分）' : ''}</option>`).join('');
+      s.onchange = () => pick(s.value); vbox.appendChild(s);
+    } else if (inGroup.length > 1) {
+      const w = document.createElement('div'); w.className = 'vchips';
+      inGroup.forEach((x) => w.appendChild(chip(x.label, x === v, () => pick(x.id), x.carriedOver ? ' stale' : '')));
+      vbox.appendChild(w);
+    }
+    const frames = v.frames || [];
+    const fkey = `${key}/${v.id}`;
+    if (frameIdx[fkey] == null || frameIdx[fkey] >= frames.length) frameIdx[fkey] = Math.min(v.defaultFrame ?? frames.length - 1, frames.length - 1);
+    const carried = p.carriedOver || v.carriedOver;
+    panel.innerHTML = head(carried ? ' <span class="badge carried">前回分</span>' : '')
+      + '<div class="chart-stage"><p class="hint">読み込み中…</p></div>'
+      + (frames.length > 1 ? `<div class="frame-bar"><button class="btn f-prev">◀</button><span class="lbl"></span><button class="btn f-next">▶</button></div><input class="frame-slider" type="range" min="0" max="${frames.length - 1}" step="1" />` : '<div class="frame-bar"><span class="lbl"></span></div>')
+      + (p.note ? `<div class="chart-note hint">${esc(p.note)}</div>` : '');
+    body.appendChild(panel);
+    const stage = panel.querySelector('.chart-stage'), lbl = panel.querySelector('.lbl'), slider = panel.querySelector('.frame-slider');
+    let tok = 0;
+    const show = async (i) => {
+      i = Math.max(0, Math.min(frames.length - 1, i)); frameIdx[fkey] = i;
+      const fr = frames[i];
+      const age = frameAge(fr);
+      lbl.textContent = `${frames.length > 1 ? `${i + 1}/${frames.length} ・ ` : ''}${fr.label || ''}${age ? `（${age}）` : ''}`;
+      if (slider) slider.value = String(i);
+      const my = ++tok;
+      const node = await window.FBViewer.compose(fr, state.pack.imageUrl, 'inline');
+      if (my !== tok) return;
+      stage.innerHTML = ''; stage.appendChild(node);
+      stage.insertAdjacentHTML('beforeend', '<span class="zoom-hint">タップで拡大</span>');
+      // 前後のコマを先読み
+      for (const j of [i + 1, i - 1]) if (frames[j]) frames[j].images.forEach((im) => state.pack.imageUrl(im.file));
+    };
+    if (frames.length > 1) {
+      panel.querySelector('.f-prev').onclick = () => show(frameIdx[fkey] - 1);
+      panel.querySelector('.f-next').onclick = () => show(frameIdx[fkey] + 1);
+      slider.oninput = () => show(Number(slider.value));
+    }
+    stage.onclick = () => window.FBViewer.open(frames, frameIdx[fkey], state.pack.imageUrl, `${p.title || item.label}${variants.length > 1 ? ' ・ ' + v.label : ''}`, (i) => { frameIdx[fkey] = i; show(i); });
+    show(frameIdx[fkey]);
+  }
+  function renderWxText(panel, head) {
+    const wx = state.pack?.wx, atis = state.pack?.atis;
+    const rows = mainAirports().map((icao) => {
+      const e = wx?.airports?.[icao];
+      const mt = e?.metar?.[0];
+      const a = atis?.airports?.[icao];
+      return `<div class="card" style="margin:8px"><div class="card-title"><span>${esc(apName(icao))} <span class="hint">${esc(apCodes(icao))}</span></span></div>
+        <div class="sub-label">METAR</div>${mt ? `<div class="raw">${window.FBWx.highlight(mt.raw)}</div>` : naBox(e ? 'METAR 未取得' : 'パック未収録')}
+        <div class="sub-label">TAF</div>${e?.taf ? `<div class="raw">${window.FBWx.tafLines(e.taf.raw)}</div>` : naBox('TAF 未取得')}
+        <div class="sub-label">ATIS ${a && atis.fetchedAt ? `<span class="hint">${esc(fmtJst(atis.fetchedAt))}取得</span>` : ''}</div>${a ? `<pre class="raw">${esc(a.text)}</pre>` : naBox(atis?.ok ? 'ATIS なし（この空港は SWIM ATIS 対象外か応答なし）' : (atis?.note || 'ATIS 未取得'))}</div>`;
+    }).join('');
+    panel.innerHTML = head() + rows;
   }
 
   // ---------------------------------------------------------------- NOTAM
@@ -201,6 +313,7 @@
       if (!n) body = '<p class="hint">パックがありません。</p>';
       else if (!n.ok) body = `<p class="hint">未取得：${esc(n.note || '')}</p>`;
       else if (!n.airports?.[icao]) body = '<p class="hint">このパックに未収録です。</p>';
+      else if (n.airports[icao].status) body = `<p class="hint">${esc(n.airports[icao].status)}</p>`;
       else if (!items.length) body = '<p class="hint">該当NOTAMなし（このパックの範囲）</p>';
       else body = items.map((it) => `<div class="notam-item${state.notamHours > 0 && !isNew(it) ? ' old' : ''}"><span class="nid">${esc(it.id || '')}</span> ${isNew(it) ? '<span class="badge new">NEW</span>' : ''} <span class="hint">発行 ${esc(fmtJst(it.issued))}${it.effectiveFrom ? ` ／ 有効 ${esc(fmtUtc(it.effectiveFrom))}〜${esc(it.effectiveTo ? fmtUtc(it.effectiveTo) : 'PERM')}` : ''}</span><pre>${esc(it.text || '')}</pre></div>`).join('');
       box.innerHTML = `<div class="card-title"><span>${esc(apName(icao))} <span class="hint">${esc(apCodes(icao))}</span></span>${n?.ok && items.length ? `<span class="badge${newCount ? ' new' : ''}">${state.notamHours ? `直近 ${newCount}件 / ` : ''}全${items.length}件</span>` : ''}</div>${body}`;
@@ -215,6 +328,7 @@
     const list = $('airport-list'); list.innerHTML = '';
     for (const icao of mainAirports()) {
       const p = state.pack?.airports?.airports?.[icao] || {};
+      const sw = p.swim || null; const swOk = !!(sw && sw.ok);
       const base = airportInfo(icao);
       const lat = p.lat ?? base?.lat, lon = p.lon ?? base?.lon;
       const sun = lat != null ? window.FBSun.sunTimesJst(lat, lon, date) : null;
@@ -223,9 +337,14 @@
       const freqs = p.freqs?.length ? p.freqs.map((f) => `${esc(f.type)} ${esc(f.mhz)}`).join(' ／ ') : null;
       const card = document.createElement('div'); card.className = 'card';
       card.innerHTML = `<div class="card-title"><span>${esc(apName(icao))} <span class="hint">${esc(apCodes(icao))}</span></span>${state.pack?.airports?.airports?.[icao] ? '' : '<span class="badge na">パック未収録</span>'}</div>
-        ${field('運用時間', p.operatingHours ? esc(p.operatingHours) : null)}
+        ${sw ? `<div class="hint" style="margin-bottom:4px">SWIM 空港情報 ${esc(fmtJst(sw.fetchedAt))}取得（${esc(ageText(sw.fetchedAt))}）${sw.ok ? '' : ' ・ 取得失敗'}</div>` : ''}
+        ${swOk ? field('空港運用状況', sw.operationalStatus.length ? sw.operationalStatus.map(esc).join('<br>') : '通常') : ''}
+        ${swOk ? field('使用滑走路', sw.runwaysInUse.length ? sw.runwaysInUse.map(esc).join(' ／ ') : null) : ''}
+        ${field('運用時間', swOk && sw.operatingHours ? `${esc(sw.operatingHours)} <span class="hint">(SWIM)</span>` : (p.operatingHours ? esc(p.operatingHours) : null))}
         ${field('滑走路', rwy)}
-        ${field('進入方式', p.approaches ? esc(p.approaches) : null)}
+        ${field('進入方式', swOk && sw.approach.length ? sw.approach.map(esc).join(' ／ ') : (p.approaches ? esc(p.approaches) : null))}
+        ${swOk ? field('平均遅延', (sw.departureDelayMin != null || sw.arrivalDelayMin != null) ? `出発 ${esc(sw.departureDelayMin ?? '--')}分 ／ 到着 ${esc(sw.arrivalDelayMin ?? '--')}分` : null) : ''}
+        ${swOk ? field('飛行場警報', sw.aerodromeWarning.length ? `<span class="hl-warn">${sw.aerodromeWarning.map(esc).join('<br>')}</span>` : '発表なし') : ''}
         ${field('日の出・日没', sun ? `日の出 ${esc(sun.sunrise || '--:--')} / 日没 ${esc(sun.sunset || '--:--')} <span class="hint">(${esc(date)} JST)</span>` : null)}
         ${field('標高', p.elevationFt != null ? `約 ${esc(p.elevationFt)} ft` : null)}
         ${field('磁気偏差', p.magdec ? esc(p.magdec) : null)}
@@ -361,8 +480,8 @@
       const have = window.FBPack.list().find((p) => p.packId === m.packId);
       const v = have ? await window.FBPack.verify(m.packId) : null;
       if (!have || !v.ok || force) {
-        state.downloading = `0/${m.files.length}`; renderStatus();
-        await window.FBPack.download(m, (d, t) => { state.downloading = `${d}/${t}`; renderStatus(); });
+        state.downloading = '準備中'; renderStatus();
+        await window.FBPack.download(m, (d, t, db, tb) => { state.downloading = `${d}/${t}（${fmtBytes(db)} / ${fmtBytes(tb)}）`; renderStatus(); });
       }
       state.downloading = null;
       state.packSource = 'latest';
@@ -389,8 +508,8 @@
     $('refresh-btn').onclick = () => refresh(false);
     $('pack-redownload').onclick = () => refresh(true);
     $('pack-clear').onclick = async () => { if (!confirm('保存済みパックを消去しますか？（オフラインで見られなくなります）')) return; await window.FBPack.clearAll(); state.pack = null; renderAll(); };
-    window.addEventListener('online', () => { renderStatus(); refresh(false); });
-    window.addEventListener('offline', renderStatus);
+    window.addEventListener('online', () => { renderStatus(); renderCharts(); refresh(false); });
+    window.addEventListener('offline', () => { renderStatus(); renderCharts(); });
     renderClock(); setInterval(() => { renderClock(); renderStatus(); }, 15000);
 
     if ('serviceWorker' in navigator) {

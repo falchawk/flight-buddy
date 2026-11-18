@@ -50,8 +50,10 @@
     <section id="tab-charts" class="tab-panel">
       <h2>CHARTS</h2>
       <div id="charts-meta" class="hint"></div>
-      <nav id="chart-filters" class="chips"></nav>
-      <div id="chart-grid" class="chart-grid"></div>
+      <nav id="chart-cats" class="chips chips-scroll"></nav>
+      <nav id="chart-items" class="chips chips-sub"></nav>
+      <div id="chart-variants"></div>
+      <div id="chart-body"></div>
     </section>
 
     <section id="tab-notam" class="tab-panel">
@@ -148,7 +150,7 @@
     <button id="v-reset" class="btn-icon" aria-label="等倍">1×</button>
     <button id="v-in" class="btn-icon" aria-label="拡大">＋</button>
   </div>
-  <div id="v-stage" class="viewer-stage"><img id="v-img" alt="" draggable="false" /></div>
+  <div id="v-stage" class="viewer-stage"><div id="v-content"></div></div>
   <div class="viewer-bottom">
     <button id="v-prev" class="btn">◀ PREV</button>
     <span id="v-info" class="hint"></span>

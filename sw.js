@@ -1,8 +1,10 @@
 // Flight Buddy service worker
 // - アプリ本体(シェル)はインストール時に全部キャッシュ（cache-first）
 // - data/packs/* は不変URL。保存済みパック(fb-pack-*)から返す（cache-first）
+// - data/blobs/* は内容アドレスの画像。fb-blobs から返す（cache-first・パック間で共有）
+// - 外部（Windy等）は一切キャッシュしない（オンライン専用）
 // - data/latest/*, data/index.json は network-first（オフライン時はキャッシュ）
-const VERSION = 'v1.1.0';
+const VERSION = 'v1.2.0';
 const SHELL_CACHE = `fb-shell-${VERSION}`;
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
@@ -42,6 +44,10 @@ self.addEventListener('fetch', (e) => {
   const scope = new URL(self.registration.scope).pathname;
   const path = url.pathname.startsWith(scope) ? url.pathname.slice(scope.length) : url.pathname;
 
+  if (path.startsWith('data/blobs/')) {
+    e.respondWith((async () => (await (await caches.open('fb-blobs')).match(url.origin + url.pathname)) || fetch(req))());
+    return;
+  }
   if (path.startsWith('data/packs/')) {
     e.respondWith((async () => (await matchPacks(req)) || fetch(req))());
     return;

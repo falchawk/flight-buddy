@@ -11,15 +11,16 @@ Flight Buddy pack builder
   data/packs/<packId>/notam.json      … NOTAM（--notam-file で渡されたもの / 無ければ未取得）
   data/packs/<packId>/airports.json   … 空港プロファイル（滑走路・周波数・日の出日没 等）
   data/packs/<packId>/brief.json      … ボットが書いたブリーフ本文（--brief）
-  data/packs/<packId>/charts.json     … 図のメタデータ
-  data/packs/<packId>/charts/*        … 図の画像
+  data/packs/<packId>/charts.json     … 図のメタデータ（schema flight-buddy-charts/2: 8分類→項目→種類→コマ）
+  data/packs/<packId>/atis.json       … ATIS（SWIM ステージングがある時）
+  data/blobs/<sha256>.<ext>           … 図の画像（内容アドレス。パック間で共有・差分のみ端末へ）
   data/latest/manifest.json           … 最新パックの目録（アプリはまずこれを見る）
   data/previous/manifest.json         … 1つ前のパックの目録
   data/index.json                     … 保持中パックの一覧
 
 使い方の例:
-  python3 scripts/build_pack.py --brief /workspace/brief.md --charts-dir /workspace/metair --allow-restricted
-  python3 scripts/build_pack.py --sample-charts --publish
+  python3 scripts/build_pack.py --brief /workspace/fb-staging/brief.md --swim-dir /workspace/fb-staging
+  （通常は scripts/auto_update.py から呼ばれる）
 """
 import argparse
 import datetime as dt
@@ -43,6 +44,9 @@ AWC = "https://aviationweather.gov/api/data"
 UA = "FlightBuddyPackBuilder/1.0 (personal briefing tool)"
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 JST = dt.timezone(dt.timedelta(hours=9))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import charts as chartlib  # noqa: E402
+import swim_staging  # noqa: E402
 
 
 def log(*a):
@@ -264,7 +268,6 @@ def collect_charts(charts_dir, dest_dir, allow_restricted, public_repo):
             raw = json.load(f)
         for c in raw.get("charts", raw if isinstance(raw, list) else []):
             sidecar[c["file"]] = c
-    os.makedirs(dest_dir, exist_ok=True)
     for fname in sorted(os.listdir(charts_dir)):
         ext = os.path.splitext(fname)[1].lower()
         if ext not in IMAGE_EXT:
@@ -275,49 +278,24 @@ def collect_charts(charts_dir, dest_dir, allow_restricted, public_repo):
             skipped.append(fname)
             continue
         safe = re.sub(r"[^A-Za-z0-9._-]", "_", fname)
-        shutil.copy2(os.path.join(charts_dir, fname), os.path.join(dest_dir, safe))
-        meta["file"] = f"charts/{safe}"
+        with open(os.path.join(charts_dir, fname), "rb") as f:
+            body = f.read()
+        h = hashlib.sha256(body).hexdigest()
+        os.makedirs(dest_dir, exist_ok=True)
+        bp = os.path.join(dest_dir, f"{h}{ext}")
+        if not os.path.exists(bp):
+            with open(bp, "wb") as f:
+                f.write(body)
+        meta["file"] = f"data/blobs/{h}{ext}"
         meta.setdefault("id", os.path.splitext(safe)[0])
         meta.setdefault("sample", False)
+        meta["srcName"] = fname
         charts.append(meta)
     order = {f: i for i, f in enumerate(sidecar)}
-    charts.sort(key=lambda c: order.get(os.path.basename(c["file"]), len(order)))
+    charts.sort(key=lambda c: order.get(c.get("srcName"), len(order)))
     return charts, skipped
 
 
-def sample_chart_svg(title, sub, hue):
-    lines = "".join(
-        f'<line x1="0" y1="{y}" x2="1200" y2="{y}" stroke="#2a3442" stroke-width="1"/>' for y in range(0, 800, 50))
-    lines += "".join(
-        f'<line x1="{x}" y1="0" x2="{x}" y2="800" stroke="#2a3442" stroke-width="1"/>' for x in range(0, 1200, 50))
-    waves = "".join(
-        f'<path d="M0 {200+i*90} C 300 {120+i*90}, 600 {300+i*90}, 1200 {180+i*90}" stroke="hsl({hue},70%,{55-i*5}%)" stroke-width="3" fill="none"/>'
-        for i in range(5))
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
-<rect width="1200" height="800" fill="#0f141c"/>{lines}{waves}
-<text x="600" y="360" font-size="120" font-weight="700" text-anchor="middle" fill="#d8b34a" opacity="0.85" font-family="sans-serif">SAMPLE / 見本</text>
-<text x="600" y="450" font-size="40" text-anchor="middle" fill="#e8ecf1" font-family="sans-serif">{title}</text>
-<text x="600" y="510" font-size="28" text-anchor="middle" fill="#9aa7b4" font-family="sans-serif">{sub}</text>
-<text x="600" y="760" font-size="22" text-anchor="middle" fill="#9aa7b4" font-family="sans-serif">実データではありません。表示確認用のプレースホルダーです。</text>
-</svg>'''
-
-
-def make_sample_charts(dest_dir):
-    os.makedirs(dest_dir, exist_ok=True)
-    specs = [
-        ("sample_plan_FL450", "三十分大気解析 平面図 FL450（見本）", "平面図", 200),
-        ("sample_plan_FL300", "三十分大気解析 平面図 FL300（見本）", "平面図", 160),
-        ("sample_cs_fukuoka_tokyo_analysis", "断面図 福岡-東京（解析・見本）", "断面図", 320),
-        ("sample_cs_fukuoka_tokyo_fcst1h", "断面図 福岡-東京（1時間後予想・見本）", "断面図", 20),
-    ]
-    out = []
-    for cid, title, cat, hue in specs:
-        with open(os.path.join(dest_dir, cid + ".svg"), "w", encoding="utf-8") as f:
-            f.write(sample_chart_svg(title, "Flight Buddy placeholder chart", hue))
-        out.append({"id": cid, "title": title, "category": cat, "file": f"charts/{cid}.svg",
-                    "source": "SAMPLE（プレースホルダー）", "sample": True, "restricted": False,
-                    "note": "MetAir画像は公開リポジトリに載せないため見本画像を表示しています。"})
-    return out
 
 
 # ----------------------------------------------------------------------------- pack io
@@ -421,14 +399,6 @@ def auto_brief_text(wx, focus):
     return "\n".join(lines)
 
 
-def newest_valid(charts):
-    v = [c.get("validTime") or "" for c in charts]
-    return max(v) if v else ""
-
-
-def staging_charts_meta(charts_dir):
-    sc = read_json(os.path.join(charts_dir, "charts.json"), {}) or {}
-    return sc.get("charts", sc if isinstance(sc, list) else [])
 
 
 def pack_signature(pack_dir):
@@ -440,15 +410,37 @@ def pack_signature(pack_dir):
         for m in e.get("metar") or []:
             h.update((m.get("raw") or "").encode())
         h.update(((e.get("taf") or {}).get("raw") or "").encode())
-    for name in ("notam.json", "brief.json"):
-        d = read_json(os.path.join(pack_dir, name), {})
+    for name in ("notam.json", "brief.json", "atis.json", "airports.json"):
+        d = read_json(os.path.join(pack_dir, name), {}) or {}
         d.pop("fetchedAt", None)
         h.update(json.dumps(d, sort_keys=True, ensure_ascii=False).encode())
-    for dirpath, _, names in sorted(os.walk(os.path.join(pack_dir, "charts"))):
-        for n in sorted(names):
-            h.update(n.encode())
-            h.update(sha256(os.path.join(dirpath, n)).encode())
+    c = read_json(os.path.join(pack_dir, "charts.json"), {}) or {}
+    h.update(json.dumps(sorted(chartlib.referenced_blobs(c))).encode())
     return h.hexdigest()
+
+
+def merge_prev_products(new, prev):
+    """今回取れなかった種類（variants が空）は前回の内容を引き継ぐ（carriedOver 印付き）。"""
+    if not prev or not prev.get("categories"):
+        return 0
+    pm = {(c["id"], it["id"]): it["product"] for c in prev["categories"] for it in c["items"]}
+    n = 0
+    for c in new.get("categories", []):
+        for it in c["items"]:
+            p = it["product"]
+            if p.get("type") == "series" and not p.get("variants"):
+                old = pm.get((c["id"], it["id"]))
+                if old and old.get("variants"):
+                    it["product"] = dict(old, carriedOver=True)
+                    n += 1
+            elif p.get("type") == "series":  # 種類の中で欠けた variant（地域・高度等）も引き継ぐ
+                old = pm.get((c["id"], it["id"])) or {}
+                have = {v["id"] for v in p["variants"]}
+                miss = [dict(v, carriedOver=True) for v in old.get("variants") or [] if v["id"] not in have]
+                if miss:
+                    p["variants"] += miss
+                    n += len(miss)
+    return n
 
 
 # ----------------------------------------------------------------------------- main
@@ -491,7 +483,8 @@ def build(args):
         write_json(os.path.join(pack_dir, "airports.json"), profiles)
 
         notam_file = args.notam_file if args.notam_file and os.path.exists(args.notam_file) else None
-        write_json(os.path.join(pack_dir, "notam.json"), load_notams(notam_file, airports))
+        raw_notam = swim_staging.load_notam_raw(args.swim_dir, airports) if args.swim_dir and not notam_file else None
+        write_json(os.path.join(pack_dir, "notam.json"), raw_notam or load_notams(notam_file, airports))
 
         # ---- brief
         prev_brief = read_json(os.path.join(prev_dir, "brief.json")) if prev_dir else None
@@ -510,36 +503,49 @@ def build(args):
         brief["autoText"] = auto_brief_text(wx, default_airports)
         write_json(os.path.join(pack_dir, "brief.json"), brief)
 
-        # ---- charts
-        charts, skipped, chart_mode = [], [], "none"
+        # ---- charts（旧 Flight Buddy の8分類。plain HTTP で並列取得）
+        blob_dir = os.path.join(DATA, "blobs")
+        prev_charts = (read_json(os.path.join(prev_dir, "charts.json"), {}) or {}) if prev_dir else {}
+        if prev_charts.get("schema") != "flight-buddy-charts/2":
+            prev_charts = {}
+        if args.no_fetch_charts:
+            charts = dict(prev_charts) if prev_charts else {"schema": "flight-buddy-charts/2", "categories": [], "errors": []}
+            chart_mode = "carried" if prev_charts else "none"
+        else:
+            try:
+                charts = chartlib.build_charts(DATA, airports, workers=args.workers)
+                chart_mode = "new"
+            except Exception as e:  # noqa: BLE001
+                log("図の取得で例外:", e)
+                charts = dict(prev_charts) if prev_charts else {"schema": "flight-buddy-charts/2", "categories": [], "errors": []}
+                charts.setdefault("errors", []).append(f"図の取得全体が失敗: {e}")
+                chart_mode = "carried"
+            carried = merge_prev_products(charts, prev_charts) if chart_mode == "new" else 0
+            if carried:
+                log(f"今回取れなかった図 {carried} 件は前回分を引き継ぎ")
+        # 任意: --charts-dir の追加図（旧 MetAir ステージング等）
         allow_restricted = args.allow_restricted or bool(cfg.get("include_restricted", False))
-        prev_charts = (read_json(os.path.join(prev_dir, "charts.json"), {}) or {}).get("charts", []) if prev_dir else []
-        prev_charts = [c for c in prev_charts if not c.get("sample")]
-        use_staging = False
+        extra, skipped = [], []
         if args.charts_dir and os.path.isdir(args.charts_dir):
-            if args.charts_if_newer and prev_charts:
-                st_meta = staging_charts_meta(args.charts_dir)
-                use_staging = bool(st_meta) and newest_valid(st_meta) > newest_valid(prev_charts)
-                if not use_staging:
-                    log("ステージングの図は公開済みより新しくないため前回の図を引き継ぎ")
-            else:
-                use_staging = True
-        if use_staging:
-            charts, skipped = collect_charts(args.charts_dir, os.path.join(pack_dir, "charts"), allow_restricted, public_repo)
-            chart_mode = "new"
-        elif prev_charts and not args.no_carry_charts:
-            os.makedirs(os.path.join(pack_dir, "charts"), exist_ok=True)
-            for c in prev_charts:
-                src = os.path.join(prev_dir, c["file"])
-                if os.path.exists(src):
-                    shutil.copy2(src, os.path.join(pack_dir, c["file"]))
-                    charts.append(c)
-            chart_mode = "carried"
+            extra, skipped = collect_charts(args.charts_dir, blob_dir, allow_restricted, public_repo)
+        charts["extra"] = extra
         if skipped:
-            log(f"restricted のため除外した図 {len(skipped)} 件: {', '.join(skipped)}（含めるには --allow-restricted）")
-        if args.sample_charts:
-            charts += make_sample_charts(os.path.join(pack_dir, "charts"))
-        write_json(os.path.join(pack_dir, "charts.json"), {"charts": charts, "skippedRestricted": skipped, "mode": chart_mode})
+            log(f"restricted のため除外した図 {len(skipped)} 件: {', '.join(skipped)}")
+        write_json(os.path.join(pack_dir, "charts.json"), charts)
+        n_frames = sum(len(v["frames"]) for c in charts.get("categories", []) for it in c["items"]
+                       for v in (it["product"].get("variants") or []))
+
+        # ---- SWIM ステージング（ATIS・空港運用情報）
+        if args.swim_dir:
+            atis = swim_staging.load_atis(args.swim_dir)
+            write_json(os.path.join(pack_dir, "atis.json"), atis)
+            sp = swim_staging.load_profiles(args.swim_dir, airports)
+            for icao, p in sp.items():
+                profiles["airports"].setdefault(icao, {"icao": icao})["swim"] = p
+            if sp:
+                write_json(os.path.join(pack_dir, "airports.json"), profiles)
+        else:
+            write_json(os.path.join(pack_dir, "atis.json"), {"ok": False, "note": "ATIS 未取得", "airports": {}})
 
         duty = read_json(args.duty_file) if args.duty_file else (prev_manifest or {}).get("duty")
 
@@ -548,7 +554,8 @@ def build(args):
             shutil.rmtree(pack_dir)
             log("前回パックから変化なし → 新しいパックは作りません")
             return {"changed": False, "packId": prev_manifest["packId"], "airports": len(prev_manifest.get("airports", [])),
-                    "charts": len(prev_charts), "chartMode": "unchanged"}
+                    "charts": n_frames, "chartMode": "unchanged", "chartErrors": charts.get("errors", []),
+                    "chartStats": charts.get("stats")}
     except BaseException:
         shutil.rmtree(pack_dir, ignore_errors=True)
         raise
@@ -562,6 +569,11 @@ def build(args):
             rel = os.path.relpath(p, pack_dir).replace(os.sep, "/")
             files.append({"path": rel, "bytes": os.path.getsize(p), "sha256": sha256(p),
                           "type": mimetypes.guess_type(n)[0] or "application/octet-stream"})
+    blobs = []
+    for b in sorted(chartlib.referenced_blobs(charts)):
+        p = os.path.join(ROOT, b)
+        if os.path.exists(p):
+            blobs.append({"file": b, "bytes": os.path.getsize(p)})
     manifest = {
         "schema": SCHEMA,
         "packId": pack_id,
@@ -572,12 +584,15 @@ def build(args):
         "defaultAirports": default_airports,
         "airportNames": {i: (stations.get(i) or {}).get("site") for i in airports if stations.get(i)},
         "sync": sync,
-        "sample": any(c.get("sample") for c in charts) or not brief["ok"],
+        "sample": not brief["ok"],
         "duty": duty,
         "sections": {"wx": "wx.json", "notam": "notam.json", "airports": "airports.json",
-                     "brief": "brief.json", "charts": "charts.json"},
+                     "brief": "brief.json", "charts": "charts.json", "atis": "atis.json"},
         "files": files,
-        "totalBytes": sum(f["bytes"] for f in files),
+        "blobs": blobs,
+        "packBytes": sum(f["bytes"] for f in files),
+        "blobBytes": sum(b["bytes"] for b in blobs),
+        "totalBytes": sum(f["bytes"] for f in files) + sum(b["bytes"] for b in blobs),
         "signature": signature,
         "previousPackId": prev_manifest["packId"] if prev_manifest else None,
     }
@@ -591,15 +606,29 @@ def build(args):
     for old in ids[keep:]:
         shutil.rmtree(os.path.join(packs_root, old))
         log("古いパックを削除:", old)
+    # 保持パックから参照されない blob を削除
+    keep_blobs = set()
+    for pid in ids[:keep]:
+        m = read_json(os.path.join(packs_root, pid, "manifest.json"), {}) or {}
+        keep_blobs |= {b["file"].split("/")[-1] for b in m.get("blobs", [])}
+    removed = 0
+    for n in os.listdir(blob_dir):
+        if n not in keep_blobs:
+            os.remove(os.path.join(blob_dir, n))
+            removed += 1
+    if removed:
+        log(f"未参照の画像 {removed} 件を削除")
     index = {"schema": SCHEMA, "latest": pack_id, "packs": []}
     for pid in ids[:keep]:
         m = read_json(os.path.join(packs_root, pid, "manifest.json"), {})
         index["packs"].append({"packId": pid, "generatedAt": m.get("generatedAt"), "totalBytes": m.get("totalBytes")})
     write_json(os.path.join(DATA, "index.json"), index)
     ok_wx = sum(1 for e in wx["airports"].values() if e.get("ok") and not e.get("carriedOver"))
-    log(f"完了 packId={pack_id} files={len(files)} size={manifest['totalBytes']}B WX取得OK={ok_wx}/{len(airports)} charts={len(charts)}({chart_mode})")
-    return {"changed": True, "packId": pack_id, "airports": len(airports), "charts": len(charts), "chartMode": chart_mode,
-            "bytes": manifest["totalBytes"]}
+    log(f"完了 packId={pack_id} files={len(files)} blobs={len(blobs)} size={manifest['totalBytes']}B WX取得OK={ok_wx}/{len(airports)} "
+        f"コマ={n_frames}({chart_mode}) 図エラー={len(charts.get('errors', []))}")
+    return {"changed": True, "packId": pack_id, "airports": len(airports), "charts": n_frames, "chartMode": chart_mode,
+            "bytes": manifest["totalBytes"], "blobs": len(blobs), "chartErrors": charts.get("errors", []),
+            "chartStats": charts.get("stats")}
 
 
 def make_parser():
@@ -609,11 +638,11 @@ def make_parser():
     ap.add_argument("--brief", help="ブリーフ本文のテキスト/Markdownファイル")
     ap.add_argument("--brief-if-newer", action="store_true", help="--brief が前回より新しい時だけ採用（古ければ前回本文を引き継ぎ）")
     ap.add_argument("--notam-file", help="NOTAM JSON（形式は examples/notam.sample.json）")
-    ap.add_argument("--charts-dir", help="図の画像フォルダ（任意で charts.json sidecar）")
-    ap.add_argument("--charts-if-newer", action="store_true", help="ステージングの図が公開済みより新しい時だけ差し替え")
-    ap.add_argument("--no-carry-charts", action="store_true", help="新しい図が無い時に前回の図を引き継がない")
-    ap.add_argument("--allow-restricted", action="store_true", help="restricted(MetAir等)の図も含める")
-    ap.add_argument("--sample-charts", action="store_true", help="見本(SAMPLE)図を入れる")
+    ap.add_argument("--charts-dir", help="任意: 追加の図フォルダ（「その他」に表示。charts.json sidecar 可）")
+    ap.add_argument("--allow-restricted", action="store_true", help="--charts-dir の restricted 図も含める")
+    ap.add_argument("--no-fetch-charts", action="store_true", help="図を取得せず前回分を引き継ぐ（テスト用）")
+    ap.add_argument("--workers", type=int, default=16, help="図の並列取得数")
+    ap.add_argument("--swim-dir", help="SWIM 応答のステージングフォルダ（notam/ atis.json profile/）")
     ap.add_argument("--duty-file", help="DUTY情報JSON（任意）")
     ap.add_argument("--keep", type=int, help="保持するパック数")
     ap.add_argument("--skip-if-unchanged", action="store_true", help="中身が前回と同じならパックを作らない")
