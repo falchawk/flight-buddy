@@ -2,7 +2,7 @@
 // - アプリ本体(シェル)はインストール時に全部キャッシュ（cache-first）
 // - data/packs/* は不変URL。保存済みパック(fb-pack-*)から返す（cache-first）
 // - data/latest/*, data/index.json は network-first（オフライン時はキャッシュ）
-const VERSION = 'v1.0.0';
+const VERSION = 'v1.0.1';
 const SHELL_CACHE = `fb-shell-${VERSION}`;
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',

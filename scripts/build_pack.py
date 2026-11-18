@@ -271,6 +271,8 @@ def collect_charts(charts_dir, dest_dir, allow_restricted, public_repo):
         meta.setdefault("id", os.path.splitext(safe)[0])
         meta.setdefault("sample", False)
         charts.append(meta)
+    order = {f: i for i, f in enumerate(sidecar)}
+    charts.sort(key=lambda c: order.get(os.path.basename(c["file"]), len(order)))
     return charts, skipped
 
 
@@ -382,7 +384,8 @@ def main():
                      "writtenAt": iso(dt.datetime.fromtimestamp(os.path.getmtime(args.brief), dt.timezone.utc))}
     write_json(os.path.join(pack_dir, "brief.json"), brief)
 
-    charts, skipped = collect_charts(args.charts_dir, os.path.join(pack_dir, "charts"), args.allow_restricted, public_repo)
+    allow_restricted = args.allow_restricted or bool(cfg.get("include_restricted", False))
+    charts, skipped = collect_charts(args.charts_dir, os.path.join(pack_dir, "charts"), allow_restricted, public_repo)
     if skipped:
         log(f"restricted のため除外した図 {len(skipped)} 件: {', '.join(skipped)}（含めるには --allow-restricted）")
     if args.sample_charts:

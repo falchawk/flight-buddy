@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.0.0';
+  const APP_VERSION = '1.0.1';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack' };
@@ -154,7 +154,7 @@
       b.onclick = () => { state.chartFilter = c; renderCharts(); }; f.appendChild(b);
     });
     const shown = charts.filter((c) => state.chartFilter === 'ALL' || (c.category || 'その他') === state.chartFilter);
-    const items = shown.map((c) => ({ ...c, info: [c.validTime ? `${fmtUtc(c.validTime)}（${fmtJst(c.validTime, false)}）` : c.validTimeHint || '', c.source || ''].filter(Boolean).join(' ・ ') }));
+    const items = shown.map((c) => ({ ...c, info: [c.kind || '', c.level || '', c.validTime ? `${fmtUtc(c.validTime)}（${fmtJst(c.validTime, false)}）` : c.validTimeHint || '', c.baseTime ? `初期値 ${fmtUtc(c.baseTime)}` : '', c.source ? `© ${c.source}` : ''].filter(Boolean).join(' ・ ') }));
     if (!shown.length && state.pack) grid.innerHTML = '<p class="hint">図はありません。</p>';
     for (let i = 0; i < items.length; i++) {
       const c = items[i];
