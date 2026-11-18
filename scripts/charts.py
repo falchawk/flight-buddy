@@ -163,6 +163,30 @@ class Fetcher:
                 self.urlmap[url] = {"f": rel, "t": time.time()}
         return rel
 
+    def image_cond(self, url):
+        """日付の無い URL 用: HEAD で ETag / Last-Modified を見て、前回と同じなら本文を取らずに前回の blob を返す。
+        戻り値 (blobパス or None, Last-Modified(UTC) or None)。"""
+        key = "cond:" + url
+        h = {}
+        st, _, _ = self._raw(url, retries=1, hdrs=h, method="HEAD")
+        if st != 200:
+            return None, None
+        lm = self.parse_lm(h)
+        sig = f"{h.get('etag', '')}|{h.get('last-modified', '')}"
+        with self.lock:
+            hit = self.urlmap.get(key)
+        if hit and hit.get("sig") == sig and os.path.exists(os.path.join(self.blob_dir, os.path.basename(hit["f"]))):
+            with self.lock:
+                hit["t"] = time.time()          # 7日掃除で消えないよう更新
+                self.stats["cached"] += 1
+                self.stats["unchanged"] = self.stats.get("unchanged", 0) + 1
+            return hit["f"], lm
+        rel = self.image(url)
+        if rel:
+            with self.lock:
+                self.urlmap[key] = {"f": rel, "t": time.time(), "sig": sig}
+        return rel, lm
+
     def pdf_page1_png(self, url):
         st, body, ct = self._raw(url, timeout=40)
         if st != 200 or body[:4] != b"%PDF":
@@ -649,6 +673,10 @@ def nkishou(F, cd, cat, name):
     return F.image(m.group(0).replace("http://", "https://"), immutable=True), m.group(1)
 
 
+FIR_PAGE = "https://www.data.jma.go.jp/airinfo/data/awfo_ajpn_cmnt_fukuokafir.html"
+FIR_URL = f"{JMA_AIR}/pict/ajpn_cmnt/qyya83.png"
+
+
 def upper_charts(F, errors):
     out = {}
     (a35, t35), (a78, t78), (f854, t854) = F.many(lambda a: nkishou(F, *a),
@@ -665,6 +693,15 @@ def upper_charts(F, errors):
     out["fbjp"] = [frame("FBJP 国内悪天予想図（最新）", [f])] if f else []
     if not f:
         errors.append("FBJP: 取得できず")
+    # 全国航空気象解説報（福岡FIR）: 1日2回（16時台・4時台 JST）発表の画像1枚（ISSUED/VALID は画像内に記載）。URL に日付が無いので
+    # HEAD の ETag/Last-Modified が変わった時だけ取り直す（15分周期でも通信はほぼ HEAD 1回）
+    fir, lm = F.image_cond(FIR_URL)
+    if fir:
+        out["fircmnt"] = [frame(f"福岡FIR 解説報 掲載 {lm.astimezone(JST):%d日%H:%M} JST（{lm:%H:%M}Z）" if lm else "福岡FIR 解説報（最新）",
+                                [fir], lm)]
+    else:
+        out["fircmnt"] = []
+        errors.append("全国航空気象解説報（福岡FIR）: 取得できず")
     # 日付の無い URL（fxjp106_12 など）は次の発表まで同じ名前で上書きされ、00 と 12 のどちらが新しいかは URL では分からない。
     # Last-Modified が新しい方を採り、初期時刻（日付つき）をラベルにする
     def newest_run(url_of):
@@ -709,7 +746,8 @@ NARROW_AREAS = [("kanto", "関東", "FBTT"), ("chubu", "中部", "FBGG"), ("kans
 def low_level(F, errors):
     res = F.many(lambda ft: (ft, F.image(f"{JMA_AIR}/pict/low-level_sigwx/fbos{ft}.png"),
                              F.image(f"{JMA_AIR}/pict/low-level_sigwx/fbtk{ft}.png")), SIGWX_FT)
-    frames = [frame("時系列図（西日本・東日本）" if ft == "39" else f"FT{ft}（西日本・東日本）", [w, e], layout="stack")
+    # 東日本（fbtk）を上、西日本（fbos）を下に積む（2026-11 ご指示。FT の並びは元アプリと同じ）
+    frames = [frame("時系列図（東日本・西日本）" if ft == "39" else f"FT{ft}（東日本・西日本）", [e, w], layout="stack")
               for ft, w, e in res if w or e]
     if not frames:
         errors.append("下層悪天予想図: 取得できず")
@@ -812,6 +850,11 @@ def build_charts(data_dir, airports, workers=16):
         {"id": "fxfe", "label": "高層天気図", "defaultItem": 1, "items": [
             {"id": "aupq", "label": "AUPQ", "product": single("AUPQ35 / AUPQ78", "n-kishou.com（気象庁FAX図）", up.get("aupq"))},
             {"id": "fbjp", "label": "FBJP", "product": single("FBJP 国内悪天予想図", SRC_JMA, up.get("fbjp"))},
+            {"id": "fircmnt", "label": "福岡FIR解説報", "product": single(
+                "全国航空気象解説報（福岡FIR）", "気象庁 航空気象情報（" + FIR_PAGE + "）", up.get("fircmnt"),
+                note="福岡FIRの悪天（ジェット気流・CAT・MTW・CB）の根拠を解説する図。1日2回（おおむね16時台・4時台 JST）発表で、上段=12UTC・下段=翌00UTC の予想。"
+                     "発表時刻（ISSUED）と有効時刻（VALID）は図の左上に記載。ここに出す『掲載』時刻は気象庁サーバー上のファイル更新時刻です。"
+                     "量的な予報は最新の飛行場予報・SIGMET を優先してください。")},
             {"id": "fxjp106", "label": "FXJP106", "product": single("FXJP106 国内航空路6・12時間予想断面図", SRC_JMA, up.get("fxjp106"))},
             {"id": "fxfe502", "label": "FXFE502", "product": single("FXFE502", SRC_JMA, up.get("fxfe502"))},
             {"id": "fxfe5782", "label": "FXFE5782", "product": single("FXFE5782", SRC_JMA, up.get("fxfe5782"))},
