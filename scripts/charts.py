@@ -332,7 +332,7 @@ AIRWAYS = [("201", "01", "福岡-釧路"), ("202", "02", "福岡-紋別"), ("203
            ("209", "09", "与那国-福岡"), ("299", "99", "与那国-稚内")]
 MERIDIANS = [("250", "50", "145E"), ("251", "51", "142.5E"), ("252", "52", "140E"), ("253", "53", "137.5E"), ("254", "54", "135E"),
              ("255", "55", "132.5E"), ("256", "56", "130E"), ("257", "57", "127.5E"), ("258", "58", "125E"), ("259", "59", "122.5E")]
-PLAN_LEVELS = [f"{z:02d}" for z in range(39, 10, -2)]  # FL390..FL110（ソースはFL奇数のみ。FL400・FL100は存在しない）
+PLAN_LEVELS = ["41"] + [f"{z:02d}" for z in range(39, 10, -2)] + ["09"]  # FL410, FL390..FL110, FL090（ソースはFL奇数のみ。FL400・FL100は存在しない）
 FCST_MAX_H = 6
 
 
@@ -406,8 +406,10 @@ def analysis30(F, errors):
         vid = f"plan{code}" if kind == "plan" else f"cs{code}"
         variants.append(variant(vid, name, frames, di, group))
     note = (f"ANALYSIS＝気象庁 airinfo（毎時、直近{len(times)}時刻）、FORECAST＝MetAir（初期 {init:%d日%H}Z、解析最新時刻から+{FCST_MAX_H}hまで）。"
-            "平面図は FL390〜FL110（ソースに FL400・FL100 は無い。奇数 FL のみ）。" if init else "")
-    return product("三十分大気解析", f"{SRC_JMA} / MetAir", variants, "cs205", note)
+            "平面図は FL410・FL390〜FL110・FL090（ソースに FL400・FL100 は無い。奇数 FL のみ）。" if init else "")
+    p = product("三十分大気解析", f"{SRC_JMA} / MetAir", variants, "cs205", note)
+    p["groupDefaults"] = {"平面図": "plan39", "断面図（航空路）": "cs205", "断面図（経度）": "cs250"}  # 平面図の既定は FL390
+    return p
 
 
 # =============================================================================== 5. 高層天気図

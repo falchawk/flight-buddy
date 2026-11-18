@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.2.0';
+  const APP_VERSION = '1.2.1';
   const SYNC_REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
@@ -235,7 +235,7 @@
       groups.forEach((g) => gwrap.appendChild(chip(g, g === v.group, () => {
         chartSel.group[key] = g;
         const remembered = variants.find((x) => x.group === g && x.id === (chartSel.group[`${key}:${g}`]));
-        const def = variants.find((x) => x.group === g && x.id === p.defaultVariant);
+        const def = variants.find((x) => x.group === g && x.id === (p.groupDefaults?.[g] || p.defaultVariant));
         chartSel.variant[key] = (remembered || def || variants.find((x) => x.group === g)).id; saveSel(); renderCharts();
       })));
       vbox.appendChild(gwrap);

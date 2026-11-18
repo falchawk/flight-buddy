@@ -36,7 +36,7 @@ python3 /workspace/flight-buddy/scripts/auto_update.py
 - 図: `scripts/charts.py` が気象庁・MetAir（/pict/ 直リンク）・n-kishou から **plain HTTP で並列取得**（ブラウザ不要）。
   画像は内容アドレス（`data/blobs/<sha256>.<ext>`）でパック間共有。タイムスタンプ入り URL は再取得しない（`data/.cache/urlmap.json`）。
   端末も新しい画像だけダウンロード（差分）。今回取れなかった種類・地域・高度は前回分を「前回分」印付きで引き継ぎ。
-  - 三十分大気解析: 断面図 航空路10＋経度10、平面図 FL390〜FL110（ソースは奇数FLのみ、FL400/FL100 は存在しない。既定 FL390／断面 福岡-東京）。
+  - 三十分大気解析: 断面図 航空路10＋経度10、平面図 FL410・FL390〜FL110・FL090（ソースは奇数FLのみ、FL400/FL100 は存在しない。既定 FL390／断面 福岡-東京）。
     ANALYSIS＝気象庁 直近25時刻、FORECAST＝MetAir 解析最新時刻から +6h まで。
   - ひまわり（赤外/可視/水蒸気）・雲頂高度: 直近2時間（10分毎）。ナウキャスト/雷/今後の雨: 全国＋19地域（地図・境界線を重ね表示）。
 - SWIM: `/workspace/fb-staging/notam/<ICAO>.json`（USV001 応答）、`atis.json`（LGV062 応答）、`profile/<ICAO>.json`（LGV220 応答）を
