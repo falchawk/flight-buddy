@@ -4,6 +4,10 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#0a0e14" />
+<script>
+  // 表示テーマ（auto=端末設定 / light / dark）。描画前に適用してちらつきを防ぐ。端末内保存のみ・オフライン可
+  (function () { try { var t = JSON.parse(localStorage.getItem('fb.theme') || '"auto"'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {} })();
+</script>
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -118,6 +122,13 @@
       <ul id="ap-selected" class="airport-list selected"></ul>
       <div id="ap-sync"></div>
       <p class="hint">パックには METAR/TAF のある国内空港がすべて入っているので、ここで選んだ空港がそのまま表示されます（端末内の設定。オフラインでも切替可）。リスト外の空港は「Botに同期」で追加できます。</p>
+      <h3>DISPLAY（表示）</h3>
+      <nav id="theme-chips" class="chips theme-chips">
+        <button class="chip" data-theme-opt="auto">自動（端末設定）</button>
+        <button class="chip" data-theme-opt="light">ライト</button>
+        <button class="chip" data-theme-opt="dark">ダーク</button>
+      </nav>
+      <p class="hint" id="theme-note"></p>
       <h3>PACK（オフライン保存）</h3>
       <div id="pack-info" class="card"></div>
       <div class="row">

@@ -1,10 +1,10 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.2.1';
+  const APP_VERSION = '1.2.2';
   const SYNC_REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
-  const LS = { airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel' };
+  const LS = { airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
   const lsSet = (k, v) => localStorage.setItem(k, JSON.stringify(v));
   const AIRLINES = ['SFJ', 'ANA', 'JAL', 'SNJ', 'ADO', 'SKY', 'APJ', 'JJP', 'FDA', 'IBX'];
@@ -498,9 +498,28 @@
     }
   }
 
+  // ---------------------------------------------------------------- THEME（auto / light / dark）
+  const darkMq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  function applyTheme() {
+    const t = lsGet(LS.theme, 'auto');
+    const root = document.documentElement;
+    if (t === 'light' || t === 'dark') root.setAttribute('data-theme', t); else root.removeAttribute('data-theme');
+    const eff = t === 'auto' ? (darkMq && !darkMq.matches ? 'light' : 'dark') : t;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', getComputedStyle(root).getPropertyValue('--bg-panel').trim() || (eff === 'light' ? '#ffffff' : '#10151d'));
+    document.querySelectorAll('#theme-chips .chip').forEach((b) => b.classList.toggle('active', b.dataset.themeOpt === t));
+    const note = $('theme-note');
+    if (note) note.textContent = t === 'auto' ? `端末の設定に合わせます（現在：${eff === 'light' ? 'ライト' : 'ダーク'}）。この端末に保存されます。` : 'この端末に保存されます（オフラインでも有効）。';
+  }
+  function setupTheme() {
+    document.querySelectorAll('#theme-chips .chip').forEach((b) => { b.onclick = () => { lsSet(LS.theme, b.dataset.themeOpt); applyTheme(); }; });
+    if (darkMq) (darkMq.addEventListener ? darkMq.addEventListener('change', applyTheme) : darkMq.addListener(applyTheme));
+    applyTheme();
+  }
+
   async function start() {
     $('app-version').textContent = `App v${APP_VERSION}`;
-    setupTabs(); setupTas(); setupDuty(); setupAirportPicker();
+    setupTheme(); setupTabs(); setupTas(); setupDuty(); setupAirportPicker();
     window.FBViewer.setup();
     $('airport-date').value = state.duty.date || todayJst();
     $('airport-date').onchange = renderAirport;
