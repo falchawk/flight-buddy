@@ -11,22 +11,23 @@
 - ID・パスワードはアプリにもリポジトリにも置きません（MetAir 等のログインはボット側だけ）。
 
 ## タブ
-| タブ | 内容 | データ |
+| タブ（旧版と同じ順） | 内容 | 状態 |
 |---|---|---|
-| BRIEF | ボットが書いたブリーフ本文 | パック `brief.json` |
-| WX | METAR/TAF（色分け・簡易デコード・TAF は変化群ごとに改行） | パック `wx.json`（aviationweather.gov） |
-| CHARTS | 旧 Flight Buddy と同じ8分類（地上天気図／衛星画像／レーダーエコー／三十分大気解析／高層天気図／下層悪天／Windy／AIRPORT）。コマ送り（◀▶・スライダー）、タップで全画面（ピンチ/ホイール拡大）。Windy のみオンライン専用 | パック `charts.json`（v2）+ `data/blobs/` |
-| NOTAM | メイン空港のみ・空港ごとの箱・直近 3H/1D/1W/ALL 切替（NEW 表示） | パック `notam.json`（SWIM ステージング） |
-| AIRPORT | 運用時間・滑走路・進入方式・日の出日没・標高・磁気偏差・周波数（無い項目は「未取得」） | パック `airports.json` + 端末内計算 |
-| DUTY | 日付・会社・便番号（数字のみ）・バッファ・メモ（端末内保存） | 端末 |
-| TAS | ISA 固定の TAS 早見表、kt⇔km/h | 端末（完全オフライン） |
-| SETTINGS | メイン空港（名称/IATA/ICAO 検索）、保存済みパック一覧・切替・再ダウンロード | 端末 |
+| MAP | 空港の飛行状態（VFR/MVFR/IFR/LIFR）を簡易地図（Natural Earth, 端末内）に表示。タップで METAR/TAF | 簡易版（背景タイル・航路線・NOTAM影響は未対応） |
+| DUTY | 日付・会社・便番号・バッファ・メモ（端末内保存） | 動作 |
+| WX | 旧版の8分類（地上天気図／衛星画像／レーダーエコー／三十分大気解析／高層天気図／下層悪天／Windy／AIRPORT）。AIRPORT > METAR TAF ATIS に空港ごとの METAR・デコード・TAF・ATIS | 動作（Windy はオンライン専用、ATIS は SWIM ステージング待ち） |
+| BRIEF | 選択空港サマリー＋ボットのブリーフ本文 | 動作 |
+| FLIGHTS | 会社別時刻表からの便名検索 | 未対応（時刻表データ無し。タブに「未対応」表示） |
+| NOTAM | メイン空港・直近 3H/1D/1W/ALL | SWIM ステージング待ち |
+| AIRPORT | 運用時間・滑走路・進入方式・日の出日没・周波数等（SWIM があれば運用状況・使用滑走路・遅延・飛行場警報） | 動作（SWIM 項目は待ち） |
+| TAS | ISA 固定の TAS 早見表、kt⇔km/h | 動作（完全オフライン） |
+| SETTINGS | メイン空港、表示（自動/ライト/ダーク）、保存済みパック | 動作 |
 
 ヘッダーに ONLINE/OFFLINE、パックの経過時間、ステータス行に「パック作成時刻（JST/UTC）・最新か保存済み表示か・SAMPLE 有無」を常時表示します。3 時間超で注意、12 時間超で警告バナー。
 
 ## 自動更新（ボット用）
 
-ルーティンから毎時 00/15/30/45 分に次を実行します（終了コード 0=成功/スキップ、1=失敗。最後に1行サマリー）。
+ルーティンから10分ごと（毎時 00/10/20/30/40/50 分）に次を実行します（終了コード 0=成功/スキップ、1=失敗。最後に1行サマリー）。
 
 ```bash
 python3 /workspace/flight-buddy/scripts/auto_update.py
@@ -46,8 +47,8 @@ python3 /workspace/flight-buddy/scripts/auto_update.py
 - NOTAM: 整形済み `/workspace/fb-staging/notam.json` があればそれを優先（無ければ上記 SWIM 応答から）。DUTY: `/workspace/fb-staging/duty.json` があれば採用。
 - 中身（METAR/TAF本文・図・ブリーフ・NOTAM）が前回と同じならパックを作らず公開もしない（`changed=no pushed=no`）。
 - 公開: `data/` を `pack-data.tar.gz` にして GitHub Release `pack-data` の asset を差し替え、`Deploy Pages` workflow を起動。
-  **データは git の履歴に入らない**ので、15分ごとに更新してもリポジトリは肥大化しません。
-- 720 秒で強制中断（通常 1〜3 分）。多重起動はロックでスキップ。`--no-publish`（作るだけ）、`--force`（変化が無くても作る）。
+  **データは git の履歴に入らない**ので、10分ごとに更新してもリポジトリは肥大化しません。
+- 540 秒で強制中断（通常は1分前後）。多重起動はロックでスキップ。`--no-publish`（作るだけ）、`--force`（変化が無くても作る）。
 
 ### 空港の同期（SETTINGS の空港 ⇔ パック）
 - パックは国内の METAR/TAF 局すべて（約130）を含むので、アプリの SETTINGS で選んだ空港がそのまま表示されます（設定は端末内、オフラインでも切替可）。

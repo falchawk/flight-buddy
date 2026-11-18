@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.2.2';
+  const APP_VERSION = '1.3.0';
   const SYNC_REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
@@ -94,7 +94,12 @@
       lsSet(LS.tab, tab);
     };
     btns.forEach((b) => b.addEventListener('click', () => go(b.dataset.tab)));
-    go(lsGet(LS.tab, 'brief'));
+    let t0 = lsGet(LS.tab, 'map');
+    if (t0 === 'charts') t0 = 'wx'; // 旧版（v1.2）のCHARTSタブは WX に統合
+    if (!document.getElementById(`tab-${t0}`)) t0 = 'map';
+    go(t0);
+    go.current = () => lsGet(LS.tab, 'map');
+    setupTabs.go = go;
   }
 
   // ---------------------------------------------------------------- BRIEF
@@ -132,10 +137,10 @@
   }
 
   // ---------------------------------------------------------------- WX
-  function renderWx() {
-    const wx = state.pack?.wx;
-    $('wx-meta').textContent = wx ? `取得 ${fmtJst(wx.fetchedAt)} ／ 出所 ${wx.source}` : 'パックがありません。';
-    const list = $('wx-list'); list.innerHTML = '';
+  // WX > AIRPORT > METAR TAF ATIS（旧版と同じ場所）。空港ごとに1つの箱に METAR・デコード・TAF・ATIS
+  function renderWxCards(list) {
+    const wx = state.pack?.wx, atis = state.pack?.atis;
+    if (wx) list.insertAdjacentHTML('beforeend', `<p class="hint" style="margin:0 14px">取得 ${esc(fmtJst(wx.fetchedAt))} ／ 出所 ${esc(wx.source)}</p><div class="legend" style="margin:4px 14px"><span class="hl-danger">赤</span>=要注意（IFR級・TS・強風等） <span class="hl-warn">黄</span>=注意 <span class="hl-grp">TEMPO/BECMG</span></div>`);
     for (const icao of mainAirports()) {
       const e = wx?.airports?.[icao];
       const card = document.createElement('div'); card.className = 'card';
@@ -154,6 +159,8 @@
           <div class="sub-label">TAF ${e.taf ? `発表 ${esc(fmtUtc(e.taf.issueTime))} ／ 有効 ${esc(fmtUtc(e.taf.validFrom))}〜${esc(fmtUtc(e.taf.validTo))}` : ''}</div>
           ${e.taf ? `<div class="raw">${window.FBWx.tafLines(e.taf.raw)}</div>` : naBox('TAF 未取得')}`;
       }
+      const a = atis?.airports?.[icao];
+      body += `<div class="sub-label">ATIS ${a && atis.fetchedAt ? `<span class="hint">${esc(fmtJst(atis.fetchedAt))}取得</span>` : ''}</div>${a ? `<pre class="raw">${esc(a.text)}</pre>` : naBox(atis?.ok ? 'ATIS なし（SWIM ATIS 対象外か応答なし）' : (atis?.note || 'ATIS 未取得'))}`;
       card.innerHTML = `<div class="card-title"><span>${esc(apName(icao))} <span class="codes hint">${esc(apCodes(icao))}</span></span></div>${body}`;
       list.appendChild(card);
     }
@@ -285,17 +292,51 @@
     show(frameIdx[fkey]);
   }
   function renderWxText(panel, head) {
-    const wx = state.pack?.wx, atis = state.pack?.atis;
-    const rows = mainAirports().map((icao) => {
-      const e = wx?.airports?.[icao];
-      const mt = e?.metar?.[0];
-      const a = atis?.airports?.[icao];
-      return `<div class="card" style="margin:8px"><div class="card-title"><span>${esc(apName(icao))} <span class="hint">${esc(apCodes(icao))}</span></span></div>
-        <div class="sub-label">METAR</div>${mt ? `<div class="raw">${window.FBWx.highlight(mt.raw)}</div>` : naBox(e ? 'METAR 未取得' : 'パック未収録')}
-        <div class="sub-label">TAF</div>${e?.taf ? `<div class="raw">${window.FBWx.tafLines(e.taf.raw)}</div>` : naBox('TAF 未取得')}
-        <div class="sub-label">ATIS ${a && atis.fetchedAt ? `<span class="hint">${esc(fmtJst(atis.fetchedAt))}取得</span>` : ''}</div>${a ? `<pre class="raw">${esc(a.text)}</pre>` : naBox(atis?.ok ? 'ATIS なし（この空港は SWIM ATIS 対象外か応答なし）' : (atis?.note || 'ATIS 未取得'))}</div>`;
-    }).join('');
-    panel.innerHTML = head() + rows;
+    panel.innerHTML = head();
+    const box = document.createElement('div'); box.className = 'wx-cards';
+    panel.appendChild(box);
+    renderWxCards(box);
+  }
+
+  // ---------------------------------------------------------------- MAP（簡易版：オフライン地図＋空港の飛行状態）
+  function renderMap() {
+    const box = $('map-box'), D = window.FB_MAPDATA;
+    if (!box || !D) return;
+    const wx = state.pack?.wx?.airports || {};
+    const sel = mainAirports();
+    const proj = (lat, lon) => [(lon - D.lon0) * D.c * D.s, (D.lat0 - lat) * D.s];
+    const pts = [];
+    const coord = (icao) => {
+      const a = airportInfo(icao), p = state.pack?.airports?.airports?.[icao];
+      const lat = p?.lat ?? a?.lat, lon = p?.lon ?? a?.lon;
+      return lat != null && lon != null ? [lat, lon] : null;
+    };
+    const all = new Set([...(state.pack?.manifest?.airports || []), ...sel]);
+    for (const icao of all) {
+      const c = coord(icao); if (!c) continue;
+      const mt = wx[icao]?.metar?.[0];
+      const cat = mt ? (mt.fltCat || window.FBWx.flightCategory(mt.raw)) : null;
+      const [x, y] = proj(c[0], c[1]);
+      if (x < 0 || y < 0 || x > D.w || y > D.h) continue;
+      pts.push({ icao, x, y, cat, sel: sel.includes(icao) });
+    }
+    pts.sort((a, b) => a.sel - b.sel);
+    const dots = pts.map((p) => `<g class="ap${p.sel ? ' sel' : ''}" data-icao="${esc(p.icao)}" transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)})">
+      ${p.sel ? '<circle r="13" class="ring"/>' : ''}<circle r="${p.sel ? 8 : 6}" class="dot ${p.cat || 'NA'}"/>
+      ${p.sel ? `<text x="14" y="5" class="lbl">${esc(p.icao)}</text>` : ''}<circle r="18" class="hit"/></g>`).join('');
+    box.innerHTML = `<svg viewBox="0 0 ${D.w} ${D.h}" class="map-svg" role="img" aria-label="日本の空港の飛行状態">
+      <path d="${D.other}" class="land other"/><path d="${D.jp}" class="land jp"/>${dots}</svg>`;
+    const detail = $('map-detail');
+    const show = (icao) => {
+      const e = wx[icao], mt = e?.metar?.[0];
+      const cat = mt ? (mt.fltCat || window.FBWx.flightCategory(mt.raw)) : null;
+      detail.innerHTML = `<div class="card"><div class="card-title"><span>${esc(apName(icao))} <span class="codes hint">${esc(apCodes(icao))}</span></span>${cat ? `<span class="badge ${cat}">${cat}</span>` : '<span class="badge na">METARなし</span>'}</div>
+        ${mt ? `<div class="raw">${window.FBWx.highlight(mt.raw)}</div>` : naBox('METAR 未取得')}
+        ${e?.taf ? `<details><summary>TAF</summary><div class="raw" style="margin-top:6px">${window.FBWx.tafLines(e.taf.raw)}</div></details>` : ''}</div>`;
+    };
+    box.querySelectorAll('g.ap').forEach((g) => { g.onclick = () => show(g.dataset.icao); });
+    if (!detail.innerHTML && sel[0]) show(sel[0]);
+    if (!state.pack) detail.innerHTML = '<p class="hint">パックがありません。オンラインで一度開くと保存されます。</p>';
   }
 
   // ---------------------------------------------------------------- NOTAM
@@ -407,7 +448,7 @@
       const ul = $('ap-selected'); ul.innerHTML = '';
       const miss = missingAirports();
       $('ap-sync').innerHTML = state.pack ? (miss.length
-        ? `<p class="hint"><span class="badge na">パック未収録</span> ${esc(miss.join(', '))}</p><a class="btn btn-primary" href="${syncUrl()}" target="_blank" rel="noopener">Botに同期（GitHub issue を開く）</a><p class="hint">開いたページで Submit すると、次回の自動更新（15分ごと）でパックに追加されます。オンライン時のみ。</p>`
+        ? `<p class="hint"><span class="badge na">パック未収録</span> ${esc(miss.join(', '))}</p><a class="btn btn-primary" href="${syncUrl()}" target="_blank" rel="noopener">Botに同期（GitHub issue を開く）</a><p class="hint">開いたページで Submit すると、次回の自動更新（10分ごと）でパックに追加されます。オンライン時のみ。</p>`
         : `<p class="hint">選択中の空港はすべてパックに収録済みです（パック収録 ${state.pack.manifest.airports.length} 空港）。</p>`) : '';
       mainAirports().forEach((icao, i) => {
         const li = document.createElement('li');
@@ -457,7 +498,7 @@
 
   // ---------------------------------------------------------------- pack flow
   function renderAll() {
-    renderStatus(); renderBrief(); renderWx(); renderCharts(); renderNotam(); renderAirport(); renderDuty();
+    renderStatus(); renderBrief(); renderMap(); renderCharts(); renderNotam(); renderAirport(); renderDuty();
     setupAirportPicker.renderSel && setupAirportPicker.renderSel();
     renderPackInfo();
   }
@@ -506,7 +547,7 @@
     if (t === 'light' || t === 'dark') root.setAttribute('data-theme', t); else root.removeAttribute('data-theme');
     const eff = t === 'auto' ? (darkMq && !darkMq.matches ? 'light' : 'dark') : t;
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', getComputedStyle(root).getPropertyValue('--bg-panel').trim() || (eff === 'light' ? '#ffffff' : '#10151d'));
+    if (meta) meta.setAttribute('content', getComputedStyle(root).getPropertyValue('--bg-panel-solid').trim() || (eff === 'light' ? '#ffffff' : '#10151d'));
     document.querySelectorAll('#theme-chips .chip').forEach((b) => b.classList.toggle('active', b.dataset.themeOpt === t));
     const note = $('theme-note');
     if (note) note.textContent = t === 'auto' ? `端末の設定に合わせます（現在：${eff === 'light' ? 'ライト' : 'ダーク'}）。この端末に保存されます。` : 'この端末に保存されます（オフラインでも有効）。';

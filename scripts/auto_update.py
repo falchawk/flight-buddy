@@ -36,7 +36,7 @@ ASSET = "pack-data.tar.gz"
 WORKFLOW = "pages.yml"
 DATA = os.path.join(ROOT, "data")
 LOCK = "/tmp/flight-buddy-auto-update.lock"
-HARD_TIMEOUT_S = 720  # 15分間隔に収める（ロックで多重起動も防止）
+HARD_TIMEOUT_S = 540  # 10分間隔に収める（通常は1分前後。ロックで多重起動も防止）
 
 
 def log(*a):

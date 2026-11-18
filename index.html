@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#0a0e14" />
+<meta name="theme-color" content="#101826" />
 <script>
   // 表示テーマ（auto=端末設定 / light / dark）。描画前に適用してちらつきを防ぐ。端末内保存のみ・オフライン可
   (function () { try { var t = JSON.parse(localStorage.getItem('fb.theme') || '"auto"'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {} })();
@@ -38,26 +38,35 @@
   <div id="stale-banner" class="stale-banner hidden"></div>
 
   <main id="pages">
-    <section id="tab-brief" class="tab-panel active">
+    <section id="tab-map" class="tab-panel">
+      <h2>MAP <span class="h-sub">簡易版</span></h2>
+      <p class="hint"><span class="badge na">簡易版</span> パックの METAR から空港の飛行状態（VFR/MVFR/IFR/LIFR）を地図に表示します（オフライン可）。旧版の背景地図タイル・便の航路線・NOTAM影響表示は未対応です。</p>
+      <div id="map-box" class="map-box"></div>
+      <div class="map-legend"><span class="badge VFR">VFR</span><span class="badge MVFR">MVFR</span><span class="badge IFR">IFR</span><span class="badge LIFR">LIFR</span><span class="hint">◎ = 選択空港</span></div>
+      <div id="map-detail"></div>
+    </section>
+
+    <section id="tab-brief" class="tab-panel">
       <h2>BRIEF</h2>
       <div id="brief-meta" class="hint"></div>
       <div id="brief-body" class="brief-body"></div>
     </section>
 
     <section id="tab-wx" class="tab-panel">
-      <h2>WX <span class="h-sub">METAR / TAF</span></h2>
-      <div id="wx-meta" class="hint"></div>
-      <div class="legend"><span class="hl-danger">赤</span>=要注意（IFR級・TS・強風等） <span class="hl-warn">黄</span>=注意 <span class="hl-grp">TEMPO/BECMG</span></div>
-      <div id="wx-list"></div>
-    </section>
-
-    <section id="tab-charts" class="tab-panel">
-      <h2>CHARTS</h2>
+      <h2>WX</h2>
       <div id="charts-meta" class="hint"></div>
       <nav id="chart-cats" class="chips chips-scroll"></nav>
       <nav id="chart-items" class="chips chips-sub"></nav>
       <div id="chart-variants"></div>
       <div id="chart-body"></div>
+    </section>
+
+    <section id="tab-flights" class="tab-panel">
+      <h2>FLIGHTS</h2>
+      <div class="card notice-card">
+        <div class="card-title"><span>準備中（データ未対応）</span><span class="badge na">未対応</span></div>
+        <p class="hint">旧 Flight Buddy の FLIGHTS（会社別の時刻表から便名検索）は、時刻表データの取得元がまだパックに入っていないため表示できません。データの用意ができ次第ここに表示します。DUTY の便登録は使えます。</p>
+      </div>
     </section>
 
     <section id="tab-notam" class="tab-panel">
@@ -142,12 +151,13 @@
   </main>
 
   <nav class="tabbar" id="tabbar">
-    <button class="tab-btn active" data-tab="brief"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h9l3 3v15H6z"/><path d="M9 12h6M9 16h6M9 8h3"/></svg><span>BRIEF</span></button>
+    <button class="tab-btn" data-tab="map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M15 9l-2.2 5.8L9 17l2.2-5.8L15 9z" fill="currentColor" stroke="none"/></svg><span>MAP</span></button>
+    <button class="tab-btn" data-tab="duty"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2.5 2v1.5L12 21l4.5 1.5V21l-2.5-2v-5.5L21 16z"/></svg><span>DUTY</span></button>
     <button class="tab-btn" data-tab="wx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 18h10a4 4 0 0 0 .5-7.97A5.5 5.5 0 0 0 7.1 9.5 4 4 0 0 0 7 18z"/></svg><span>WX</span></button>
-    <button class="tab-btn" data-tab="charts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/></svg><span>CHARTS</span></button>
+    <button class="tab-btn" data-tab="brief"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h9l3 3v15H6z"/><path d="M9 12h6M9 16h6M9 8h3"/></svg><span>BRIEF</span></button>
+    <button class="tab-btn" data-tab="flights"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg><span>FLIGHTS</span><i class="tab-flag">未対応</i></button>
     <button class="tab-btn" data-tab="notam"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l10 18H2z"/><path d="M12 10v4"/><circle cx="12" cy="17" r="0.8" fill="currentColor"/></svg><span>NOTAM</span></button>
     <button class="tab-btn" data-tab="airport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 21h20M7 21V11h3v10M14 21V5h3v16M12 5h7"/></svg><span>AIRPORT</span></button>
-    <button class="tab-btn" data-tab="duty"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2.5 2v1.5L12 21l4.5 1.5V21l-2.5-2v-5.5L21 16z"/></svg><span>DUTY</span></button>
     <button class="tab-btn" data-tab="tas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4.5 15.5a7.5 7.5 0 1 1 15 0"/><path d="M12 15.5l3.6-4.6"/><circle cx="12" cy="15.5" r="1"/></svg><span>TAS</span></button>
     <button class="tab-btn" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span>SETTINGS</span></button>
   </nav>
@@ -170,6 +180,7 @@
 </div>
 
 <script src="js/airports-data.js"></script>
+<script src="js/map-data.js"></script>
 <script src="js/sun.js"></script>
 <script src="js/tas.js"></script>
 <script src="js/wx.js"></script>
