@@ -4,7 +4,7 @@
 // - 空港: パック内の全空港を飛行状態（VFR/MVFR/IFR/LIFR）の色で表示。選択空港は大きく＋ICAOラベル
 //   タップでポップアップ（METAR / TAF / NOTAM件数）。経緯線、現在地（位置情報、オフラインでも可）
 (function () {
-  const CAT = { VFR: 'var(--vfr)', MVFR: 'var(--mvfr)', IFR: 'var(--ifr)', LIFR: 'var(--lifr)' };
+  const CAT = { VFR: '#00C853', MVFR: '#2196F3', IFR: '#E53935', LIFR: '#C2185B' }; // wx-brief main public/js/map.js FLIGHT_CATEGORY_COLORS と同じ
   const KASHIMA = [35.9919, 140.6403];
   const DEER = '<svg viewBox="0 0 100 80" width="20" height="15"><g fill="currentColor"><ellipse cx="45" cy="52" rx="26" ry="14"/><rect x="58" y="26" width="8" height="26" rx="3"/><ellipse cx="66" cy="24" rx="9" ry="7"/><path d="M62 18 L58 6 M62 18 L66 4 M70 18 L74 6 M70 18 L70 4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><rect x="24" y="60" width="4" height="16"/><rect x="34" y="62" width="4" height="16"/><rect x="52" y="62" width="4" height="16"/><rect x="60" y="60" width="4" height="16"/></g></svg>';
   const PLANE = '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 2 L13.2 8.5 L22 13.5 L22 15.3 L13.2 12.3 L13.5 18.5 L16.5 20.5 L16.5 22 L12 20.8 L7.5 22 L7.5 20.5 L10.5 18.5 L10.8 12.3 L2 15.3 L2 13.5 L10.8 8.5 Z" fill="#29B6F6" stroke="#0d3c5c" stroke-width="0.8" stroke-linejoin="round"/></svg>';

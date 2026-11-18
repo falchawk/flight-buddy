@@ -3,7 +3,12 @@
   "airport_set": "japan_all",
   "default_airports": [
     "RJTT",
-    "RJFF"
+    "RJBB",
+    "RJGG",
+    "RJSS",
+    "RJFF",
+    "RJDC",
+    "RJFR"
   ],
   "extra_airports": [],
   "sync_repo": "falchawk/flight-buddy",
@@ -20,5 +25,6 @@
   },
   "include_restricted": true,
   "_restricted_note": "MetAir図はユーザーがMetAirから個別に利用許可を得たため既定で含める（2026-11-18）。許可が無くなったら false に戻すこと。",
-  "foreign_airports_file": "config/foreign_airports.json"
+  "foreign_airports_file": "config/foreign_airports.json",
+  "_default_airports_note": "wx-brief main（3c60eec）public/js/app.js DEFAULT_MAIN_AIRPORTS と同じ7空港。SWIM（NOTAM・ATIS・空港プロファイル・AIP）はこの7空港＋同期issueの国内空港を取る。"
 }

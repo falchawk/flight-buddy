@@ -328,12 +328,29 @@ label.block{margin-top:14px}
 .ap-group summary{cursor:pointer;padding:10px 4px;font-weight:600}
 
 .brand-deer{display:inline-flex;margin-left:6px;color:var(--accent);vertical-align:-3px}
-.onboarding{position:fixed;inset:0;z-index:3000;background:var(--bg);overflow:auto;padding:24px 16px}
-.onboarding.hidden{display:none}
-.onboarding-box{max-width:520px;margin:0 auto;padding:18px}
-.onboarding-box h1{font-size:26px;margin:0 0 6px}
-.onboarding-box input{width:100%}
-#ob-start{width:100%;margin-top:12px;padding:14px}
 .duty-leg{display:block;margin-top:6px;font-size:13px}
 .duty-leg .raw{margin-top:4px}
-.onboarding-box h1.brand{display:block;color:var(--text);font-size:26px}
+
+/* ---------- wx-brief main（3c60eec）public/css/style.css と同じ配色（2026-11-18 ご指摘：TAF の TEMPO/BECMG の色） */
+:root{--o-cyan:#4fc3f7;--o-yellow:#d8b34a;--o-green:#3fa66a;--o-prob:#e8cf9a;--o-red:#b81c2c;--o-magenta:#e8348f;
+  --vfr:#3fa66a;--mvfr:#4fc3f7;--ifr:#b81c2c;--lifr:#e8348f}
+.taf-token-becmg{color:var(--o-cyan);font-weight:700}
+.taf-token-tempo{color:var(--o-yellow);font-weight:700}
+.taf-token-fm{color:var(--o-green);font-weight:700}
+.taf-token-prob{color:var(--o-prob);font-weight:700}
+.taf-line{padding:1px 4px;margin:0 -4px;border-radius:4px}
+.taf-line-relevant{background:rgba(216,179,74,.18);box-shadow:inset 3px 0 0 var(--o-yellow)}
+/* 飛行状態バッジ（旧 .flight-category-badge：枠線＋文字色） */
+.badge.VFR,.badge.MVFR,.badge.IFR,.badge.LIFR{background:transparent;border:1px solid currentColor;letter-spacing:.04em}
+.badge.VFR{color:var(--vfr)}.badge.MVFR{color:var(--mvfr)}.badge.IFR{color:var(--ifr)}.badge.LIFR{color:var(--lifr)}
+/* 出典ステータス（旧 .doc-card .doc-status） */
+.doc-status{font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--text-dim);font-weight:600;white-space:nowrap}
+.doc-status.ok{color:var(--o-green);border-color:var(--o-green)}
+.doc-status.fail{color:var(--text-dim)}
+.doc-note{color:var(--text-dim);font-size:12px;margin-top:6px;white-space:pre-wrap}
+.lost-comm-details>summary{cursor:pointer;list-style:none;font-weight:700;color:var(--text)}
+.lost-comm-details>summary::-webkit-details-marker{display:none}
+.lost-comm-source{font-size:11px;color:var(--text-dim);margin:6px 0 2px}
+.lost-comm-body{font-size:12.5px;line-height:1.55;white-space:pre-wrap}
+:root[data-theme="light"]{--vfr:#3fa66a;--mvfr:#4fc3f7;--ifr:#b81c2c;--lifr:#e8348f}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--vfr:#3fa66a;--mvfr:#4fc3f7;--ifr:#b81c2c;--lifr:#e8348f}}

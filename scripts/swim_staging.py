@@ -1,13 +1,12 @@
 """
-SWIM（国交省 航空情報）ステージング読み込み。
-ボット（ブラウザ）が SWIM の応答 JSON を「そのまま」次の場所に保存し、ここで整形してパックに入れる。
-認証情報はここでは一切扱わない（ファイルを読むだけ）。
+SWIM（国交省 System-Wide Information Management）の取得結果をパックに入れる。
+取得は fetchers/swim/run.js（wx-brief main の lib/swimSession.js・fetchers/swim.js・fetchers/swimAip.js）が
+box 上で行い、<staging>/swim/swim.json（正規化済み）に書く。ここはそのファイルを読むだけ（認証情報は扱わない）。
 
-  <staging>/notam/<ICAO>.json   … POST f2dnrq/web/FUV201/USV001 の応答（空港ごと）
-  <staging>/atis.json           … POST f2atrq/web/FLV402/LGV062 の応答（複数空港まとめて1回）
-  <staging>/profile/<ICAO>.json … POST f2appr/web/FLV806/LGV220 の応答（空港ごと）
-  ※ どれも {"fetchedAt": "...Z", "response": <応答そのまま>} でも、応答そのままでも可（後者は mtime を取得時刻とみなす）
-  ※ <staging>/notam.json（整形済み形式, examples/notam.sample.json）があれば従来どおりそちらを優先
+優先順位（wx-brief main の routes/api.js・lib/metarPriority.js と同じ）
+  METAR : ① SWIM（空港プロファイルの METAR 枠） ② AWC（JSON→raw） ③ Ogimet
+  TAF   : ① SWIM（空港プロファイルの TAF 枠）   ② AWC
+  ATIS / NOTAM / 空港プロファイル / AIP Lost Communication : SWIM のみ
 """
 import datetime as dt
 import json
@@ -15,137 +14,231 @@ import os
 import re
 
 UTC = dt.timezone.utc
-JST = dt.timezone(dt.timedelta(hours=9))
-MAX_AGE_H = 6  # これより古いステージングは使わない（古いATIS等を出さない）
+MAX_AGE_H = {"atis": 1.0, "profile": 3.0, "notam": 6.0, "aip": 24 * 35}  # これより古い部品は使わない
+
+METERS_PER_SM = 1609.344
 
 
-def _load(path):
+# ---------------------------------------------------------------- lib/flightCategory.js の移植（同じ判定）
+def _vis_sm(t):
+    text = f" {t} "
+    if re.search(r"\bCAVOK\b", text):
+        return 10000 / METERS_PER_SM
+    m = re.search(r"\s(M|P)?(\d{1,2})(?:\s(\d)/(\d))?SM\b", text)
+    if m:
+        sm = float(m[2])
+        if m[3] and m[4]:
+            sm += float(m[3]) / float(m[4])
+        return sm
+    m = re.search(r"\s(M|P)?(\d)/(\d)SM\b", text)
+    if m:
+        return float(m[2]) / float(m[3])
+    m = re.search(r"\s(?:\d{3}|VRB)\d{2}(?:G\d{2})?(?:KT|MPS)\s+(\d{4})\b", text)
+    if m:
+        return float(m[1]) / METERS_PER_SM
+    return None
+
+
+def _ceil_ft(t):
+    if re.search(r"\bCAVOK\b", t):
+        return None
+    hs = [int(h) * 100 for h in re.findall(r"\b(?:BKN|OVC|VV)(\d{3})\b", t)]
+    return min(hs) if hs else None
+
+
+def classify_metar(text):
+    """wx-brief lib/flightCategory.js classifyMetarText と同じ。判定できなければ None。"""
+    if not text:
+        return None
+    c, v = _ceil_ft(text), _vis_sm(text)
+    fc = None if c is None else ("LIFR" if c < 500 else "IFR" if c < 1000 else "MVFR" if c <= 3000 else "VFR")
+    fv = None if v is None else ("LIFR" if v < 1 else "IFR" if v < 3 else "MVFR" if v <= 5 else "VFR")
+    rank = {"LIFR": 0, "IFR": 1, "MVFR": 2, "VFR": 3}
+    if not fc and not fv:
+        return None
+    if not fc:
+        return fv
+    if not fv:
+        return fc
+    return fc if rank[fc] <= rank[fv] else fv
+
+
+# ---------------------------------------------------------------- 読み込み
+def _age_h(iso):
+    try:
+        return (dt.datetime.now(UTC) - dt.datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)).total_seconds() / 3600
+    except Exception:  # noqa: BLE001
+        return 1e9
+
+
+def load_swim(staging):
+    """swim.json を読み、古すぎる部品は除いた dict を返す（無ければ None）。"""
+    path = os.path.join(staging, "swim", "swim.json") if staging else None
+    if not path or not os.path.exists(path):
+        return None
     try:
         with open(path, encoding="utf-8") as f:
             d = json.load(f)
     except Exception:  # noqa: BLE001
-        return None, None
-    fetched = None
-    if isinstance(d, dict) and "response" in d:
-        fetched = d.get("fetchedAt")
-        d = d["response"]
-    if not fetched:
-        fetched = dt.datetime.fromtimestamp(os.path.getmtime(path), UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    return d, fetched
-
-
-def _age_h(fetched):
-    try:
-        t = dt.datetime.strptime(fetched, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
-        return (dt.datetime.now(UTC) - t).total_seconds() / 3600
-    except Exception:  # noqa: BLE001
-        return 999
-
-
-def _swim_utc(s):
-    """'YYYY/MM/DD HH:mm' (UTC) → ISO Z"""
-    if not s or not isinstance(s, str):
         return None
-    m = re.match(r"(\d{4})/(\d{2})/(\d{2})\s+(\d{2}):(\d{2})", s.strip())
-    if not m:
-        return None
-    return f"{m[1]}-{m[2]}-{m[3]}T{m[4]}:{m[5]}:00Z"
+    for part, mx in MAX_AGE_H.items():
+        p = d.get(part)
+        if p and p.get("fetchedAt") and _age_h(p["fetchedAt"]) > mx:
+            d[part] = {"ok": False, "stale": True, "fetchedAt": p["fetchedAt"],
+                       "error": f"SWIM の{ {'atis': 'ATIS', 'profile': '空港プロファイル', 'notam': 'NOTAM', 'aip': 'AIP'}[part] }が古いため不使用（{p['fetchedAt']}取得）"}
+    return d
 
 
-def _issued(xml):
-    if not isinstance(xml, str):
-        return None
-    m = re.search(r"<event:issued>([^<]+)</event:issued>", xml)
-    if not m:
-        return None
-    v = m.group(1).strip()
-    return v if v.endswith("Z") else v + ("Z" if re.match(r"\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d)?$", v) else "")
+def env_note(swim):
+    if swim is None:
+        return "SWIM 未取得（fetchers/swim/run.js の結果がありません）"
+    if not swim.get("envSet"):
+        return "SWIM未設定：環境変数 SWIM_USER / SWIM_PASS が未設定です。"
+    return None
 
 
-def load_notam_raw(staging, airports):
-    d = os.path.join(staging, "notam")
-    if not os.path.isdir(d):
-        return None
-    out = {"ok": True, "source": "SWIM（国交省）f2dnrq USV001 — ボットが取得", "fetchedAt": None, "airports": {}}
-    got = 0
+def _ms_to_iso(ms):
+    return dt.datetime.fromtimestamp(ms / 1000, UTC).strftime("%Y-%m-%dT%H:%M:%SZ") if isinstance(ms, (int, float)) else None
+
+
+def notam_json(swim, airports):
+    """NOTAM（SWIM f2dnrq USV001）。airports はパックの NOTAM 対象（SWIM で取った空港）。"""
+    note = env_note(swim)
+    n = (swim or {}).get("notam") or {}
+    out = {"ok": bool(n.get("ok")), "source": "SWIM（国交省）デジタルNOTAM", "fetchedAt": n.get("fetchedAt"),
+           "note": note or n.get("note") or n.get("error") or n.get("lastError"), "attempted": bool(n.get("fetchedAt")),
+           "airports": {}}
+    notes = n.get("notesByIcao") or {}
     for icao in airports:
-        raw, fetched = _load(os.path.join(d, f"{icao}.json"))
-        if raw is None:
-            out["airports"][icao] = {"items": [], "status": "未取得"}
-            continue
-        if _age_h(fetched) > MAX_AGE_H:
-            out["airports"][icao] = {"items": [], "status": f"未取得（ステージングが古い {fetched}）"}
-            continue
-        ret = (raw or {}).get("ret") or {}
-        if raw.get("error") or not isinstance(ret.get("notamList"), list):
-            out["airports"][icao] = {"items": [], "status": "取得失敗（応答形式が想定外）"}
-            continue
-        items = []
-        for n in ret["notamList"]:
-            items.append({"id": n.get("number") or n.get("uuid") or str(n.get("sequenceNo") or ""),
-                          "issued": _issued(n.get("digitalNotam")),
-                          "effectiveFrom": _swim_utc(n.get("startDate")),
-                          "effectiveTo": _swim_utc(n.get("endDate")),
-                          "text": n.get("list") or n.get("contents") or ""})
-        out["airports"][icao] = {"items": items, "fetchedAt": fetched}
-        out["fetchedAt"] = max(out["fetchedAt"] or "", fetched)
-        got += 1
-    if not got:
-        return None
+        items = [{"id": it.get("id"), "issued": _ms_to_iso(it.get("issuedEpoch")),
+                  "effectiveFrom": _ms_to_iso(it.get("validFromEpoch")), "effectiveTo": _ms_to_iso(it.get("validToEpoch")),
+                  "text": it.get("text") or "", "scopes": it.get("scopes")}
+                 for it in n.get("items") or [] if it.get("icao") == icao]
+        e = {"items": items}
+        if not items:
+            e["status"] = notes.get(icao) or (note or ("現在、有効なNOTAMはありません。" if n.get("ok") else (n.get("error") or "未取得")))
+        out["airports"][icao] = e
     return out
 
 
-def load_atis(staging):
-    raw, fetched = _load(os.path.join(staging, "atis.json"))
-    if raw is None:
-        return {"ok": False, "note": "ATIS 未取得（SWIM ステージング無し）", "airports": {}}
-    if _age_h(fetched) > 1.5:
-        return {"ok": False, "note": f"ATIS 未取得（ステージングが古い {fetched}）", "airports": {}}
-    dto = ((raw or {}).get("ret") or {}).get("atisInfoDTO") or {}
-    locs, texts = dto.get("locationList") or [], dto.get("fltxDataInfList") or []
-    ap = {icao: {"text": texts[i]} for i, icao in enumerate(locs) if i < len(texts) and texts[i]}
-    return {"ok": bool(ap), "source": "SWIM（国交省）f2atrq LGV062", "fetchedAt": fetched, "airports": ap}
+def atis_json(swim):
+    note = env_note(swim)
+    a = (swim or {}).get("atis") or {}
+    by = a.get("byIcao") or {}
+    return {"ok": bool(a.get("ok")), "source": "SWIM（国交省）ATIS", "fetchedAt": a.get("fetchedAt"),
+            "note": note or a.get("note") or a.get("error"),
+            "airports": {i: {"text": v.get("text")} for i, v in by.items() if v and v.get("ok") and v.get("text")},
+            "reasons": {i: v.get("reason") for i, v in by.items() if v and not v.get("ok")}}
 
 
-def _hhmm(s):
-    return f"{s[:2]}:{s[2:]}" if isinstance(s, str) and re.match(r"^\d{4}$", s) else s
-
-
-def _utc_hhmm_to_jst(s):
-    if not (isinstance(s, str) and re.match(r"^\d{4}$", s)):
-        return None
-    m = (int(s[:2]) * 60 + int(s[2:]) + 540) % 1440
-    return f"{m // 60:02d}:{m % 60:02d}"
-
-
-def load_profiles(staging, airports):
-    d = os.path.join(staging, "profile")
+def profiles(swim):
+    """空港ごとの SWIM 空港プロファイル＋AIP Lost Communication。"""
+    note = env_note(swim)
+    p = (swim or {}).get("profile") or {}
+    aip = (swim or {}).get("aip") or {}
     out = {}
-    if not os.path.isdir(d):
-        return out
-    for icao in airports:
-        raw, fetched = _load(os.path.join(d, f"{icao}.json"))
-        if raw is None or _age_h(fetched) > MAX_AGE_H:
-            continue
-        r = (raw or {}).get("ret") or {}
-        if raw.get("error") or (r.get("errorInfoDTO") or {}).get("result") != "OK":
-            out[icao] = {"ok": False, "reason": "SWIM 応答エラー", "fetchedAt": fetched}
-            continue
-        arr = lambda k: r.get(k) if isinstance(r.get(k), list) else []  # noqa: E731
-        out[icao] = {
-            "ok": True, "fetchedAt": fetched,
-            "operatingHours": (f"{_hhmm(r['serviceStartTime'])}-{_hhmm(r['serviceEndTime'])}"
-                               if r.get("serviceStartTime") and r.get("serviceEndTime") else None),
-            "runwaysInUse": [f"LDG RWY {x}" for x in arr("runwayNoLdg")] + [f"DEP RWY {x}" for x in arr("runwayNoDep")],
-            "approach": arr("approach"),
-            "operationalStatus": arr("airportUsage"),
-            "sunriseJst": _utc_hhmm_to_jst(r.get("sunriseTime")),
-            "sunsetJst": _utc_hhmm_to_jst(r.get("sunsetTime")),
-            "departureDelayMin": r.get("departureDelayTime") if isinstance(r.get("departureDelayTime"), (int, float)) else None,
-            "arrivalDelayMin": r.get("arrivalDelayTime") if isinstance(r.get("arrivalDelayTime"), (int, float)) else None,
-            "aerodromeWarning": arr("aerodromeWarningWrnData"),
-            "metarText": (arr("metarSpeciBodyData") or [None])[0],
-            "tafText": (arr("tafBodyData") or [None])[0],
-            "atisText": (arr("atisBodyData") or [None])[0],
-        }
+    for icao in set((p.get("byIcao") or {}).keys()) | set((aip.get("byIcao") or {}).keys()):
+        pr = dict((p.get("byIcao") or {}).get(icao) or {"ok": False, "reason": note or p.get("error") or "SWIM 空港プロファイルを取得できませんでした"})
+        pr["fetchedAt"] = p.get("fetchedAt")
+        if pr.get("ok"):  # 旧版の項目名に合わせる
+            pr["sunriseJst"], pr["sunsetJst"] = pr.get("sunrise"), pr.get("sunset")
+        lc = (aip.get("byIcao") or {}).get(icao)
+        if lc:
+            pr["lostComm"] = {"ok": bool(lc.get("ok")), "text": lc.get("text"), "url": lc.get("url"), "reason": lc.get("reason"),
+                              "fetchedAt": aip.get("fetchedAt")}
+        out[icao] = pr
     return out
+
+
+# ---------------------------------------------------------------- METAR/TAF の優先順位（lib/metarPriority.js）
+def _metar_obs_iso(text, ref):
+    m = re.search(r"\b(\d{2})(\d{2})(\d{2})Z\b", text or "")
+    if not m:
+        return None
+    day, hh, mm = int(m[1]), int(m[2]), int(m[3])
+    for back in (0, 1):
+        y, mo = ref.year, ref.month - back
+        if mo == 0:
+            y, mo = y - 1, 12
+        try:
+            t = dt.datetime(y, mo, day, hh, mm, tzinfo=UTC)
+        except ValueError:
+            continue
+        if t <= ref + dt.timedelta(hours=1):
+            return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return None
+
+
+def _clean(text):
+    return (text or "").strip() or None
+
+
+def apply_priority(wx, swim, targets, ogimet_fn=None):
+    """wx-brief main と同じ優先順位で、targets（SWIM 対象空港）の METAR/TAF の出典を決める。
+    SWIM の空港プロファイルは SWIM への負荷を抑えるため30分ごとの取得なので、AWC の観測（発表）の方が
+    新しい時だけ AWC を採る（同時刻以前なら必ず SWIM）。全空港に metarSource/tafSource/category を付ける。"""
+    now = dt.datetime.now(UTC)
+    note = env_note(swim)
+    pr = (swim or {}).get("profile") or {}
+    by = pr.get("byIcao") or {}
+    for icao, e in wx["airports"].items():
+        e["metarSource"] = "AWC" if e.get("metar") else None
+        e["tafSource"] = "AWC" if e.get("taf") else None
+        if e.get("metar"):
+            for m in e["metar"]:
+                m["source"] = "AWC"
+    for icao in targets:
+        e = wx["airports"].setdefault(icao, {"icao": icao, "ok": False, "metar": [], "taf": None, "fetchedAt": wx.get("fetchedAt")})
+        p = by.get(icao) or {}
+        if note:
+            why = "ID/PASSWORD未設定" if swim and not swim.get("envSet") else note
+        elif not pr.get("ok") and pr.get("error"):
+            why = pr["error"]
+        elif p and p.get("ok") is False:
+            why = p.get("reason") or "SWIM 空港プロファイルを取得できませんでした"
+        elif p.get("ok"):
+            why = "SWIM 空港プロファイルの応答にMETAR/TAF本文が含まれていませんでした"
+        else:
+            why = "SWIM 空港プロファイルを取得できませんでした"
+        sm, st = _clean(p.get("metarText")), _clean(p.get("tafText"))
+        awc_m = (e.get("metar") or [None])[0]
+        # METAR
+        if sm:
+            obs = _metar_obs_iso(sm, now)
+            if awc_m and awc_m.get("obsTime") and obs and awc_m["obsTime"] > obs:
+                e["swimFailReason"] = f"SWIM の METAR（{obs[8:10]}日{obs[11:16]}Z）より AWC の観測が新しいため AWC を表示"
+            else:
+                e["metar"] = [{"raw": sm, "obsTime": obs, "source": "SWIM", "fltCat": classify_metar(sm)}] + [
+                    m for m in (e.get("metar") or []) if not obs or (m.get("obsTime") or "") < obs]
+                e["metarSource"] = "SWIM"
+                e["ok"] = True
+        else:
+            e["swimFailReason"] = why
+        if not e.get("metar") and ogimet_fn:
+            og = ogimet_fn(icao)
+            if og.get("ok"):
+                e["metar"] = [{"raw": og["rawText"], "obsTime": _metar_obs_iso(og["rawText"], now), "source": "OGIMET",
+                               "fltCat": classify_metar(og["rawText"])}]
+                e["metarSource"] = "OGIMET"
+                e["ok"] = True
+            else:
+                e["ogimetFailReason"] = og.get("reason")
+        # TAF
+        if st:
+            m = re.search(r"\b(\d{2})(\d{2})(\d{2})Z\b", st)
+            awc_t = e.get("taf") or {}
+            swim_issue = f"{m[1]}{m[2]}{m[3]}" if m else ""
+            awc_issue = re.search(r"\b(\d{6})Z\b", awc_t.get("raw") or "")
+            if awc_issue and swim_issue and awc_issue[1] > swim_issue and abs(int(awc_issue[1][:2]) - int(swim_issue[:2])) < 2:
+                e["swimTafFailReason"] = "SWIM の TAF より AWC の発表が新しいため AWC を表示"
+            else:
+                e["taf"] = {"raw": st, "issueTime": None, "validFrom": None, "validTo": None, "source": "SWIM"}
+                e["tafSource"] = "SWIM"
+                e["ok"] = True
+        else:
+            e["swimTafFailReason"] = why
+    for e in wx["airports"].values():  # 飛行状態の判定は旧版と同じ（lib/flightCategory.js）
+        for m in e.get("metar") or []:
+            m["fltCat"] = classify_metar(m.get("raw")) or ("VFR" if m is (e.get("metar") or [None])[0] else None)
+    wx["source"] = "SWIM（空港プロファイル）→ AWC（aviationweather.gov）→ Ogimet"
+    return wx

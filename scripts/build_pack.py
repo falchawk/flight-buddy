@@ -8,7 +8,7 @@ Flight Buddy pack builder
 出力:
   data/packs/<packId>/manifest.json   … そのパックの目録（全ファイル一覧＋sha256）
   data/packs/<packId>/wx.json         … METAR/TAF（aviationweather.gov）
-  data/packs/<packId>/notam.json      … NOTAM（--notam-file で渡されたもの / 無ければ未取得）
+  data/packs/<packId>/notam.json      … NOTAM（SWIM。fetchers/swim/run.js の結果 <swim-dir>/swim/swim.json）
   data/packs/<packId>/airports.json   … 空港プロファイル（滑走路・周波数・日の出日没 等）
   data/packs/<packId>/brief.json      … ボットが書いたブリーフ本文（--brief）
   data/packs/<packId>/charts.json     … 図のメタデータ（schema flight-buddy-charts/2: 8分類→項目→種類→コマ）
@@ -389,6 +389,40 @@ def foreign_airports(cfg):
     return {k: v for k, v in (d.get("airports") or {}).items() if ICAO_RE.match(k)}
 
 
+OGIMET = "https://www.ogimet.com/cgi-bin/getmetar"
+
+
+def fetch_ogimet(icao):
+    """wx-brief fetchers/publicMetar.js fetchOneOgimet と同じ（METARのみ・最終手段）。"""
+    now = utcnow()
+    f = lambda t: t.strftime("%Y%m%d%H%M")  # noqa: E731
+    url = f"{OGIMET}?icao={icao}&begin={f(now - dt.timedelta(hours=3))}&end={f(now)}&lang=eng&header=yes"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+                                                   "Accept": "text/plain,*/*;q=0.8"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            text = r.read().decode("utf-8", "replace")
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "reason": str(e)}
+    rows = [ln.strip() for ln in text.split("\n") if ln.strip().startswith(icao + ",")]
+    if not rows:
+        return {"ok": False, "reason": "直近時間帯の本文が0件でした"}
+    cols = rows[-1].split(",")
+    raw = re.sub(r"=\s*$", "", cols[6] if len(cols) > 6 else "").strip()
+    return {"ok": True, "rawText": raw} if raw else {"ok": False, "reason": "CSVの本文列が空でした"}
+
+
+def swim_targets(cfg, sync_airports=None):
+    """SWIM（NOTAM・ATIS・空港プロファイル・AIP）を取る空港＝既定のメイン空港＋同期issueの国内空港。"""
+    s = [a.upper() for a in cfg.get("default_airports", [])]
+    if sync_airports is None and cfg.get("sync_repo"):
+        sync_airports, _ = sync_issue_airports(cfg["sync_repo"])
+    for a in sync_airports or []:
+        if re.match(r"^R[JO][A-Z]{2}$", a) and a not in s:
+            s.append(a)
+    return s
+
+
 def resolve_airports(cfg, override=None):
     stations = japan_stations()
     if override:
@@ -488,6 +522,9 @@ def build(args):
     try:
         log(f"METAR/TAF取得: {len(airports)}空港")
         wx = fetch_wx(airports, prev_wx)
+        swim = swim_staging.load_swim(args.swim_dir) if args.swim_dir else None
+        targets = (swim or {}).get("airports") or swim_targets(cfg, (sync or {}).get("airports") or [])
+        swim_staging.apply_priority(wx, swim, [t for t in targets if t in airports], fetch_ogimet)
         write_json(os.path.join(pack_dir, "wx.json"), wx)
         ok_n = sum(1 for e in wx["airports"].values() if e.get("ok") and not e.get("carriedOver"))
         if ok_n == 0:
@@ -505,8 +542,10 @@ def build(args):
         write_json(os.path.join(pack_dir, "airports.json"), profiles)
 
         notam_file = args.notam_file if args.notam_file and os.path.exists(args.notam_file) else None
-        raw_notam = swim_staging.load_notam_raw(args.swim_dir, airports) if args.swim_dir and not notam_file else None
-        write_json(os.path.join(pack_dir, "notam.json"), raw_notam or load_notams(notam_file, airports))
+        if notam_file:
+            write_json(os.path.join(pack_dir, "notam.json"), load_notams(notam_file, airports))
+        else:
+            write_json(os.path.join(pack_dir, "notam.json"), swim_staging.notam_json(swim, targets))
 
         # ---- brief
         prev_brief = read_json(os.path.join(prev_dir, "brief.json")) if prev_dir else None
@@ -558,16 +597,12 @@ def build(args):
                        for v in (it["product"].get("variants") or []))
 
         # ---- SWIM ステージング（ATIS・空港運用情報）
-        if args.swim_dir:
-            atis = swim_staging.load_atis(args.swim_dir)
-            write_json(os.path.join(pack_dir, "atis.json"), atis)
-            sp = swim_staging.load_profiles(args.swim_dir, airports)
-            for icao, p in sp.items():
-                profiles["airports"].setdefault(icao, {"icao": icao})["swim"] = p
-            if sp:
-                write_json(os.path.join(pack_dir, "airports.json"), profiles)
-        else:
-            write_json(os.path.join(pack_dir, "atis.json"), {"ok": False, "note": "ATIS 未取得", "airports": {}})
+        write_json(os.path.join(pack_dir, "atis.json"), swim_staging.atis_json(swim))
+        sp = swim_staging.profiles(swim)
+        for icao, p in sp.items():
+            profiles["airports"].setdefault(icao, {"icao": icao})["swim"] = p
+        profiles["swimTargets"] = targets
+        write_json(os.path.join(pack_dir, "airports.json"), profiles)
 
         # ---- 時刻表（FLIGHTS・DUTY 照合用。ボットが1日数回取得した staging をそのまま入れる。無ければ前回分）
         staging_fl = read_json(args.flights_file) if args.flights_file and os.path.exists(args.flights_file) else None
@@ -678,7 +713,7 @@ def make_parser():
     ap.add_argument("--allow-restricted", action="store_true", help="--charts-dir の restricted 図も含める")
     ap.add_argument("--no-fetch-charts", action="store_true", help="図を取得せず前回分を引き継ぐ（テスト用）")
     ap.add_argument("--workers", type=int, default=16, help="図の並列取得数")
-    ap.add_argument("--swim-dir", help="SWIM 応答のステージングフォルダ（notam/ atis.json profile/）")
+    ap.add_argument("--swim-dir", help="SWIM 取得結果のフォルダ（<dir>/swim/swim.json。fetchers/swim/run.js が書く）")
     ap.add_argument("--duty-file", help="DUTY情報JSON（任意）")
     ap.add_argument("--flights-file", help="時刻表 JSON（flight-buddy-flights/1）")
     ap.add_argument("--keep", type=int, help="保持するパック数")

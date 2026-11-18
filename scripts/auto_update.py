@@ -9,7 +9,9 @@ Flight Buddy 自動更新（ルーティン用の入口）
 3. build_pack で新しいパックを作成（全国の空港 + 同期issueの空港、METAR/TAF、NOTAMファイルがあれば）
    - 図: 旧 Flight Buddy の8分類（地上天気図・衛星・レーダー・三十分大気解析・高層・下層悪天・Windy・AIRPORT）を
          気象庁 / MetAir / n-kishou から plain HTTP で並列取得（ログイン不要。ブラウザ不要）
-   - SWIM: /workspace/fb-staging/{notam/<ICAO>.json, atis.json, profile/<ICAO>.json}（ボットが保存した応答）を読み込み
+   - SWIM: fetchers/swim/run.js（wx-brief main のログイン・取得コード）で NOTAM・ATIS・空港プロファイル・AIP Lost Comm を取得
+           → /workspace/fb-staging/swim/swim.json。認証は環境変数 SWIM_USER / SWIM_PASS、Cookie は /workspace/fb-secrets（600）
+   - 時刻表: fetchers/flights/run.js（6時間ごと）
    - ブリーフ: /workspace/fb-staging/brief.md が前回より新しければ採用、でなければ前回本文を引き継ぎ（＋自動サマリー）
    - 中身が前回と同じなら何もしない（公開しない）
 4. data/ を tar.gz にして GitHub Release "pack-data" の asset を差し替え → Pages デプロイ workflow を起動
@@ -97,7 +99,27 @@ def publish():
     return size
 
 
-FLIGHTS_RUNNER = "/workspace/fb-flights/run.js"   # 旧 wx-brief の時刻表取得コード（リポジトリ外。公開しない）
+FLIGHTS_RUNNER = os.path.join(ROOT, "fetchers", "flights", "run.js")  # 時刻表取得（鍵は環境変数 ODPT_CONSUMER_KEY だけ）
+SWIM_RUNNER = os.path.join(ROOT, "fetchers", "swim", "run.js")  # SWIM 取得（ID/パスワードは環境変数 SWIM_USER / SWIM_PASS だけ）
+
+
+def refresh_swim(staging):
+    """SWIM（ATIS 10分・空港プロファイル/NOTAM 30分・AIP 24時間。間隔は run.js 側で判定）。失敗しても本体は続ける。"""
+    if not os.path.exists(SWIM_RUNNER):
+        return "no-runner"
+    cfg = build_pack.read_json(os.path.join(ROOT, "config", "pack_config.json"), {}) or {}
+    targets = build_pack.swim_targets(cfg)
+    try:
+        r = subprocess.run(["node", SWIM_RUNNER, "--out", os.path.join(staging, "swim"), "--airports", ",".join(targets)],
+                           capture_output=True, text=True, timeout=150)
+    except subprocess.TimeoutExpired:
+        log("SWIM タイムアウト（150秒）")
+        return "timeout"
+    line = next((ln for ln in reversed(r.stdout.strip().splitlines()) if ln.startswith("SWIM ")), "")
+    log(line or r.stderr.strip()[-300:])
+    if line.startswith("SWIM SKIP"):
+        return "no-creds"
+    return line.split(" ")[2].replace("parts=", "") if r.returncode == 0 and line.startswith("SWIM OK") else "failed"
 FLIGHTS_MAX_AGE_H = 6
 
 
@@ -149,6 +171,8 @@ def main():
             argv += ["--brief", a.brief]
         if os.path.exists(a.notam_file):
             argv += ["--notam-file", a.notam_file]
+        os.makedirs(a.swim_dir, exist_ok=True)
+        sw = refresh_swim(a.swim_dir)
         fl = refresh_flights(a.flights_file)
         if os.path.exists(a.flights_file):
             argv += ["--flights-file", a.flights_file]
@@ -164,7 +188,7 @@ def main():
         print(f"FLIGHT-BUDDY OK pack={r['packId']} airports={r['airports']} frames={r['charts']}({r['chartMode']}) "
               f"images={r.get('blobs', '-')} packMB={(r.get('bytes') or 0) / 1e6:.1f} tarMB={size / 1e6:.1f} "
               f"fetch={st.get('seconds', '-')}s req={st.get('requests', '-')} chartErrors={len(errs)} "
-              f"flights={fl} changed={'yes' if r['changed'] else 'no'} pushed={'yes' if pushed else 'no'} time={time.time() - t0:.0f}s")
+              f"swim={sw} flights={fl} changed={'yes' if r['changed'] else 'no'} pushed={'yes' if pushed else 'no'} time={time.time() - t0:.0f}s")
         for e in errs[:20]:
             print("  chart-error:", e)
         return 0

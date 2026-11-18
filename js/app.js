@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.5.1';
+  const APP_VERSION = '1.6.0';
   const SYNC_REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
@@ -9,12 +9,26 @@
   const lsSet = (k, v) => localStorage.setItem(k, JSON.stringify(v));
   const AIRLINES = ['SFJ', 'ANA', 'JAL', 'SNJ', 'ADO', 'SKY', 'APJ', 'JJP', 'FDA', 'IBX', 'JTA', 'RAC', 'ORC', 'AMX', 'TOK', 'AJX', 'TZP', 'SJO', 'NCA'];
 
+  // 既定のメイン空港（wx-brief main public/js/app.js DEFAULT_MAIN_AIRPORTS と同じ7空港）と起動時の自己修復
+  // （保存が無ければ既定、1空港以下に減っていてユーザーが一度も編集していなければ既定に戻す）。
+  const DEFAULT_MAIN_AIRPORTS = ['RJTT', 'RJBB', 'RJGG', 'RJSS', 'RJFF', 'RJDC', 'RJFR'];
+  function resolveInitialAirports() {
+    const saved = lsGet('fb.airports', null);
+    if (saved === null) return DEFAULT_MAIN_AIRPORTS.slice();
+    const list = saved.map((i) => (i === 'YPAS' ? 'YBAS' : i)); // YPAS→YBAS 訂正（2026-11-18）
+    if (Array.isArray(list) && list.length <= 1 && !lsGet('fb.airportsUserModified', false)) {
+      lsSet('fb.airports', DEFAULT_MAIN_AIRPORTS);
+      return DEFAULT_MAIN_AIRPORTS.slice();
+    }
+    return list;
+  }
+  const setAirports = (l) => { setAirports(l); lsSet('fb.airportsUserModified', true); };
   const state = {
     pack: null, // {manifest, wx, notam, airports, brief, charts, imageUrl}
     packSource: '', // 'latest' | 'cached' | 'previous'
     remoteError: null,
     downloading: null,
-    airports: (lsGet(LS.airports, null) || null) && lsGet(LS.airports, null).map((i) => (i === 'YPAS' ? 'YBAS' : i)), // YPAS→YBAS 訂正（2026-11-18）
+    airports: resolveInitialAirports(),
     duty: lsGet(LS.duty, { date: todayJst(), buffer: 2, airline: 'SFJ', flights: [], note: '' }),
     notamHours: lsGet(LS.notamH, 24),
   };
@@ -41,7 +55,7 @@
   const countryJa = (c) => COUNTRY_JA[c] || c || '不明';
   function mainAirports() {
     if (state.airports && state.airports.length) return state.airports;
-    return state.pack?.manifest?.defaultAirports || ['RJTT', 'RJFF'];
+    return DEFAULT_MAIN_AIRPORTS;
   }
   const packHas = (icao) => !state.pack || (state.pack.manifest.airports || []).includes(icao);
   const missingAirports = () => mainAirports().filter((i) => !packHas(i));
@@ -142,9 +156,19 @@
 
   // ---------------------------------------------------------------- WX
   // WX > AIRPORT > METAR TAF ATIS（旧版と同じ場所）。空港ごとに1つの箱に METAR・デコード・TAF・ATIS
+  // 旧版と同じ「使わなかった出典の理由」（SWIM: … / AWC: …）
+  function srcNotes(e, kind) {
+    const sw = kind === 'metar' ? e.swimFailReason : e.swimTafFailReason;
+    const src = kind === 'metar' ? e.metarSource : e.tafSource;
+    const out = [];
+    if (sw && src !== 'SWIM') out.push(`SWIM: ${sw}`);
+    if (kind === 'metar' && e.ogimetFailReason && !src) out.push(`Ogimet: ${e.ogimetFailReason}`);
+    if (!src && e.error) out.push(`AWC: ${e.error}`);
+    return out.map((t) => `<div class="doc-note">${esc(t)}</div>`).join('');
+  }
   function renderWxCards(list) {
     const wx = state.pack?.wx, atis = state.pack?.atis;
-    if (wx) list.insertAdjacentHTML('beforeend', `<p class="hint" style="margin:0 14px">取得 ${esc(fmtJst(wx.fetchedAt))} ／ 出所 ${esc(wx.source)}</p><div class="legend" style="margin:4px 14px"><span class="hl-danger">赤</span>=要注意（IFR級・TS・強風等） <span class="hl-warn">黄</span>=注意 <span class="hl-grp">TEMPO/BECMG</span></div>`);
+    if (wx) list.insertAdjacentHTML('beforeend', `<p class="hint" style="margin:0 14px">取得 ${esc(fmtJst(wx.fetchedAt))} ／ 出所 ${esc(wx.source)}</p><div class="legend" style="margin:4px 14px">TAF：<span class="taf-token-becmg">BECMG</span> <span class="taf-token-tempo">TEMPO</span> <span class="taf-token-fm">FM</span> <span class="taf-token-prob">PROB30/40</span>（旧版と同じ色）</div>`);
     for (const icao of mainAirports()) {
       const e = wx?.airports?.[icao];
       const card = document.createElement('div'); card.className = 'card';
@@ -156,16 +180,18 @@
         const cat = latest ? (latest.fltCat || window.FBWx.flightCategory(latest.raw)) : null;
         const dec = latest ? window.FBWx.decodeMetar(latest.raw) : [];
         body = `${e.carriedOver ? `<p class="hint"><span class="badge stale">STALE</span> 今回の取得に失敗したため前回の値です（${esc(fmtJst(e.fetchedAt))}取得）</p>` : ''}
-          <div class="sub-label">METAR ${latest ? `${esc(fmtUtc(latest.obsTime))}（${esc(fmtJst(latest.obsTime, false))}）` : ''} ${cat ? `<span class="badge ${cat}">${cat}</span>` : ''}</div>
+          <div class="sub-label">METAR ${latest ? `${esc(fmtUtc(latest.obsTime))}（${esc(fmtJst(latest.obsTime, false))}）` : ''} ${cat ? `<span class="badge ${cat}">${cat}</span>` : ''} <span class="doc-status ${latest ? 'ok' : 'fail'}">${esc(e.metarSource || 'NONE')}</span></div>
           ${latest ? `<div class="raw">${window.FBWx.highlight(latest.raw)}</div>` : naBox('METAR 未取得')}
+          ${srcNotes(e, 'metar')}
           ${dec.length ? `<dl class="decode">${dec.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : ''}
           ${e.metar?.length > 1 ? `<details><summary>過去のMETAR（${e.metar.length - 1}件）</summary>${e.metar.slice(1).map((x) => `<div class="raw" style="margin-top:4px">${window.FBWx.highlight(x.raw)}</div>`).join('')}</details>` : ''}
-          <div class="sub-label">TAF ${e.taf ? `発表 ${esc(fmtUtc(e.taf.issueTime))} ／ 有効 ${esc(fmtUtc(e.taf.validFrom))}〜${esc(fmtUtc(e.taf.validTo))}` : ''}</div>
-          ${e.taf ? `<div class="raw">${window.FBWx.tafLines(e.taf.raw)}</div>` : naBox('TAF 未取得')}`;
+          <div class="sub-label">TAF ${e.taf && e.taf.issueTime ? `発表 ${esc(fmtUtc(e.taf.issueTime))} ／ 有効 ${esc(fmtUtc(e.taf.validFrom))}〜${esc(fmtUtc(e.taf.validTo))}` : ''} <span class="doc-status ${e.taf ? 'ok' : 'fail'}">${esc(e.tafSource || 'NONE')}</span></div>
+          ${e.taf ? `<div class="raw">${window.FBWx.tafLines(e.taf.raw)}</div>` : naBox('TAF 未取得')}
+          ${srcNotes(e, 'taf')}`;
       }
       const a = atis?.airports?.[icao];
       if (apProf(icao)?.foreign) body += `<div class="sub-label">ATIS</div>${naBox('海外空港の ATIS は対象外（国内 SWIM のみ）')}`; else
-      body += `<div class="sub-label">ATIS ${a && atis.fetchedAt ? `<span class="hint">${esc(fmtJst(atis.fetchedAt))}取得</span>` : ''}</div>${a ? `<pre class="raw">${esc(a.text)}</pre>` : naBox(atis?.ok ? 'ATIS なし（SWIM ATIS 対象外か応答なし）' : (atis?.note || 'ATIS 未取得'))}`;
+      body += `<div class="sub-label">ATIS ${a && atis.fetchedAt ? `<span class="hint">${esc(fmtJst(atis.fetchedAt))}取得</span>` : ''} <span class="doc-status ${a ? 'ok' : 'fail'}">${a ? 'SWIM' : '未取得'}</span></div>${a ? `<pre class="raw">${esc(a.text)}</pre>` : naBox(`未取得${atis?.reasons?.[icao] ? `（${atis.reasons[icao]}）` : (atis?.note ? `（${atis.note}）` : '')}`)}`;
       const fp = apProf(icao);
       card.innerHTML = `<div class="card-title"><span>${esc(apName(icao))} <span class="codes hint">${esc(apCodes(icao))}</span></span>${fp?.foreign ? `<span class="badge">${esc(countryJa(fp.country))}</span>` : ''}</div>${body}`;
       list.appendChild(card);
@@ -374,15 +400,16 @@
         <div class="hint">${esc(A.name)} → ${esc(B.name)}${type ? ` ・ 機材 ${esc(type)}` : ''} ・ ${esc(window.FBFlights.daysText(days))}${from || to ? ` ・ ${esc((from || '').slice(5))}〜${esc((to || '').slice(5))}` : ''}${op && op !== 'JAL' && op !== 'ANA' ? ` ・ 運航 ${esc(op)}` : ''}${cs ? ` ・ 共同 ${esc(cs.split(' ').slice(0, 4).join(' '))}${cs.split(' ').length > 4 ? '…' : ''}` : ''}${note ? ` ・ ${esc(note)}` : ''} ・ ${esc(SRC_JA[src] || src)}</div></li>`;
     });
     let html = rows.length ? `<p class="hint">${r.results.length}件${r.results.length > MAX ? `（先頭${MAX}件）` : ''} ・ 時刻は現地時刻（時刻表）</p><ul class="flight-list">${rows.join('')}</ul>` : '<p class="hint">パックの時刻表に見つかりません。</p>';
-    if (!rows.length || r.query?.carrier) {
-      const code = r.query?.carrier ? r.query.carrier + r.query.number : null;
+    if (!rows.length || r.query?.carrier || r.results.every((x) => x[9] === 'rararakt')) {
+      const code = r.query?.carrier ? r.query.carrier + r.query.number : (r.results[0] ? r.results[0][0] : null);
       if (!rows.length) {
         const cinfo = (d.carriers || []).find((c) => c.iata2 === r.query?.carrier);
         if (cinfo && !cinfo.count) html += `<p class="hint"><span class="badge na">未収録</span> ${esc(cinfo.name)} の時刻表はまだパックに入っていません。</p>`;
       }
-      if (code && !rows.length) html += navigator.onLine
+      const onlyRara = rows.length && r.results.every((x) => x[9] === 'rararakt');
+      if (code && (!rows.length || onlyRara)) html += (onlyRara ? '<p class="hint">この便は rararakt（最終手段）にしかありません。旧版と同じ順で、先に FlyTeam・Google で確認できます。</p>' : '') + (navigator.onLine
         ? `<p><a class="btn" href="https://flyteam.jp/flightnumber/${encodeURIComponent(code)}" target="_blank" rel="noopener">FlyTeam で ${esc(code)}</a> <a class="btn" href="https://www.google.com/search?q=${encodeURIComponent(code + ' フライト 運航状況')}" target="_blank" rel="noopener">Google で検索</a></p><p class="hint">外部サイト（オンライン時のみ）。</p>`
-        : '<p class="hint">オフラインのため外部サイトでの確認はできません。</p>';
+        : '<p class="hint">オフラインのため外部サイトでの確認はできません。</p>');
     }
     res.innerHTML = html;
   }
@@ -408,7 +435,8 @@
       box.innerHTML = `<div class="card-title"><span>${esc(apName(icao))} <span class="hint">${esc(apCodes(icao))}</span></span>${n?.ok && items.length ? `<span class="badge${newCount ? ' new' : ''}">${state.notamHours ? `直近 ${newCount}件 / ` : ''}全${items.length}件</span>` : ''}</div>${body}`;
       list.appendChild(box);
     }
-    if (n?.source) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = `出所：${n.source}`; list.appendChild(p); }
+    if (n?.source) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = `出所：${n.source}${n.fetchedAt ? `（${fmtJst(n.fetchedAt)}取得）` : ''}`; list.appendChild(p); }
+    if (navigator.onLine) { const p = document.createElement('p'); p.innerHTML = '<a href="https://top.swim.mlit.go.jp" target="_blank" rel="noopener">SWIM portal（公式）を開く ▶</a>'; list.appendChild(p); }
   }
 
   // ---------------------------------------------------------------- AIRPORT
@@ -426,7 +454,7 @@
       const freqs = p.freqs?.length ? p.freqs.map((f) => `${esc(f.type)} ${esc(f.mhz)}`).join(' ／ ') : null;
       const card = document.createElement('div'); card.className = 'card';
       card.innerHTML = `<div class="card-title"><span>${esc(apName(icao))} <span class="hint">${esc(apCodes(icao))}</span></span>${state.pack?.airports?.airports?.[icao] ? (p.foreign ? `<span class="badge">${esc(countryJa(p.country))}${p.verified === false ? '・出典弱' : ''}</span>` : '') : '<span class="badge na">パック未収録</span>'}</div>
-        ${sw ? `<div class="hint" style="margin-bottom:4px">SWIM 空港情報 ${esc(fmtJst(sw.fetchedAt))}取得（${esc(ageText(sw.fetchedAt))}）${sw.ok ? '' : ' ・ 取得失敗'}</div>` : ''}
+        ${sw ? `<div class="hint" style="margin-bottom:4px"><span class="doc-status ${swOk ? 'ok' : 'fail'}">${swOk ? 'SWIM' : '未取得'}</span> SWIM 空港情報 ${esc(fmtJst(sw.fetchedAt))}取得（${esc(ageText(sw.fetchedAt))}）</div>${!swOk && sw.reason ? `<div class="doc-note">${esc(sw.reason)}</div>` : ''}` : ''}
         ${swOk ? field('空港運用状況', sw.operationalStatus.length ? sw.operationalStatus.map(esc).join('<br>') : '通常') : ''}
         ${swOk ? field('使用滑走路', sw.runwaysInUse.length ? sw.runwaysInUse.map(esc).join(' ／ ') : null) : ''}
         ${field('運用時間', swOk && sw.operatingHours ? `${esc(sw.operatingHours)} <span class="hint">(SWIM)</span>` : (p.operatingHours ? esc(p.operatingHours) : null))}
@@ -434,11 +462,12 @@
         ${field('進入方式', swOk && sw.approach.length ? sw.approach.map(esc).join(' ／ ') : (p.approaches ? esc(p.approaches) : null))}
         ${swOk ? field('平均遅延', (sw.departureDelayMin != null || sw.arrivalDelayMin != null) ? `出発 ${esc(sw.departureDelayMin ?? '--')}分 ／ 到着 ${esc(sw.arrivalDelayMin ?? '--')}分` : null) : ''}
         ${swOk ? field('飛行場警報', sw.aerodromeWarning.length ? `<span class="hl-warn">${sw.aerodromeWarning.map(esc).join('<br>')}</span>` : '発表なし') : ''}
-        ${field('日の出・日没', sun ? `日の出 ${esc(sun.sunrise || '--:--')} / 日没 ${esc(sun.sunset || '--:--')} <span class="hint">(${esc(date)} JST)</span>` : null)}
+        ${field('日の出・日没', swOk && date === todayJst() && (sw.sunriseJst || sw.sunsetJst) ? `日の出 ${esc(sw.sunriseJst || '--:--')} / 日没 ${esc(sw.sunsetJst || '--:--')} <span class="hint">(SWIM)</span>` : (sun ? `日の出 ${esc(sun.sunrise || '--:--')} / 日没 ${esc(sun.sunset || '--:--')} <span class="hint">(${esc(date)} JST・端末で計算)</span>` : null))}
         ${field('標高', p.elevationFt != null ? `約 ${esc(p.elevationFt)} ft` : null)}
         ${field('磁気偏差', p.magdec ? esc(p.magdec) : null)}
         ${field('周波数', freqs)}
-        ${p.notes ? field('メモ', esc(p.notes)) : ''}`;
+        ${p.notes ? field('メモ', esc(p.notes)) : ''}
+        ${p.foreign ? '' : `<details class="lost-comm-details field"><summary>Lost Communication Procedures &#9662;</summary>${sw?.lostComm?.ok && sw.lostComm.text ? `<div class="lost-comm-source">SWIM（AIP AD 2 ${esc(icao)}${sw.lostComm.fetchedAt ? `・${esc(fmtJst(sw.lostComm.fetchedAt))}取得` : ''}）</div><div class="lost-comm-body">${esc(sw.lostComm.text)}</div>` : `<div class="lost-comm-body">未取得${sw?.lostComm?.reason ? `（${esc(sw.lostComm.reason)}）` : (state.pack?.airports?.swimTargets && !state.pack.airports.swimTargets.includes(icao) ? '（SWIM の取得対象外。SETTINGS の「Botに同期」で追加）' : '')}</div>`}</details>`}`;
       list.appendChild(card);
     }
     if (state.pack?.airports?.source) { const s = document.createElement('p'); s.className = 'hint'; s.textContent = `出所：${state.pack.airports.source}。運用時間などは目安です。`; list.appendChild(s); }
@@ -475,7 +504,10 @@
     const win = hhmm ? (() => { const [h, m] = hhmm.split(':').map(Number); const t = h * 60 + m; const f = (x) => { x = ((x % 1440) + 1440) % 1440; return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; }; return `${f(t - buf * 60)}〜${f(t + buf * 60)}`; })() : '';
     const head = `<div class="sub-label">${esc(label)} ${esc(apCodes(icao))}${win ? ` ・ 時間帯 ${esc(win)}（現地）` : ''}</div>`;
     if (!e) return head + naBox('このパックに未収録（SETTINGS の「Botに同期」で追加）');
-    return head + (e.taf ? `<div class="raw">${window.FBWx.tafLines(e.taf.raw)}</div>` : naBox('TAF なし')) + (e.metar?.[0] ? `<div class="raw">${window.FBWx.highlight(e.metar[0].raw)}</div>` : '');
+    // 旧版 buildLegTafBlock と同じ：定刻（JST）±バッファに重なる変化群の行を強調
+    let wi = null;
+    if (hhmm && date && /^R[JO]/.test(icao)) { const t = Date.parse(`${date}T${hhmm}:00+09:00`); if (Number.isFinite(t)) wi = { startEpoch: t - buf * 3600000, endEpoch: t + buf * 3600000, anchorEpoch: t }; }
+    return head + (e.taf ? `<div class="raw">${window.FBWx.tafLinesWithWindow(e.taf.raw, wi)}</div>` : naBox('TAF なし')) + (e.metar?.[0] ? `<div class="raw">${window.FBWx.highlight(e.metar[0].raw)}</div>` : '');
   }
   function dutyLeg(f) {
     const d = state.pack?.flights;
@@ -516,8 +548,8 @@
       mainAirports().forEach((icao, i) => {
         const li = document.createElement('li');
         li.innerHTML = `<span>${esc(apName(icao))} <span class="codes">${esc(apCodes(icao))}</span>${packHas(icao) ? '' : ' <span class="badge na">パック未収録</span>'}</span><span><button class="btn" data-a="up">↑</button> <button class="btn btn-danger" data-a="rm">削除</button></span>`;
-        li.querySelector('[data-a=rm]').onclick = () => { const l = mainAirports().slice(); l.splice(i, 1); state.airports = l; lsSet(LS.airports, l); renderAll(); };
-        li.querySelector('[data-a=up]').onclick = () => { if (!i) return; const l = mainAirports().slice(); [l[i - 1], l[i]] = [l[i], l[i - 1]]; state.airports = l; lsSet(LS.airports, l); renderAll(); };
+        li.querySelector('[data-a=rm]').onclick = () => { const l = mainAirports().slice(); l.splice(i, 1); setAirports(l); renderAll(); };
+        li.querySelector('[data-a=up]').onclick = () => { if (!i) return; const l = mainAirports().slice(); [l[i - 1], l[i]] = [l[i], l[i - 1]]; setAirports(l); renderAll(); };
         ul.appendChild(li);
       });
     };
@@ -534,7 +566,7 @@
       res.forEach((a) => {
         const li = document.createElement('li');
         li.innerHTML = `<span>${esc(a.name)} <span class="codes">${esc(a.icao)}${a.iata ? ' / ' + esc(a.iata) : ''}</span></span><span>${mainAirports().includes(a.icao) ? '✓' : '＋'}</span>`;
-        li.onclick = () => { const l = mainAirports().slice(); if (!l.includes(a.icao)) l.push(a.icao); state.airports = l; lsSet(LS.airports, l); search.value = ''; ul.innerHTML = ''; renderAll(); };
+        li.onclick = () => { const l = mainAirports().slice(); if (!l.includes(a.icao)) l.push(a.icao); setAirports(l); search.value = ''; ul.innerHTML = ''; renderAll(); };
         ul.appendChild(li);
       });
     };
@@ -549,7 +581,7 @@
       const order = Object.keys(groups).sort((a, b) => (a === '日本' ? -1 : b === '日本' ? 1 : a.localeCompare(b, 'ja')));
       const sel = mainAirports();
       box.innerHTML = `<h3>パック収録空港（国別・${ids.length}）</h3>` + order.map((g) => `<details class="ap-group"${g !== '日本' && groups[g].some((i) => sel.includes(i)) ? ' open' : ''}><summary>${esc(g)} <span class="hint">${groups[g].length}</span></summary><ul class="airport-list">${groups[g].sort().map((icao) => `<li data-icao="${esc(icao)}"><span>${esc(apName(icao))} <span class="codes">${esc(apCodes(icao))}</span>${prof[icao]?.verified === false ? ' <span class="badge na">出典弱</span>' : ''}</span><span>${sel.includes(icao) ? '✓' : '＋'}</span></li>`).join('')}</ul></details>`).join('');
-      box.querySelectorAll('li[data-icao]').forEach((li) => { li.onclick = () => { const l = mainAirports().slice(); const i = l.indexOf(li.dataset.icao); if (i >= 0) l.splice(i, 1); else l.push(li.dataset.icao); state.airports = l; lsSet(LS.airports, l); renderAll(); }; });
+      box.querySelectorAll('li[data-icao]').forEach((li) => { li.onclick = () => { const l = mainAirports().slice(); const i = l.indexOf(li.dataset.icao); if (i >= 0) l.splice(i, 1); else l.push(li.dataset.icao); setAirports(l); renderAll(); }; });
     };
     setupAirportPicker.renderSel = () => { renderSel(); renderBrowse(); };
   }
@@ -644,33 +676,21 @@
   function renderSwimStatus() {
     const el = $('swim-status'); if (!el) return;
     const p = state.pack; if (!p) { el.textContent = 'パックがありません。'; return; }
-    const at = p.atis, n = p.notam;
-    const nProf = Object.values(p.airports?.airports || {}).filter((a) => a.operatingHours || (a.approaches && a.approaches.length)).length;
-    el.innerHTML = `ATIS：${at?.ok ? `${Object.keys(at.airports || {}).length}空港 ・ ${esc(fmtJst(at.fetchedAt))}` : esc(at?.note || '未取得')}<br>NOTAM：${n?.ok ? `${Object.keys(n.airports || {}).length}空港 ・ ${esc(n.source || '')}` : esc(n?.note || '未取得')}<br>空港プロファイル（運用時間・進入方式あり）：${nProf}空港 ・ 出典 ${esc(p.airports?.source || '')}`;
-  }
-  function setupOnboarding() {
-    if (lsGet(LS.airports, null)) return;
-    const ov = $('onboarding'); ov.classList.remove('hidden');
-    const sel = [];
-    const draw = () => {
-      $('ob-selected').innerHTML = sel.map((i) => `<li data-i="${esc(i)}"><span>${esc(apName(i))} <span class="codes">${esc(apCodes(i))}</span></span><span>削除</span></li>`).join('');
-      $('ob-selected').querySelectorAll('li').forEach((li) => { li.onclick = () => { sel.splice(sel.indexOf(li.dataset.i), 1); draw(); }; });
-      $('ob-start').disabled = !sel.length;
-    };
-    $('ob-search').oninput = () => {
-      const q = $('ob-search').value.trim(), Q = q.toUpperCase();
-      const ul = $('ob-results'); ul.innerHTML = ''; if (!q) return;
-      (window.FB_AIRPORTS || []).filter((a) => a.icao.includes(Q) || (a.iata || '').includes(Q) || a.name.includes(q)).slice(0, 10).forEach((a) => {
-        const li = document.createElement('li'); li.innerHTML = `<span>${esc(a.name)} <span class="codes">${esc(a.icao)} / ${esc(a.iata)}</span></span><span>＋</span>`;
-        li.onclick = () => { if (!sel.includes(a.icao)) sel.push(a.icao); $('ob-search').value = ''; ul.innerHTML = ''; draw(); };
-        ul.appendChild(li);
-      });
-    };
-    $('ob-start').onclick = () => { state.airports = sel.slice(); lsSet(LS.airports, state.airports); ov.classList.add('hidden'); renderAll(); };
+    const at = p.atis, n = p.notam, prof = p.airports?.airports || {};
+    const targets = p.airports?.swimTargets || [];
+    const nProf = targets.filter((i) => prof[i]?.swim?.ok).length;
+    const nLc = targets.filter((i) => prof[i]?.swim?.lostComm?.ok).length;
+    const nAtis = Object.keys(at?.airports || {}).length;
+    const nNotam = Object.values(n?.airports || {}).reduce((x, a) => x + (a.items?.length || 0), 0);
+    el.innerHTML = `対象 ${targets.length}空港：${esc(targets.join(' '))}<br>`
+      + `ATIS：${at?.ok ? `${nAtis}空港 ・ ${esc(fmtJst(at.fetchedAt))}` : esc(at?.note || '未取得')}<br>`
+      + `NOTAM：${n?.ok ? `${nNotam}件 ・ ${esc(fmtJst(n.fetchedAt))}` : esc(n?.note || '未取得')}<br>`
+      + `空港プロファイル（METAR/TAF・運用時間など）：${nProf}/${targets.length}空港<br>`
+      + `AIP Lost Communication：${nLc}/${targets.length}空港`;
   }
   async function start() {
     $('app-version').textContent = `App v${APP_VERSION}`;
-    setupTheme(); setupTabs(); setupTas(); setupDuty(); setupFlights(); setupAirportPicker(); setupFeedback(); setupOnboarding();
+    setupTheme(); setupTabs(); setupTas(); setupDuty(); setupFlights(); setupAirportPicker(); setupFeedback();
     window.FBViewer.setup();
     $('airport-date').value = state.duty.date || todayJst();
     $('airport-date').onchange = renderAirport;
