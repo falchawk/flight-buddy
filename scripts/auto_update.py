@@ -127,7 +127,7 @@ def refresh_swim(staging):
     if r.returncode == 0 and line.startswith("SWIM OK"):
         # 例: swim=ok(atis:23/134,notam:1045,profile:129/134,aip:75/134,fetched:atis+profile+notam+aip,t:25s)  ※空白なし
         return (f"ok(atis:{kv.get('atis', '?')},notam:{kv.get('notam', '?')},profile:{kv.get('profile', '?')},"
-                f"aip:{kv.get('aip', '?')},fetched:{kv.get('fetched', '?')},t:{time.time() - t0:.0f}s)")
+                f"aip:{kv.get('aip', '?')},ad2:{kv.get('ad2', '?')},fetched:{kv.get('fetched', '?')},t:{time.time() - t0:.0f}s)")
     return f"fail({kv.get('reason', 'exit' + str(r.returncode))})"
 
 
@@ -139,13 +139,14 @@ def _flights_body(path):
 
 
 def refresh_flights(path):
-    """時刻表も毎回確認し、中身が変わった時だけ差し替える。失敗したら前回分のまま。"""
+    """時刻表も毎回確認し、中身が変わった時だけ差し替える。失敗したら前回分のまま。
+    ODPT 全件（約500リクエスト）と ANA 公式PDF は重いので6時間に1回（run.js 側。10分ごとだと ODPT が HTTP 429）。"""
     if not os.path.exists(FLIGHTS_RUNNER):
         return "skip(no-runner)"
     t0 = time.time()
     tmp = path + ".new"
     try:
-        r = subprocess.run(["node", FLIGHTS_RUNNER, tmp], capture_output=True, text=True, timeout=240)
+        r = subprocess.run(["node", FLIGHTS_RUNNER, tmp, path], capture_output=True, text=True, timeout=240)
     except subprocess.TimeoutExpired:
         log("時刻表 タイムアウト（240秒）")
         return "fail(timeout)"

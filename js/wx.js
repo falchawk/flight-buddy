@@ -1,38 +1,54 @@
-// METAR/TAF のハイライトと簡易デコード（端末内処理、オフライン可）
+// METAR/TAF の表示（変化群の色・IFR/LIFR の要因だけ赤。端末内処理、オフライン可）
 (function () {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const GROUP = /^(TEMPO|BECMG|FM\d{6}|PROB\d{2}|NOSIG|RMK)$/;
-  const DANGER_WX = /(TS|FZ|SN|GR|GS|FG|SQ|FC|VA|DS|SS|PL|\+)/;
-  const WARN_WX = /^(-|VC)?(SH|RA|DZ|BR|HZ|DU|SA|BL|DR)+$/;
-  function tokenClass(t) {
-    if (GROUP.test(t)) return 'hl-grp';
-    let m = t.match(/^(\d{3}|VRB)(\d{2,3})(G(\d{2,3}))?(KT|MPS)$/);
-    if (m) {
-      const mult = m[5] === 'MPS' ? 1.944 : 1;
-      const spd = Number(m[2]) * mult, g = m[4] ? Number(m[4]) * mult : 0;
-      const mx = Math.max(spd, g);
-      return mx >= 35 ? 'hl-danger' : (mx >= 25 || g) ? 'hl-warn' : '';
-    }
-    if (/^\d{4}$/.test(t) && !/^\d{4}\/\d{4}$/.test(t)) {
-      const v = Number(t); return v < 1600 ? 'hl-danger' : v < 5000 ? 'hl-warn' : '';
-    }
-    m = t.match(/^(BKN|OVC|VV)(\d{3})(CB|TCU)?$/);
-    if (m) { const b = Number(m[2]); if (b <= 5) return 'hl-danger'; if (b <= 10 || m[3]) return 'hl-warn'; return ''; }
-    if (/^(FEW|SCT)\d{3}(CB|TCU)$/.test(t)) return 'hl-warn';
-    if (/^WS/.test(t)) return 'hl-danger';
-    if (/^(\+|-|VC)?[A-Z]{2,8}$/.test(t) && /^(\+|-|VC)?(MI|BC|PR|DR|BL|SH|TS|FZ)?(DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PO|SQ|FC|SS|DS)+$/.test(t)) {
-      if (DANGER_WX.test(t) && !/^-(SH)?RA$/.test(t)) return 'hl-danger';
-      if (WARN_WX.test(t)) return 'hl-warn';
-      return 'hl-warn';
-    }
-    return '';
+  // ---- IFR / LIFR の要因だけ赤にする（風・視程の一般的な強調表示はしない。MVFR も強調しない）
+  // 判定は旧版（wx-brief main lib/flightCategory.js）と同じ：視程 < 3sm(4828m) = IFR / < 1sm(1609m) = LIFR、
+  // シーリング（BKN/OVC/VV）< 1000ft = IFR / < 500ft = LIFR。要素ごとに見て、IFR 以下になっている要素だけを赤にする。
+  const SM_M = 1609.344;
+  function ifrToken(t, prev) {
+    let m;
+    if (/^\d{4}$/.test(t)) return Number(t) < 3 * SM_M; // 視程（m）。時刻 dddd/dddd や風は \d{4} だけの形にならない
+    if ((m = t.match(/^(M|P)?(\d{1,2})SM$/))) return m[1] !== 'P' && Number(m[2]) < 3;
+    if ((m = t.match(/^(M|P)?(\d)\/(\d)SM$/))) return m[1] !== 'P' && (prev && /^\d$/.test(prev) ? Number(prev) : 0) + Number(m[2]) / Number(m[3]) < 3;
+    if ((m = t.match(/^(BKN|OVC|VV)(\d{3})(?:CB|TCU)?$/))) return Number(m[2]) * 100 < 1000;
+    return false;
   }
-  // METAR は旧版（wx-brief main）と同じく本文をそのまま表示（色付けしない）
-  function highlight(raw) { return esc(raw); }
+  // 1つの文字列を空白で区切り、IFR/LIFR の要因のトークンだけ <span class="hl-ifr"> にする（RMK 以降は対象外）
+  function ifrHtml(text, state) {
+    const st = state || { rmk: false, prev: null };
+    return String(text).split(/(\s+)/).map((t) => {
+      if (!t || /^\s+$/.test(t)) return esc(t);
+      if (t === 'RMK') st.rmk = true;
+      const hit = !st.rmk && ifrToken(t, st.prev);
+      st.prev = t;
+      return hit ? `<span class="hl-ifr">${esc(t)}</span>` : esc(t);
+    }).join('');
+  }
   // ---- TAF 表示：wx-brief main public/js/app.js formatTafForDisplay / formatTafForDisplayWithHighlight の移植
   // BECMG / TEMPO / FM / PROB30 / PROB40 の直前で改行し、キーワードだけに色（taf-token-*）。PROB30/40 直後の TEMPO は同じ行。
   const TOKEN_RE = /\b(BECMG|TEMPO|PROB30|PROB40|FM(?=\d))/g;
   const TOKEN_CLASS = { BECMG: 'taf-token-becmg', TEMPO: 'taf-token-tempo', FM: 'taf-token-fm', PROB30: 'taf-token-prob', PROB40: 'taf-token-prob' };
+  // 変化群キーワード（BECMG/TEMPO/FM/PROB）を TAF と同じ色にし、それ以外のトークンは IFR/LIFR の要因だけ赤にする。
+  // found は全文での位置、baseOffset は segment の全文上の開始位置。TAF の各行（変化群）・METAR の本文と傾向（TEMPO/BECMG）に共通。
+  function colorizeText(segment, baseOffset, found) {
+    let out = ''; let cursor = 0; const st = { rmk: false, prev: null };
+    for (const tok of found) {
+      const relStart = tok.index - baseOffset; const relEnd = tok.end - baseOffset;
+      if (relStart < cursor || relStart < 0 || relEnd > segment.length) continue;
+      out += ifrHtml(segment.slice(cursor, relStart), st);
+      out += `<span class="${TOKEN_CLASS[tok.name] || ''}">${esc(segment.slice(relStart, relEnd))}</span>`;
+      st.prev = tok.name;
+      cursor = relEnd;
+    }
+    return out + ifrHtml(segment.slice(cursor), st);
+  }
+  // METAR：本文はそのまま（改行しない）。TEMPO/BECMG は TAF と同じ色、IFR/LIFR の要因だけ赤
+  function highlight(raw) {
+    const text = String(raw || '').trim();
+    const found = []; let m; TOKEN_RE.lastIndex = 0;
+    while ((m = TOKEN_RE.exec(text))) found.push({ index: m.index, end: m.index + m[1].length, name: m[1] });
+    return colorizeText(text, 0, found);
+  }
   function tafRows(text) {
     const found = []; let m; TOKEN_RE.lastIndex = 0;
     while ((m = TOKEN_RE.exec(text))) found.push({ index: m.index, end: m.index + m[1].length, name: m[1] });
@@ -45,17 +61,7 @@
       }
       if (tok.index > 0) breakPoints.push(tok.index);
     }
-    const colorize = (segment, baseOffset) => {
-      let out = ''; let cursor = 0;
-      for (const tok of found) {
-        const relStart = tok.index - baseOffset; const relEnd = tok.end - baseOffset;
-        if (relStart < cursor || relStart < 0 || relEnd > segment.length) continue;
-        out += esc(segment.slice(cursor, relStart));
-        out += `<span class="${TOKEN_CLASS[tok.name] || ''}">${esc(segment.slice(relStart, relEnd))}</span>`;
-        cursor = relEnd;
-      }
-      return out + esc(segment.slice(cursor));
-    };
+    const colorize = (segment, baseOffset) => colorizeText(segment, baseOffset, found);
     return { found, rows: breakPoints.map((start, i) => {
       const end = i + 1 < breakPoints.length ? breakPoints[i + 1] : text.length;
       const segment = text.slice(start, end);
@@ -117,30 +123,6 @@
       return `<div class="taf-line${relevant ? ' taf-line-relevant' : ''}">${r.html}</div>`;
     }).join('');
   }
-  const COVER = { FEW: '少', SCT: '散在', BKN: '多', OVC: '全天', VV: '垂直視程' };
-  function decodeMetar(raw) {
-    const out = [];
-    const toks = String(raw || '').split(/\s+/);
-    const clouds = [], wx = [];
-    for (const t of toks) {
-      if (t === 'TEMPO' || t === 'BECMG' || t === 'NOSIG' || t === 'RMK') break;
-      let m;
-      if ((m = t.match(/^(\d{3}|VRB)(\d{2,3})(G(\d{2,3}))?KT$/))) out.push(['風', `${m[1] === 'VRB' ? '不定' : m[1] + '°'} ${Number(m[2])}kt${m[4] ? ` 最大瞬間 ${Number(m[4])}kt` : ''}`]);
-      else if ((m = t.match(/^(\d{3})V(\d{3})$/))) out.push(['風向変動', `${m[1]}°〜${m[2]}°`]);
-      else if (/^\d{4}$/.test(t)) out.push(['視程', t === '9999' ? '10km以上' : `${Number(t)}m`]);
-      else if (t === 'CAVOK') out.push(['視程', 'CAVOK']);
-      else if ((m = t.match(/^(FEW|SCT|BKN|OVC|VV)(\d{3}|\/\/\/)(CB|TCU|\/\/\/)?$/))) clouds.push(`${COVER[m[1]]}(${m[1]}) ${m[2] === '///' ? '---' : Number(m[2]) * 100 + 'ft'}${m[3] && m[3] !== '///' ? ' ' + m[3] : ''}`);
-      else if ((m = t.match(/^(M?\d{2})\/(M?\d{2})$/))) out.push(['気温/露点', `${m[1].replace('M', '-')}℃ / ${m[2].replace('M', '-')}℃`]);
-      else if ((m = t.match(/^Q(\d{4})$/))) out.push(['QNH', `${Number(m[1])} hPa（${(Number(m[1]) * 0.02953).toFixed(2)} inHg）`]);
-      else if ((m = t.match(/^A(\d{4})$/))) out.push(['QNH', `${m[1].slice(0, 2)}.${m[1].slice(2)} inHg`]);
-      else if (tokenClass(t) && /^(\+|-|VC)?[A-Z]{2,8}$/.test(t) && !/^(METAR|SPECI|AUTO|COR)$/.test(t) && !/^R[A-Z]{3}$/.test(t)) wx.push(t);
-    }
-    if (wx.length) out.push(['天気', wx.join(' ')]);
-    if (clouds.length) out.push(['雲', clouds.join(' / ')]);
-    const trend = (String(raw).match(/\b(TEMPO|BECMG|NOSIG)\b.*$/) || [])[0];
-    if (trend) out.push(['傾向', trend]);
-    return out;
-  }
   // 簡易フライトカテゴリ（APIにfltCatが無い時用、FAA基準）
   function flightCategory(raw) {
     let vis = 10, ceil = 99999;
@@ -155,5 +137,5 @@
     if (ceil <= 3000 || vis <= 5) return 'MVFR';
     return 'VFR';
   }
-  window.FBWx = { esc, highlight, tafLines, tafLinesWithWindow, decodeMetar, flightCategory };
+  window.FBWx = { esc, highlight, tafLines, tafLinesWithWindow, flightCategory };
 })();

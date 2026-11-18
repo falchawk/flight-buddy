@@ -16,8 +16,12 @@ const now = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
 (async () => {
   const t0 = Date.now();
   const out = process.argv[2] || '/workspace/fb-staging/flights.json';
+  const prevPath = process.argv[3] || out; // 前回分（auto_update は別ファイルに書かせて、変わった時だけ差し替える）
   let prev = null;
-  try { prev = JSON.parse(fs.readFileSync(out, 'utf8')); } catch (e) { /* 初回 */ }
+  try { prev = JSON.parse(fs.readFileSync(prevPath, 'utf8')); } catch (e) { /* 初回 */ }
+  // 重い取得（ODPT 全件＝約500リクエスト、ANA 公式PDF）は HEAVY_H 時間に1回。10分ごとに叩くと ODPT が HTTP 429 を返すため
+  const HEAVY_H = Number(process.env.FB_FLIGHTS_HEAVY_H) || 6;
+  const fresh = (x) => x && x.ok && x.fetchedAt && Date.now() - Date.parse(x.fetchedAt) < HEAVY_H * 3600e3;
   const byAirline = await fetchAllAirlineSchedules();
   const ts = now();
   for (const [code, v] of Object.entries(byAirline)) {
@@ -35,8 +39,9 @@ const now = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
     }
   }
   // ODPT 全件（JAL・ANA。国際線・グループ会社・コードシェア番号を含む）。失敗時は前回分を残す。
-  let odptFull = await fetchOdptFull().catch((e) => ({ ok: false, rows: [], airports: {}, report: [String(e && e.message)] }));
-  if (odptFull.ok) {
+  const reuseOdpt = fresh(prev && prev.odptFull);
+  let odptFull = reuseOdpt ? { ...prev.odptFull, reused: true } : await fetchOdptFull().catch((e) => ({ ok: false, rows: [], airports: {}, report: [String(e && e.message)] }));
+  if (reuseOdpt) { /* 前回分（HEAVY_H 以内）をそのまま */ } else if (odptFull.ok) {
     odptFull.fetchedAt = ts;
     // 取得に失敗した（会社・出発空港）は前回成功分の行で補う（便が日によって消えないように）
     const failed = new Set(odptFull.failed || []);
@@ -47,11 +52,21 @@ const now = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   }
   else if (prev && prev.odptFull && prev.odptFull.ok) odptFull = { ...prev.odptFull, staleReason: odptFull.report.join(' ') };
   // ANA 公式PDF（ODPTに無い路線・運航会社の補完用。ODPTがあっても取る）
-  let anaPdf = await fetchAnaOfficialSchedule().catch((e) => ({ ok: false, flights: [], failReason: String(e && e.message) }));
-  if (anaPdf.ok) { anaPdf.fetchedAt = ts; anaPdf.flights = anaPdf.flights.map((f) => ({ ...f, number: String(f.number).replace(/^0+(?=\d)/, '') })); }
+  const reuseAna = fresh(prev && prev.anaPdf);
+  let anaPdf = reuseAna ? { ...prev.anaPdf, reused: true } : await fetchAnaOfficialSchedule().catch((e) => ({ ok: false, flights: [], failReason: String(e && e.message) }));
+  if (reuseAna) { /* 前回分 */ } else if (anaPdf.ok) { anaPdf.fetchedAt = ts; anaPdf.flights = anaPdf.flights.map((f) => ({ ...f, number: String(f.number).replace(/^0+(?=\d)/, '') })); }
   else if (prev && prev.anaPdf && prev.anaPdf.ok) anaPdf = { ...prev.anaPdf, staleReason: anaPdf.failReason };
   const keepPrev = (name, cur) => (cur.ok ? { ...cur, fetchedAt: ts } : (prev && prev[name] && prev[name].ok ? { ...prev[name], staleReason: cur.failReason || (cur.report || []).join(' ') } : cur));
-  const boards = keepPrev('boards', await fetchBoards().catch((e) => ({ ok: false, rows: [], report: [String(e && e.message)] })));
+  let boards = keepPrev('boards', await fetchBoards().catch((e) => ({ ok: false, rows: [], report: [String(e && e.message)] })));
+  // 発着案内は出所ごとに：今回失敗した出所（例 ODPT当日の HTTP 429）は前回の行で補う
+  if (boards.ok && !boards.staleReason && prev && prev.boards && Array.isArray(prev.boards.rows)) {
+    const srcOf = (r) => r.src || (r.odpt ? 'ODPT当日' : r.ap);
+    const failedSrc = (boards.report || []).filter((t) => !/:\d+$/.test(t)).map((t) => t.split(':')[0]);
+    if (failedSrc.length) {
+      const add = prev.boards.rows.filter((r) => failedSrc.includes(srcOf(r)));
+      boards.rows.push(...add); boards.report.push(`prevFill=${add.length}(${failedSrc.join('/')})`);
+    }
+  }
   const toki = keepPrev('toki', await fetchToki().catch((e) => ({ ok: false, flights: [], failReason: String(e && e.message) })));
   const rara = ALLOW_RARA ? keepPrev('rara', await fetchRara().catch((e) => ({ ok: false, flights: [], failReason: String(e && e.message) }))) : { ok: false, flights: [], failReason: '無効' };
   const res = { schema: 'flight-buddy-flights/1', fetchedAt: ts, odpt: !!process.env.ODPT_TOKEN,
@@ -60,5 +75,5 @@ const now = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   fs.writeFileSync(out + '.tmp', JSON.stringify(res));
   fs.renameSync(out + '.tmp', out);
   const sum = Object.entries(byAirline).map(([k, v]) => `${k}:${v.ok ? (v.flights || []).length : 'NG'}${v.source ? '(' + v.source + (v.staleReason ? ',prev' : '') + ')' : ''}`).join(' ');
-  console.log(`FLIGHTS OK odpt=${res.odpt ? 'yes' : 'no'} ${sum} boards=${boards.ok ? boards.rows.length : 'NG'} toki=${toki.ok ? toki.flights.length : 'NG'} rara=${rara.ok ? rara.flights.length : 'NG'} anaPdf=${anaPdf.ok ? anaPdf.flights.length : 'NG'} odptRows=${odptFull.ok ? odptFull.rows.length + (odptFull.staleReason ? '(prev)' : '') : 'NG'} time=${((Date.now() - t0) / 1000).toFixed(0)}s`);
+  console.log(`FLIGHTS OK odpt=${res.odpt ? 'yes' : 'no'} ${sum} boards=${boards.ok ? boards.rows.length : 'NG'} toki=${toki.ok ? toki.flights.length : 'NG'} rara=${rara.ok ? rara.flights.length : 'NG'} anaPdf=${anaPdf.ok ? anaPdf.flights.length : 'NG'} odptReused=${reuseOdpt ? 'yes' : 'no'} odptRows=${odptFull.ok ? odptFull.rows.length + (odptFull.staleReason ? '(prev)' : '') : 'NG'} time=${((Date.now() - t0) / 1000).toFixed(0)}s`);
 })().catch((e) => { console.error('FLIGHTS FAILED', e && e.message); process.exit(1); });

@@ -182,7 +182,7 @@ def fetch_airport_profiles(airports, cfg, pack_date, stations=None):
         except Exception as e:  # noqa: BLE001
             log("空港情報の取得失敗:", e)
     by = {a.get("icaoId"): a for a in info}
-    out = {"source": "aviationweather.gov airport API + 端末内計算(日の出日没)", "airports": {}}
+    out = {"source": "国内：標高・磁気偏差・滑走路・周波数＝SWIM AIP（AD 2.2/2.12/2.18）、空港運用情報＝SWIM／日の出日没＝端末内計算。AIP に無い空港（海外・一部国内）の同項目のみ参考として NOAA（aviationweather.gov）", "airports": {}}
     for icao in airports:
         a = by.get(icao, {})
         st = static.get(icao, {})

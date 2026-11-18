@@ -7,7 +7,9 @@
 // 取得間隔: 自動更新（10分ごと）の毎回、ATIS・空港プロファイル(METAR・TAF・運用情報)・NOTAM・AIP(Lost Comm) を全部取る。
 //   ただし手動実行が重なっても SWIM を叩きすぎないよう、前回から5分未満の部品は取らない。--force で無視。
 //   同時リクエストは SWIM_MAX_PARALLEL（既定4）まで。
-//   AIP は毎回目次（1リクエスト）で各空港の AD 2 PDF の URL（AIRAC 日付入り）を確認し、変わった空港だけ PDF を取り直す。
+//   AIP は毎回目次（1リクエスト）で各空港の AD 2 PDF の URL（AIRAC 日付入り）を確認し、変わった空港だけ PDF を取り直す
+//   （目次が変わった時だけ PDF の ETag を HEAD で確認＝AMDT の差し替えも拾う）。PDF からは Lost Comm に加え
+//   AD 2.2（標高・磁気偏差）/ AD 2.12（滑走路）/ AD 2.18（周波数）を解析して AIRPORT タブに使う（fetchers/swim/aipAd2.js）。
 //   PDF の取得は1回 AIP_BUDGET_S 秒（既定90秒）まで。残りは次回に回す（初回や AIRAC 切り替え直後だけ）。
 // 出力: <out>/swim.json（正規化済み。scripts/swim_staging.py が読む）
 'use strict';
@@ -16,6 +18,7 @@ const path = require('path');
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const OUT_DIR = opt('--out', '/workspace/fb-staging/swim');
+if (!process.env.AIP_CACHE_DIR) process.env.AIP_CACHE_DIR = path.join(path.dirname(OUT_DIR), 'aip-text'); // AIP AD 2 の PDF 本文キャッシュ（パックには入れない）
 const AIRPORTS = (opt('--airports', '') || '').split(',').map((s) => s.trim().toUpperCase()).filter((s) => /^[A-Z]{4}$/.test(s));
 const FORCE = args.includes('--force');
 const MIN = 60 * 1000;
@@ -95,7 +98,8 @@ const now = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   fs.renameSync(outFile + '.tmp', outFile);
   const n = (p) => (out[p] && out[p].byIcao ? Object.values(out[p].byIcao).filter((x) => x && x.ok).length : 0);
   const T = AIRPORTS.length;
+  const ad2N = out.aip && out.aip.byIcao ? Object.values(out.aip.byIcao).filter((x) => x && x.ad2 && (x.ad2.runways || []).length).length : 0;
   const atisT = AIRPORTS.filter((i) => swim.ATIS_SUPPORTED_ICAO.has(i)).length;
   // 1行・空白区切りの key=value（値に空白なし）。auto_update.py がこの行を読む
-  console.log(`SWIM OK fetched=${parts.join('+') || 'none'} atis=${n('atis')}/${T} profile=${n('profile')}/${T} notam=${out.notam && out.notam.ok ? out.notam.items.length : 'NG'} aip=${n('aip')}/${T} atisSupported=${atisT} req=${session.requestCount()} time=${((Date.now() - t0) / 1000).toFixed(0)}s`);
+  console.log(`SWIM OK fetched=${parts.join('+') || 'none'} atis=${n('atis')}/${T} profile=${n('profile')}/${T} notam=${out.notam && out.notam.ok ? out.notam.items.length : 'NG'} aip=${n('aip')}/${T} ad2=${ad2N}/${T} atisSupported=${atisT} req=${session.requestCount()} time=${((Date.now() - t0) / 1000).toFixed(0)}s`);
 })().catch((e) => { console.log(`SWIM FAILED reason=${String((e && e.code) || (e && e.message) || 'error').replace(/\s+/g, '-').slice(0, 40)}`); process.exit(1); });

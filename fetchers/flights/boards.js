@@ -89,7 +89,7 @@ async function odptLive() {
 async function fetchBoards(log = console.log) {
   const rows = []; const report = [];
   for (const [name, fn] of [['ODPT当日', odptLive], ['HND', haneda], ['FUK', fukuoka], ['OKA', naha]]) {
-    try { const r = await fn(); rows.push(...r); report.push(`${name}:${r.length}`); } catch (e) { report.push(`${name}:${e.message}`); }
+    try { const r = await fn(); rows.push(...r.map((x) => ({ ...x, src: name }))); report.push(`${name}:${r.length}`); } catch (e) { report.push(`${name}:${e.message}`); }
   }
   log('[boards] ' + report.join(' '));
   return { ok: rows.length > 0, rows, report };

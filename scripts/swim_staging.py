@@ -146,6 +146,12 @@ def profiles(swim):
         if lc:
             pr["lostComm"] = {"ok": bool(lc.get("ok")), "text": lc.get("text"), "url": lc.get("url"), "reason": lc.get("reason"),
                               "fetchedAt": lc.get("fetchedAt") or aip.get("fetchedAt"), "checkedAt": aip.get("fetchedAt")}
+        ad2 = (lc or {}).get("ad2")
+        if ad2 and (ad2.get("runways") or ad2.get("elevationFt") is not None or ad2.get("freqs")):
+            # AIRPORT タブの標高・磁気偏差・滑走路・周波数は AIP（AD 2.2 / 2.12 / 2.18）から（NOAA より正確）
+            pr["aip"] = {"url": lc.get("url"), "fetchedAt": lc.get("fetchedAt") or aip.get("fetchedAt"), "checkedAt": aip.get("fetchedAt"),
+                         "elevationFt": ad2.get("elevationFt"), "magvar": {k: v for k, v in (ad2.get("magvar") or {}).items() if k != "raw"} or None, "runways": ad2.get("runways") or [],
+                         "freqs": ad2.get("freqs") or [], "unparsed": ad2.get("unparsed") or []}
         out[icao] = pr
     return out
 

@@ -51,6 +51,29 @@
 
 const { swimFetch } = require('./lib/swimSession');
 const { extractPdfText } = require('./lib/pdfText');
+const { parseAd2, PARSER_VERSION } = require('./aipAd2');
+const fs = require('fs');
+const path = require('path');
+const zlib = require('zlib');
+const crypto = require('crypto');
+
+// AD 2 の PDF 本文（pdftotext）をディスクに保存しておき、解析ロジックを変えた時は PDF を取り直さず再解析する。
+// 保存先は SWIM の取得結果（swim.json）と同じ親フォルダの aip-text/（パックには入れない）。
+const textCachePath = (icao) => path.join(process.env.AIP_CACHE_DIR || '/workspace/fb-staging/aip-text', `${icao}.txt.gz`);
+function readTextCache(icao, url) {
+  try {
+    const raw = zlib.gunzipSync(fs.readFileSync(textCachePath(icao))).toString('utf8');
+    const nl = raw.indexOf('\n');
+    return raw.slice(0, nl) === url ? raw.slice(nl + 1) : null;
+  } catch (_e) { return null; }
+}
+function writeTextCache(icao, url, text) {
+  try {
+    fs.mkdirSync(path.dirname(textCachePath(icao)), { recursive: true });
+    fs.writeFileSync(textCachePath(icao), zlib.gzipSync(`${url}\n${text}`));
+  } catch (_e) { /* キャッシュできなくても動く */ }
+}
+const sha1 = (t) => crypto.createHash('sha1').update(t).digest('hex').slice(0, 16);
 
 const AIP_BASE_URL = 'https://web.swim.mlit.go.jp/f2eapr/AIP/html';
 // 実地確認済みの実在AIRAC発効日（2026-09-29のご指示で頂いたもの）。
@@ -177,7 +200,7 @@ function extractLostCommSection(rawPdfText) {
 const menuCache = new Map();
 function fetchMenu(menuUrl) {
   if (!menuCache.has(menuUrl)) {
-    menuCache.set(menuUrl, swimFetch(menuUrl).then(async (r) => ({ status: r.status, ok: r.ok, html: r.ok ? await r.text() : '' })));
+    menuCache.set(menuUrl, swimFetch(menuUrl).then(async (r) => { const html = r.ok ? await r.text() : ''; return { status: r.status, ok: r.ok, html, hash: html ? sha1(html) : null }; }));
   }
   return menuCache.get(menuUrl);
 }
@@ -212,37 +235,59 @@ async function fetchLostCommForIcao(icao, dateCandidates, prev, deadline) {
       return { ok: false, reason: `目次に${icao}のAD 2リンクが見つかりません`, url: menuUrl };
     }
     const pdfUrl = new URL(href, menuUrl).toString();
-    if (prev && prev.url === pdfUrl && (prev.ok || prev.final)) return { ...prev, reused: true };
-    if (deadline && Date.now() > deadline) {
-      return prev && prev.ok ? { ...prev, reused: true, pendingUrl: pdfUrl } : { ok: false, reason: 'PDFは次回の更新で取得します（1回の取得時間の上限）', url: pdfUrl, pending: true };
+    const menuHash = menuRes.hash;
+    const sameUrl = Boolean(prev && prev.url === pdfUrl);
+    const prevOk = sameUrl && prev.ad2 && prev.ad2.parserV === PARSER_VERSION && (prev.ok || prev.final);
+    // 1) 前回と同じ PDF（AIRAC 日付入りの URL が同じ）で、目次も前回から変わっていなければ取り直さない
+    if (prevOk && prev.menuHash === menuHash) return { ...prev, reused: true };
+    // 2) 目次が変わった（AIP AMDT の差し替えの可能性）：PDF の ETag / Last-Modified だけ HEAD で確認し、同じなら取り直さない
+    if (prevOk && prev.etag) {
+      try {
+        const h = await swimFetch(pdfUrl, { method: 'HEAD' });
+        if (h.ok && h.headers.get('etag') === prev.etag && h.headers.get('last-modified') === prev.lastModified) return { ...prev, menuHash, reused: true };
+      } catch (_e) { /* 確認できなければ取り直す */ }
     }
-    let pdfRes;
-    try {
-      pdfRes = await swimFetch(pdfUrl);
-    } catch (err) {
-      return { ok: false, reason: `PDF取得の通信エラー：${err.message}`, url: pdfUrl };
+    // 3) 解析ロジックだけ新しくなった：保存済みの PDF 本文から再解析（通信なし）
+    // 保存済み本文を使うのは「解析ロジックが新しくなっただけ」の時だけ（目次が変わって ETag も違う／確認できない時は必ず取り直す）
+    const parserOutdated = sameUrl && !(prev.ad2 && prev.ad2.parserV === PARSER_VERSION);
+    let pdfText = parserOutdated ? readTextCache(icao, pdfUrl) : null;
+    let meta = { etag: prev && prev.etag, lastModified: prev && prev.lastModified };
+    if (!pdfText) {
+      if (deadline && Date.now() > deadline) {
+        return prev && prev.ok ? { ...prev, reused: true, pendingUrl: pdfUrl } : { ok: false, reason: 'PDFは次回の更新で取得します（1回の取得時間の上限）', url: pdfUrl, pending: true };
+      }
+      let pdfRes;
+      try {
+        pdfRes = await swimFetch(pdfUrl);
+      } catch (err) {
+        return { ok: false, reason: `PDF取得の通信エラー：${err.message}`, url: pdfUrl };
+      }
+      if (!pdfRes.ok) {
+        return { ok: false, reason: `PDF取得エラー（HTTP ${pdfRes.status}）`, url: pdfUrl };
+      }
+      let pdfBuffer;
+      try {
+        const arrayBuffer = await pdfRes.arrayBuffer();
+        pdfBuffer = Buffer.from(arrayBuffer);
+      } catch (err) {
+        return { ok: false, reason: `PDF読み取りエラー：${err.message}`, url: pdfUrl };
+      }
+      try {
+        pdfText = await extractPdfText(pdfBuffer, AIP_PDF_EXTRACT_TIMEOUT_MS);
+      } catch (err) {
+        return { ok: false, reason: `PDF本文抽出エラー：${err.message}`, url: pdfUrl };
+      }
+      meta = { etag: pdfRes.headers.get('etag'), lastModified: pdfRes.headers.get('last-modified') };
+      writeTextCache(icao, pdfUrl, pdfText);
     }
-    if (!pdfRes.ok) {
-      return { ok: false, reason: `PDF取得エラー（HTTP ${pdfRes.status}）`, url: pdfUrl };
-    }
-    let pdfBuffer;
-    try {
-      const arrayBuffer = await pdfRes.arrayBuffer();
-      pdfBuffer = Buffer.from(arrayBuffer);
-    } catch (err) {
-      return { ok: false, reason: `PDF読み取りエラー：${err.message}`, url: pdfUrl };
-    }
-    let pdfText;
-    try {
-      pdfText = await extractPdfText(pdfBuffer, AIP_PDF_EXTRACT_TIMEOUT_MS);
-    } catch (err) {
-      return { ok: false, reason: `PDF本文抽出エラー：${err.message}`, url: pdfUrl };
-    }
+    let ad2 = null;
+    try { ad2 = parseAd2(pdfText, icao); } catch (err) { ad2 = { parserV: PARSER_VERSION, unparsed: ['AD 2 全体'], error: err.message }; }
+    const common = { url: pdfUrl, ad2, menuHash, etag: meta.etag || null, lastModified: meta.lastModified || null };
     const section = extractLostCommSection(pdfText);
     if (!section) {
-      return { ok: false, reason: 'PDF内にLost Communication Procedures相当の項目が見つかりません', url: pdfUrl, final: true };
+      return { ok: false, reason: 'PDF内にLost Communication Procedures相当の項目が見つかりません', final: true, ...common };
     }
-    return { ok: true, text: section, url: pdfUrl };
+    return { ok: true, text: section, ...common };
   }
   return { ok: false, reason: lastReason, url: null };
 }
@@ -274,7 +319,8 @@ async function fetchLostCommProceduresByIcao(icaoCodes, prevByIcao = {}, deadlin
     try {
       const result = await fetchLostCommForIcao(icao, dateCandidates, prevByIcao[icao], deadline);
       byIcao[icao] = { ok: result.ok, text: result.ok ? result.text : null, url: result.url || null, reason: result.ok ? null : result.reason,
-        final: Boolean(result.final), pending: Boolean(result.pending), reused: Boolean(result.reused), fetchedAt: result.reused ? (result.fetchedAt || null) : new Date().toISOString() };
+        final: Boolean(result.final), pending: Boolean(result.pending), reused: Boolean(result.reused), fetchedAt: result.reused ? (result.fetchedAt || null) : new Date().toISOString(),
+        ad2: result.ad2 || null, menuHash: result.menuHash || null, etag: result.etag || null, lastModified: result.lastModified || null };
     } catch (err) {
       byIcao[icao] = { ok: false, text: null, url: null, reason: `想定外のエラー：${err.message}` };
     }
