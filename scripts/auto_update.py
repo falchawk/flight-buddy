@@ -142,6 +142,21 @@ def refresh_swim(staging, parts):
     return f"fail({kv.get('reason', 'exit' + str(r.returncode))})", [], list(parts)
 
 
+def refresh_duty_default(path):
+    """今日（JST）の乗務便を iFlight（主アカウントだけ）から取って path に書く。失敗しても本体は続ける（前回の中身のまま）。値に空白は入れない。"""
+    try:
+        import duty_fetch
+        d = duty_fetch.fetch_today()
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False)
+        os.replace(tmp, path)
+        return f"ok({d['date']},{len(d['flights'])}flights)"
+    except Exception as e:  # noqa: BLE001
+        log("DUTY 自動入力用の取得失敗:", type(e).__name__)   # 例外の本文には出さない（認証情報を含み得る）
+        return f"fail({type(e).__name__})"
+
+
 def _flights_body(path):
     d = build_pack.read_json(path, {}) or {}
     d.pop("fetchedAt", None)
@@ -178,6 +193,7 @@ def main():
     ap.add_argument("--brief", default="/workspace/fb-staging/brief.md")
     ap.add_argument("--notam-file", default="/workspace/fb-staging/notam.json")
     ap.add_argument("--duty-file", default="/workspace/fb-staging/duty.json")
+    ap.add_argument("--duty-default-file", default="/workspace/fb-staging/duty_default.json")
     ap.add_argument("--flights-file", default="/workspace/fb-staging/flights.json")
     ap.add_argument("--no-publish", action="store_true")
     ap.add_argument("--force", action="store_true", help="変化が無くても新しいパックを作って公開")
@@ -229,7 +245,14 @@ def main():
         if fl_due:
             schedule.mark(st2, "flights", not fl.startswith(("fail", "skip(no-runner")), now)
         schedule.save(st2)
+        # DUTY の自動入力用（今日の便。iFlight 主アカウント）。00:00 JST 以降の最初の回と 05:00 JST 以降の最初の回。失敗は60分後に再試行
+        duty_state = "skip(not-due)"
+        if schedule.is_due("duty_default", None, now):
+            duty_state = refresh_duty_default(a.duty_default_file)
+            schedule.record("duty_default", duty_state.startswith("ok"), now)
         t_build = time.time()
+        if os.path.exists(a.duty_default_file):
+            argv += ["--duty-default-file", a.duty_default_file]
         if os.path.exists(a.flights_file):
             argv += ["--flights-file", a.flights_file]
         if os.path.exists(a.duty_file):
@@ -241,7 +264,7 @@ def main():
             pushed = True
         errs = r.get("chartErrors") or []
         # 要点を先頭に（途中で切れても swim/flights が読めるように）。値に空白は入れない
-        print(f"FLIGHT-BUDDY OK pack={r['packId']} swim={sw} flights={fl} next={'/'.join(f'{k}@{v}' for k, v in schedule.describe(schedule.load(), now).items())} changed={'yes' if r['changed'] else 'no'} "
+        print(f"FLIGHT-BUDDY OK pack={r['packId']} swim={sw} flights={fl} duty={duty_state} next={'/'.join(f'{k}@{v}' for k, v in schedule.describe(schedule.load(), now).items())} changed={'yes' if r['changed'] else 'no'} "
               f"pushed={'yes' if pushed else 'no'} chartErrors={len(errs)} airports={r['airports']} "
               f"frames={r['charts']} sharedMB={(r.get('sharedBytes') or 0) / 1e6:.1f} build={time.time() - t_build:.0f}s time={time.time() - t0:.0f}s")
         for e in errs[:20]:

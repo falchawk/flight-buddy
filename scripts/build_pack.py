@@ -493,7 +493,7 @@ def pack_signature(pack_dir):
         for m in e.get("metar") or []:
             h.update((m.get("raw") or "").encode())
         h.update(((e.get("taf") or {}).get("raw") or "").encode())
-    for name in ("notam.json", "brief.json", "atis.json", "airports.json", "flights.json"):
+    for name in ("notam.json", "brief.json", "atis.json", "airports.json", "flights.json", "duty_default.json"):
         d = read_json(os.path.join(pack_dir, name), {}) or {}
         d.pop("fetchedAt", None)
         h.update(json.dumps(d, sort_keys=True, ensure_ascii=False).encode())
@@ -574,7 +574,7 @@ def split_pack(pack_dir, charts):
 
 def join_pack(pack_dir):
     """空港別ファイルを元の形（wx/notam/atis/airports/charts の airports 付き）に戻す（前回分の引き継ぎ用）。旧形式はそのまま。"""
-    out = {k: read_json(os.path.join(pack_dir, f"{k}.json")) for k in ("wx", "notam", "atis", "airports", "charts", "flights", "brief")}
+    out = {k: read_json(os.path.join(pack_dir, f"{k}.json")) for k in ("wx", "notam", "atis", "airports", "charts", "flights", "brief", "duty_default")}
     apd = os.path.join(pack_dir, AP_DIR)
     if not os.path.isdir(apd):
         return out
@@ -745,6 +745,18 @@ def build(args):
                 flights = None
         write_json(os.path.join(pack_dir, "flights.json"), flights or {"schema": "flight-buddy-flights/2", "fetchedAt": None, "carriers": [], "rows": []})
 
+        # ---- DUTY の自動入力用（今日の便）。公開してよいのは便名・航空会社・日付・出発/到着空港・時刻だけ（許可リストで絞る）
+        dd = read_json(args.duty_default_file) if getattr(args, "duty_default_file", None) and os.path.exists(args.duty_default_file) else None
+        if not dd and prev_dir:
+            dd = prev.get("duty_default")
+        if dd and re.fullmatch(r"\d{4}-\d\d-\d\d", str(dd.get("date") or "")):
+            hm = lambda v: v if isinstance(v, str) and re.fullmatch(r"\d{2}:\d{2}", v) else None  # noqa: E731
+            clean = {"date": dd["date"], "fetchedAt": dd.get("fetchedAt"), "source": "iFlight",
+                     "flights": [{"airline": "SFJ", "flightNumber": str(f["flightNumber"]), "dep": f["dep"], "arr": f["arr"], "std": hm(f.get("std")), "sta": hm(f.get("sta"))}
+                                 for f in dd.get("flights") or []
+                                 if re.fullmatch(r"\d{1,4}", str(f.get("flightNumber"))) and re.fullmatch(r"[A-Z]{3,4}", str(f.get("dep"))) and re.fullmatch(r"[A-Z]{3,4}", str(f.get("arr")))]}
+            write_json(os.path.join(pack_dir, "duty_default.json"), clean)
+
         duty = read_json(args.duty_file) if args.duty_file else (prev_manifest or {}).get("duty")
 
         signature = pack_signature(pack_dir)
@@ -785,7 +797,8 @@ def build(args):
         "sample": not brief["ok"],
         "duty": duty,
         "sections": {"wx": "wx.json", "notam": "notam.json", "airports": "airports.json", "index": "index.json",
-                     "brief": "brief.json", "charts": "charts.json", "atis": "atis.json", "flights": "flights.json"},
+                     "brief": "brief.json", "charts": "charts.json", "atis": "atis.json", "flights": "flights.json",
+                     **({"dutyDefault": "duty_default.json"} if os.path.exists(os.path.join(pack_dir, "duty_default.json")) else {})},
         "files": files,          # 共有ファイル（全端末がダウンロード）
         "blobs": blobs,          # 共有の図（全端末がダウンロード）
         "airportFiles": airport_files,  # 空港別（端末は SETTINGS で選んだ空港だけダウンロード）
@@ -846,6 +859,7 @@ def make_parser():
     ap.add_argument("--workers", type=int, default=16, help="図の並列取得数")
     ap.add_argument("--swim-dir", help="SWIM 取得結果のフォルダ（<dir>/swim/swim.json。fetchers/swim/run.js が書く）")
     ap.add_argument("--duty-file", help="DUTY情報JSON（任意）")
+    ap.add_argument("--duty-default-file", help="DUTY自動入力用の今日の便 JSON（scripts/duty_fetch.py の出力）")
     ap.add_argument("--flights-file", help="時刻表 JSON（flight-buddy-flights/1）")
     ap.add_argument("--keep", type=int, help="保持するパック数")
     ap.add_argument("--skip-if-unchanged", action="store_true", help="中身が前回と同じならパックを作らない")

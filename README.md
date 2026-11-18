@@ -147,3 +147,9 @@ python3 -m http.server 8000   # → http://localhost:8000/
 - 手動はチャットでボットに頼みます（`publish --kind manual`）。アプリに依頼ボタンや暗証番号の入力はありません。
 - 今日 03:00 JST 以降に手動で作っていれば 08:30 の自動作成は行いません。
 - アプリは本文の作成時刻と「自動(08:30)／手動」を表示します（brief.json の writtenAt・kind）。
+
+## DUTY の自動入力（iFlight）
+
+- `scripts/duty_fetch.py`：StarFlyer iFlight Lite の主アカウントだけから、**今日（JST）の運航便（FLT）**を取り、`/workspace/fb-staging/duty_default.json` に書く（便乗 DHD・待機・宿泊・休日は対象外）。認証情報は環境変数（`SFJ_IFLIGHT_USERNAME` / `SFJ_IFLIGHT_PASSWORD`）だけで、リポジトリ・パック・ログには出さない。
+- `auto_update.py`：00:00 JST 以降の最初の回（00:02）と 05:00 JST 以降の最初の回（05:02）に取得（失敗時は60分後に再試行）。パックに `duty_default.json`（日付・航空会社・便番号・出発/到着空港・出発/到着時刻だけ）を入れる。乗員名・社員番号・アカウント名・機体記号などは入らない（`build_pack.py` が許可リストで絞る）。
+- アプリ：パックの日付が今日で、その日この端末で便の追加/削除/日付変更をしていなければ、DUTY の日付と便を自動入力して「自動入力（iFlight）」を表示。手動編集した日は「手動」で、次の日まで手動の内容を維持する。

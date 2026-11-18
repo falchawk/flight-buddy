@@ -136,7 +136,7 @@ label.block{margin-top:14px}
 .hl-ifr{color:var(--hl-danger);font-weight:700}
 .hl-warn{color:var(--hl-warn);font-weight:700}
 .rwy-row{margin:0 0 5px}.rwy-sub{font-size:12px;line-height:1.35}
-.src{display:inline-block;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:4px;white-space:nowrap;vertical-align:middle;background:var(--bg-elev);color:var(--text-dim)}
+.src{display:inline-block;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:4px;white-space:nowrap;vertical-align:middle;background:var(--bg-elev);color:var(--text)}
 .src.ok{color:var(--accent)}
 .src.ref{color:var(--hl-warn)}
 
@@ -305,7 +305,7 @@ label.block{margin-top:14px}
 
 /* ---------- 未対応タブの印 */
 .tab-btn{position:relative}
-.tab-flag{position:absolute;top:5px;right:calc(50% - 26px);font-style:normal;font-size:8px;font-weight:700;line-height:1;padding:2px 4px;border-radius:6px;background:var(--bg-elev);color:var(--text-dim)}
+.tab-flag{position:absolute;top:5px;right:calc(50% - 26px);font-style:normal;font-size:8px;font-weight:700;line-height:1;padding:2px 4px;border-radius:6px;background:var(--bg-elev);color:var(--text)}
 .notice-card .card-title{font-size:16px}
 .wx-cards{padding:0 10px 4px}
 @media (max-width:480px){.tab-btn{min-width:0;font-size:9px;letter-spacing:0}.tab-btn svg{width:22px;height:22px}}
@@ -394,3 +394,8 @@ label.block{margin-top:14px}
 #refresh-btn .th-all{position:absolute;left:0;right:0;bottom:3px;text-align:center;font-size:8px;line-height:1;font-weight:800;letter-spacing:.02em;color:var(--accent);pointer-events:none}
 @media (max-width:440px){#refresh-btn{min-width:34px;width:34px}.app-header #refresh-btn svg{width:18px;height:18px}}
 #wx-btn .wx-sun{transform-box:fill-box}
+
+.duty-src{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;vertical-align:middle;margin-left:6px;letter-spacing:0}
+.duty-src:empty{display:none}
+.duty-src.auto{background:var(--accent-soft);color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.duty-src.manual{background:var(--bg-elev);color:var(--text)}

@@ -31,6 +31,7 @@ SCHEDULE = {
     "noaa_airport_foreign": [(0, 4, 0)],   # 週1回（毎週月曜 04:00 JST）。(曜日, 時, 分)、曜日は 0=月
     "wx_foreign": [(h, 0) for h in range(24)],   # 海外空港の METAR/TAF は1時間に1回（毎正時。15分ごとの実行のうち :00 以降の最初の回）
     "flights": [(4, 30)],
+    "duty_default": [(0, 0), (5, 0)],   # DUTY 自動入力用の今日の便（iFlight）：00:00 JST 以降の最初の回＋05:00 JST 以降の最初の回（変更の再確認）。失敗は60分後に再試行
     # 黄砂・PM2.5（scripts/dust.py）：各ソースの更新周期に合わせる（予定外の回は前回の結果を使う）
     "kosa_himawari": [(h, 20) for h in range(24)],              # ひまわり黄砂監視画像：毎正時の観測、毎時20分頃に公開
     "kosa_fcst": [(6, 30)],                                      # 黄砂解析予測図：1日1回 6時頃（JST）。反映前なら60分後に再試行
@@ -39,7 +40,7 @@ SCHEDULE = {
     "pm25_venus": [(h, 40) for h in range(24)],                  # VENUS：1日1回の計算（14時台JST）。毎時 table.html の更新を見て、変わった時だけ画像を取り直す
 }
 HIDDEN = {"wx_foreign", "kosa_himawari", "kosa_fcst", "kosa_obs", "pm25_obs", "pm25_venus"}   # 要約（next=）に出さない部品
-LABEL = {"noaa_airport_foreign": "海外空港情報(NOAA)", "wx_foreign": "海外METAR/TAF", "atis": "ATIS", "profile": "METAR/TAF(SWIM)", "notam": "NOTAM", "aip": "AIP", "noaa_airport": "空港情報(NOAA)", "flights": "時刻表"}
+LABEL = {"duty_default": "DUTY自動入力","noaa_airport_foreign": "海外空港情報(NOAA)", "wx_foreign": "海外METAR/TAF", "atis": "ATIS", "profile": "METAR/TAF(SWIM)", "notam": "NOTAM", "aip": "AIP", "noaa_airport": "空港情報(NOAA)", "flights": "時刻表"}
 
 
 def now_utc():

@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.8';
+  const APP_VERSION = '1.9.9';
   const REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
@@ -30,7 +30,7 @@
     remoteError: null,
     downloading: null,
     airports: resolveInitialAirports(),
-    duty: lsGet(LS.duty, { date: todayJst(), buffer: 2, airline: 'SFJ', flights: [], note: '' }),
+    duty: lsGet(LS.duty, { date: todayJst(), buffer: 2, airline: 'SFJ', flights: [], note: '', source: null, manualOn: null }),
     notamHours: lsGet(LS.notamH, 24),
   };
 
@@ -513,6 +513,22 @@
 
   // ---------------------------------------------------------------- DUTY
   function saveDuty() { lsSet(LS.duty, state.duty); }
+  // DUTY の自動入力：パックの今日の便（duty_default.json）を、まだ今日手動で触っていない時だけ入れる。
+  // 便の追加・削除・日付変更をした日（manualOn＝その日）は、その人の手動の内容を次の日まで残す。
+  function markDutyManual() { const d = state.duty; d.source = 'manual'; d.manualOn = todayJst(); }
+  function applyDutyDefault() {
+    const dd = state.pack?.dutyDefault, d = state.duty, today = todayJst();
+    if (!dd || dd.date !== today || !Array.isArray(dd.flights)) return false;
+    if (d.manualOn === today) return false;                       // 今日はこの端末で手動編集済み → そのまま
+    const flights = dd.flights.map((f) => `${f.airline || 'SFJ'}${f.flightNumber}`);
+    const key = `${dd.date}|${flights.join(',')}`;
+    if (d.source === 'auto' && d.autoKey === key && d.date === today) return false;   // すでに同じ内容を入れてある
+    d.date = today; d.flights = flights; d.source = 'auto'; d.autoKey = key; d.autoFetchedAt = dd.fetchedAt || null; d.manualOn = null;
+    saveDuty();
+    const dateEl = $('duty-date'); if (dateEl) dateEl.value = today;
+    const apd = $('airport-date'); if (apd) apd.value = today;
+    return true;
+  }
   function setupDuty() {
     const d = state.duty;
     $('duty-date').value = d.date || todayJst();
@@ -520,7 +536,7 @@
     $('duty-note').value = d.note || '';
     const sel = $('duty-airline');
     sel.innerHTML = AIRLINES.map((c) => `<option${c === d.airline ? ' selected' : ''}>${c}</option>`).join('');
-    $('duty-date').onchange = (e) => { d.date = e.target.value; saveDuty(); $('airport-date').value = d.date; renderAirport(); };
+    $('duty-date').onchange = (e) => { d.date = e.target.value; markDutyManual(); saveDuty(); $('airport-date').value = d.date; renderAirport(); renderDuty(); };
     $('duty-buffer').onchange = (e) => { d.buffer = Number(e.target.value); saveDuty(); };
     $('duty-note').oninput = (e) => { d.note = e.target.value; saveDuty(); };
     sel.onchange = (e) => { d.airline = e.target.value; saveDuty(); };
@@ -530,6 +546,7 @@
       if (!v) return;
       const fl = `${d.airline}${v}`;
       if (!d.flights.includes(fl)) d.flights.push(fl);
+      markDutyManual();
       $('duty-flight').value = ''; saveDuty(); renderDuty(); ensureAirports();
     };
     $('duty-add').onclick = add;
@@ -555,12 +572,19 @@
     return r.slice(0, 2).map((x) => `<span class="duty-leg">${esc(apShort(x[1]).iata)} ${esc(x[3] || '--:--')} → ${esc(apShort(x[2]).iata)} ${esc(x[4] || '--:--')}${x[5] ? ` ・ ${esc(x[5])}` : ''} <span class="hint">${esc(SRC_JA[x[9]] || x[9])}</span>${tafWindow(x[1], state.duty.date, x[3], '出発')}${tafWindow(x[2], state.duty.date, x[4], '到着')}</span>`).join('');
   }
   function renderDuty() {
+    const srcEl = $('duty-src');
+    if (srcEl) {
+      const dd = state.pack?.dutyDefault, d = state.duty;
+      srcEl.textContent = d.source === 'auto' ? `自動入力（iFlight）${d.autoFetchedAt ? ` ・ ${fmtJst(d.autoFetchedAt)}取得` : ''}` : d.source === 'manual' ? '手動' : '';
+      srcEl.className = `duty-src ${d.source || ''}`;
+      srcEl.title = dd ? `自動入力用の便：${dd.date}（${dd.flights?.length || 0}便）` : '';
+    }
     const ul = $('duty-list'); ul.innerHTML = '';
     if (!state.duty.flights.length) ul.innerHTML = '<li class="hint">便が登録されていません</li>';
     state.duty.flights.forEach((f, i) => {
       const li = document.createElement('li');
       li.innerHTML = `<span><strong>${esc(f)}</strong>${dutyLeg(f)}</span><button class="btn btn-danger">削除</button>`;
-      li.querySelector('button').onclick = () => { state.duty.flights.splice(i, 1); saveDuty(); renderDuty(); };
+      li.querySelector('button').onclick = () => { state.duty.flights.splice(i, 1); markDutyManual(); saveDuty(); renderDuty(); };
       ul.appendChild(li);
     });
     const pd = state.pack?.manifest?.duty;
@@ -641,9 +665,11 @@
 
   // ---------------------------------------------------------------- pack flow
   function renderAll() {
+    const dutyChanged = applyDutyDefault();
     renderStatus(); renderBrief(); renderMap(); renderCharts(); renderNotam(); renderAirport(); renderDuty(); renderFlights(); renderSwimStatus();
     setupAirportPicker.renderSel && setupAirportPicker.renderSel();
     renderPackInfo();
+    if (dutyChanged) ensureAirports();   // 自動入力した便の空港をこの端末にもダウンロード
   }
   async function showPack(packId) {
     const p = await window.FBPack.load(packId, wantedAirports());
