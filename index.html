@@ -29,7 +29,7 @@
       <span id="pack-pill" class="pill">PACK --</span>
     </div>
     <button id="wx-btn" class="btn-icon" type="button" title="WXだけ更新（METAR/TAF/ATISとWXの図のみ）" aria-label="WXだけ更新">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 13.6h7.2a3 3 0 0 0 .3-5.98A4.3 4.3 0 0 0 6.2 8.5 2.6 2.6 0 0 0 7 13.6z"/><g class="wx-arrow"><path d="M20.4 15.4a3.7 3.7 0 1 0 .3 3.4"/><path d="M20.6 12.9v2.7h-2.7"/></g></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><defs><mask id="wx-sun-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M7 13.6h7.2a3 3 0 0 0 .3-5.98A4.3 4.3 0 0 0 6.2 8.5 2.6 2.6 0 0 0 7 13.6z" fill="#000" stroke="#000" stroke-width="3.6"/></mask></defs><g class="wx-sun" mask="url(#wx-sun-mask)" stroke="#f5a524" stroke-width="1.6"><circle cx="17.4" cy="5.8" r="2.5" fill="#f5a524"/><path d="M17.4 .9v1.1M22.3 5.8h-1.1M17.4 10.7v-1.1M12.5 5.8h1.1M20.9 2.3l-.8.8M20.9 9.3l-.8-.8M13.9 2.3l.8.8"/></g><path d="M7 13.6h7.2a3 3 0 0 0 .3-5.98A4.3 4.3 0 0 0 6.2 8.5 2.6 2.6 0 0 0 7 13.6z"/><g class="wx-arrow"><path d="M20.4 15.4a3.7 3.7 0 1 0 .3 3.4"/><path d="M20.6 12.9v2.7h-2.7"/></g></svg>
     </button>
     <button id="theme-btn" class="btn-icon" type="button" data-mode="auto" title="表示：自動（端末設定）" aria-label="表示：自動（端末設定）。押すとライトに切り替え">
       <svg class="ic-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 3.8v16.4" /><path d="M12 3.8a8.2 8.2 0 0 1 0 16.4z" fill="currentColor" stroke="none"/></svg>
@@ -37,8 +37,9 @@
       <svg class="ic-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2z"/></svg>
       <span class="th-auto" aria-hidden="true">AUTO</span>
     </button>
-    <button id="refresh-btn" class="btn-icon" title="新しいパックを確認" aria-label="更新">
+    <button id="refresh-btn" class="btn-icon" title="全体更新（新しいパックを確認）" aria-label="全体更新">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M5.5 15a8 8 0 0 0 13.9 3M18.5 9A8 8 0 0 0 4.6 6"/></svg>
+      <span class="th-all" aria-hidden="true">ALL</span>
     </button>
   </header>
   <div id="status-bar" class="status-bar">
@@ -60,6 +61,10 @@
     <section id="tab-brief" class="tab-panel">
       <h2>BRIEF</h2>
       <div id="brief-meta" class="hint"></div>
+      <div id="brief-req" class="brief-req">
+        <button id="brief-req-btn" class="btn" type="button">ブリーフを今すぐ作成（リクエスト）</button>
+        <div id="brief-req-status" class="hint" role="status" aria-live="polite"></div>
+      </div>
       <div id="brief-body" class="brief-body"></div>
     </section>
 
@@ -146,6 +151,10 @@
       <div id="ap-sync"></div>
       <p class="hint">ボットはパックの全空港（METAR/TAF のある国内空港すべて＋日本の航空会社が過去・現在に使った海外空港。国別一覧から選べます）を取得しています（国内：METAR/TAF・ATIS・図は15分ごと、NOTAM は6時間ごと＝00/06/12/18時、空港情報と時刻表は1日1回＝4時台。海外：METAR/TAF は1時間ごと、空港情報は週1回＝月曜4時台）。この端末はここで選んだ空港の分だけダウンロード・表示します（端末内の設定。選択を増やした空港はオンライン時に自動で取得。オフラインでは保存済みの空港だけ表示）。下の国別一覧からも追加できます。</p>
       <div id="ap-browse"></div>
+      <h3>BRIEF リクエスト</h3>
+      <p class="hint">BRIEF の本文は毎日 08:30（JST）に自動で作られます。それ以外の時刻に作るときは、BRIEF タブのボタンから暗証番号を入れて依頼します（暗証番号は毎回入力・端末には保存しません）。依頼はブラウザから Grok Bot の Webhook を直接呼べない（CORS で拒否される）ため、メールで送ります。送り先のメールアドレスはこの端末だけに保存され、公開リポジトリには入りません。</p>
+      <input id="brief-to" type="email" placeholder="依頼の送り先メールアドレス（ボットの受信箱）" autocomplete="off" autocapitalize="off" spellcheck="false" />
+      <div class="row"><button id="brief-to-save" class="btn" type="button">SAVE</button><span id="brief-to-msg" class="hint hidden">保存しました</span></div>
       <h3>FEEDBACK</h3>
       <p class="hint">文章で自由に書いてください。端末に保存され、「Botに送る」で GitHub issue としてボットに渡せます（ボットはブリーフ作成時に参照。オンライン時のみ）。</p>
       <textarea id="feedback-text" rows="6" placeholder="自由に書いてください"></textarea>

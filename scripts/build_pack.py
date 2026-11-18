@@ -658,16 +658,21 @@ def build(args):
         prev_brief = prev.get("brief")
         brief = None
         if args.brief and os.path.exists(args.brief):
-            mtime = iso(dt.datetime.fromtimestamp(os.path.getmtime(args.brief), dt.timezone.utc))
+            # scripts/brief_request.py publish が <brief>.meta.json に kind（auto/manual）と作成時刻を書く
+            meta = read_json(args.brief + ".meta.json", {}) or {}
+            mtime = meta.get("writtenAt") or iso(dt.datetime.fromtimestamp(os.path.getmtime(args.brief), dt.timezone.utc))
             if not args.brief_if_newer or not prev_brief or not prev_brief.get("writtenAt") or mtime > prev_brief["writtenAt"] \
                     or not prev_brief.get("ok"):
                 with open(args.brief, encoding="utf-8") as f:
-                    brief = {"ok": True, "text": f.read(), "author": "Grok Bot", "writtenAt": mtime, "carriedOver": False}
-        if brief is None and prev_brief and prev_brief.get("ok"):
+                    brief = {"ok": True, "text": f.read(), "author": "Grok Bot", "writtenAt": mtime, "carriedOver": False,
+                             "kind": meta.get("kind") or "unknown", "slot": meta.get("slot")}
+        # 前回の本文を引き継ぐのは kind が付いたもの（＝BRIEF 運用開始後に scripts/brief_request.py で公開したもの）だけ。
+        # kind が無い古い本文（初回テストパックの「福岡⇔羽田」）は現在のブリーフとして出さない
+        if brief is None and prev_brief and prev_brief.get("ok") and prev_brief.get("kind"):
             brief = dict(prev_brief)
             brief["carriedOver"] = True
         if brief is None:
-            brief = {"ok": False, "text": None, "author": None, "writtenAt": None}
+            brief = {"ok": False, "text": None, "author": None, "writtenAt": None, "kind": None}
         write_json(os.path.join(pack_dir, "brief.json"), brief)
 
         # ---- charts（旧 Flight Buddy の8分類。plain HTTP で並列取得）
