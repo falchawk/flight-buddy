@@ -61,7 +61,7 @@ function parseVisibilitySm(metarText) {
   // 例: "...12008KT 9999 FEW020..." の "9999"。
   // 風グループ（KT/MPSで終わる、風向風速のグループ）を先に探し、その直後の
   // 4桁数字を視程として読み取る（RVRの "R27/1200" 等と混同しないため）。
-  const windMatch = text.match(/\s(?:\d{3}|VRB)\d{2}(?:G\d{2})?(?:KT|MPS)\s+(?:\d{3}V\d{3}\s+)?(\d{4})\b/);
+  const windMatch = text.match(/\s(?:\d{3}|VRB)\d{2}(?:G\d{2})?(?:KT|MPS)\s+(?:\d{3}V\d{3}\s+)?(\d{4})M?\b/);
   if (windMatch) {
     const meters = Number(windMatch[1]);
     return meters / METERS_PER_STATUTE_MILE;

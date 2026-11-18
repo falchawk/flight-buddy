@@ -8,7 +8,8 @@
   const SM_M = 1609.344, IFR_VIS_M = 5000, IFR_CEIL_FT = 1000, LIFR_CEIL_FT = 500, MVFR_CEIL_FT = 3000, MVFR_VIS_M = 5 * SM_M;
   function ifrToken(t, prev) {
     let m;
-    if (/^\d{4}$/.test(t)) return Number(t) < IFR_VIS_M; // 視程（m）。時刻 dddd/dddd や風は \d{4} だけの形にならない
+    if ((m = t.match(/^(\d{4})M?$/))) return Number(m[1]) < IFR_VIS_M;
+    if ((m = t.match(/^(\d{1,2})KM$/))) return Number(m[1]) * 1000 < IFR_VIS_M; // 視程（m）。時刻 dddd/dddd や風は \d{4} だけの形にならない
     if ((m = t.match(/^(M|P)?(\d{1,2})SM$/))) return m[1] !== 'P' && Number(m[2]) * SM_M < IFR_VIS_M;
     if ((m = t.match(/^(M|P)?(\d)\/(\d)SM$/))) return m[1] !== 'P' && ((prev && /^\d$/.test(prev) ? Number(prev) : 0) + Number(m[2]) / Number(m[3])) * SM_M < IFR_VIS_M;
     if ((m = t.match(/^(BKN|OVC|VV)(\d{3})(?:CB|TCU|\/+)?$/))) return Number(m[2]) * 100 < IFR_CEIL_FT;
@@ -130,7 +131,8 @@
     if (/\bCAVOK\b/.test(t)) return 10000;
     if ((m = t.match(/\s(M|P)?(\d{1,2})(?:\s(\d)\/(\d))?SM\b/))) return (Number(m[2]) + (m[3] && m[4] ? Number(m[3]) / Number(m[4]) : 0)) * SM_M;
     if ((m = t.match(/\s(M|P)?(\d)\/(\d)SM\b/))) return Number(m[2]) / Number(m[3]) * SM_M;
-    if ((m = t.match(/\s(?:\d{3}|VRB)\d{2}(?:G\d{2})?(?:KT|MPS)\s+(?:\d{3}V\d{3}\s+)?(\d{4})\b/))) return Number(m[1]);
+    if ((m = t.match(/\s(?:\d{3}|VRB)\d{2}(?:G\d{2})?(?:KT|MPS)\s+(?:\d{3}V\d{3}\s+)?(\d{4})M?\b/))) return Number(m[1]);
+    if ((m = t.match(/\s(?:\d{3}|VRB)\d{2}(?:G\d{2})?(?:KT|MPS)\s+(?:\d{3}V\d{3}\s+)?(\d{1,2})KM\b/))) return Number(m[1]) * 1000;
     return null;
   }
   function ceilFt(raw) {

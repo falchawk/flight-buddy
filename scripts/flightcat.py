@@ -36,9 +36,12 @@ def vis_m(text):
     if m:
         return float(m[2]) / float(m[3]) * M_PER_SM
     # 風の直後（風向変動 140V220 があればその後）の4桁＝視程(m)
-    m = re.search(r"\s(?:\d{3}|VRB)\d{2}(?:G\d{2})?(?:KT|MPS)\s+(?:\d{3}V\d{3}\s+)?(\d{4})\b", t)
+    m = re.search(r"\s(?:\d{3}|VRB)\d{2}(?:G\d{2})?(?:KT|MPS)\s+(?:\d{3}V\d{3}\s+)?(\d{4})M?\b", t)  # 気象庁の自動観測は 5000M の書き方もある
     if m:
         return float(m[1])
+    m = re.search(r"\s(?:\d{3}|VRB)\d{2}(?:G\d{2})?(?:KT|MPS)\s+(?:\d{3}V\d{3}\s+)?(\d{1,2})KM\b", t)  # 自動観測の 7KM
+    if m:
+        return float(m[1]) * 1000
     return None
 
 
