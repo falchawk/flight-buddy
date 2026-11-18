@@ -334,10 +334,10 @@ label.block{margin-top:14px}
 /* ---------- wx-brief main（3c60eec）public/css/style.css と同じ配色（2026-11-18 ご指摘：TAF の TEMPO/BECMG の色） */
 :root{--o-cyan:#4fc3f7;--o-yellow:#d8b34a;--o-green:#3fa66a;--o-prob:#e8cf9a;--o-red:#b81c2c;--o-magenta:#e8348f;
   --vfr:#3fa66a;--mvfr:#4fc3f7;--ifr:#b81c2c;--lifr:#e8348f}
-.taf-token-becmg{color:var(--o-cyan);font-weight:700}
-.taf-token-tempo{color:var(--o-yellow);font-weight:700}
-.taf-token-fm{color:var(--o-green);font-weight:700}
-.taf-token-prob{color:var(--o-prob);font-weight:700}
+.taf-token-becmg{color:var(--taf-becmg,var(--o-cyan));font-weight:700}
+.taf-token-tempo{color:var(--taf-tempo,var(--o-yellow));font-weight:700}
+.taf-token-fm{color:var(--taf-fm,var(--o-green));font-weight:700}
+.taf-token-prob{color:var(--taf-prob,var(--o-prob));font-weight:700}
 .taf-line{padding:1px 4px;margin:0 -4px;border-radius:4px}
 .taf-line-relevant{background:rgba(216,179,74,.18);box-shadow:inset 3px 0 0 var(--o-yellow)}
 /* 飛行状態バッジ（旧 .flight-category-badge：枠線＋文字色） */
@@ -354,3 +354,7 @@ label.block{margin-top:14px}
 .lost-comm-body{font-size:12.5px;line-height:1.55;white-space:pre-wrap}
 :root[data-theme="light"]{--vfr:#3fa66a;--mvfr:#4fc3f7;--ifr:#b81c2c;--lifr:#e8348f}
 @media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--vfr:#3fa66a;--mvfr:#4fc3f7;--ifr:#b81c2c;--lifr:#e8348f}}
+
+/* ライトモードだけ：TAF 変化群の色を同じ色相のまま濃くする（白地でコントラスト 4.6:1 以上）。ダークは旧版と同じ色のまま */
+:root[data-theme="light"]{--taf-becmg:#0875a5;--taf-tempo:#866a1d;--taf-fm:#2f7b4f;--taf-prob:#806b3e}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--taf-becmg:#0875a5;--taf-tempo:#866a1d;--taf-fm:#2f7b4f;--taf-prob:#806b3e}}

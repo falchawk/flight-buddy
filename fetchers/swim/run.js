@@ -87,5 +87,8 @@ const now = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   fs.writeFileSync(outFile + '.tmp', JSON.stringify(out));
   fs.renameSync(outFile + '.tmp', outFile);
   const n = (p) => (out[p] && out[p].byIcao ? Object.values(out[p].byIcao).filter((x) => x && x.ok).length : 0);
-  console.log(`SWIM OK parts=${parts.join('+') || 'none(not due)'} atis=${n('atis')} profile=${n('profile')} notam=${out.notam && out.notam.ok ? out.notam.items.length : 'NG'} aip=${n('aip')} / ${AIRPORTS.length}空港 time=${((Date.now() - t0) / 1000).toFixed(0)}s`);
-})().catch((e) => { console.log('SWIM FAILED', (e && e.code) || '', (e && e.message) || e); process.exit(1); });
+  const T = AIRPORTS.length;
+  const atisT = AIRPORTS.filter((i) => swim.ATIS_SUPPORTED_ICAO.has(i)).length;
+  // 1行・空白区切りの key=value（値に空白なし）。auto_update.py がこの行を読む
+  console.log(`SWIM OK fetched=${parts.join('+') || 'none'} atis=${n('atis')}/${T} profile=${n('profile')}/${T} notam=${out.notam && out.notam.ok ? out.notam.items.length : 'NG'} aip=${n('aip')}/${T} atisSupported=${atisT} time=${((Date.now() - t0) / 1000).toFixed(0)}s`);
+})().catch((e) => { console.log(`SWIM FAILED reason=${String((e && e.code) || (e && e.message) || 'error').replace(/\s+/g, '-').slice(0, 40)}`); process.exit(1); });

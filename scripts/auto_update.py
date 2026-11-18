@@ -106,7 +106,7 @@ SWIM_RUNNER = os.path.join(ROOT, "fetchers", "swim", "run.js")  # SWIM 取得（
 def refresh_swim(staging):
     """SWIM（ATIS 10分・空港プロファイル/NOTAM 30分・AIP 24時間。間隔は run.js 側で判定）。失敗しても本体は続ける。"""
     if not os.path.exists(SWIM_RUNNER):
-        return "no-runner"
+        return "skip(no-runner)"
     cfg = build_pack.read_json(os.path.join(ROOT, "config", "pack_config.json"), {}) or {}
     targets = build_pack.swim_targets(cfg)
     try:
@@ -114,12 +114,19 @@ def refresh_swim(staging):
                            capture_output=True, text=True, timeout=150)
     except subprocess.TimeoutExpired:
         log("SWIM タイムアウト（150秒）")
-        return "timeout"
+        return "fail(timeout)"
     line = next((ln for ln in reversed(r.stdout.strip().splitlines()) if ln.startswith("SWIM ")), "")
     log(line or r.stderr.strip()[-300:])
+    kv = dict(t.split("=", 1) for t in line.split()[2:] if "=" in t)
     if line.startswith("SWIM SKIP"):
-        return "no-creds"
-    return line.split(" ")[2].replace("parts=", "") if r.returncode == 0 and line.startswith("SWIM OK") else "failed"
+        return "skip(no-creds)"
+    if r.returncode == 0 and line.startswith("SWIM OK"):
+        # 例: swim=ok(atis:5/7,notam:314,profile:7/7,aip:7/7,fetched:atis)  ※空白なし。fetched:none＝間隔前で前回分を使用
+        return (f"ok(atis:{kv.get('atis', '?')},notam:{kv.get('notam', '?')},profile:{kv.get('profile', '?')},"
+                f"aip:{kv.get('aip', '?')},fetched:{kv.get('fetched', '?')})")
+    return f"fail({kv.get('reason', 'exit' + str(r.returncode))})"
+
+
 FLIGHTS_MAX_AGE_H = 6
 
 
@@ -184,11 +191,10 @@ def main():
             size = publish()
             pushed = True
         errs = r.get("chartErrors") or []
-        st = r.get("chartStats") or {}
-        print(f"FLIGHT-BUDDY OK pack={r['packId']} airports={r['airports']} frames={r['charts']}({r['chartMode']}) "
-              f"images={r.get('blobs', '-')} packMB={(r.get('bytes') or 0) / 1e6:.1f} tarMB={size / 1e6:.1f} "
-              f"fetch={st.get('seconds', '-')}s req={st.get('requests', '-')} chartErrors={len(errs)} "
-              f"swim={sw} flights={fl} changed={'yes' if r['changed'] else 'no'} pushed={'yes' if pushed else 'no'} time={time.time() - t0:.0f}s")
+        # 要点を先頭に（途中で切れても swim/flights が読めるように）。値に空白は入れない
+        print(f"FLIGHT-BUDDY OK pack={r['packId']} swim={sw} flights={fl} changed={'yes' if r['changed'] else 'no'} "
+              f"pushed={'yes' if pushed else 'no'} chartErrors={len(errs)} airports={r['airports']} "
+              f"frames={r['charts']} packMB={(r.get('bytes') or 0) / 1e6:.1f} time={time.time() - t0:.0f}s")
         for e in errs[:20]:
             print("  chart-error:", e)
         return 0
