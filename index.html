@@ -35,6 +35,7 @@
       <svg class="ic-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 3.8v16.4" /><path d="M12 3.8a8.2 8.2 0 0 1 0 16.4z" fill="currentColor" stroke="none"/></svg>
       <svg class="ic-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.8v2.2M12 19v2.2M2.8 12H5M19 12h2.2M5.5 5.5l1.6 1.6M16.9 16.9l1.6 1.6M18.5 5.5l-1.6 1.6M7.1 16.9l-1.6 1.6"/></svg>
       <svg class="ic-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2z"/></svg>
+      <span class="th-auto" aria-hidden="true">AUTO</span>
     </button>
     <button id="refresh-btn" class="btn-icon" title="新しいパックを確認" aria-label="更新">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M5.5 15a8 8 0 0 0 13.9 3M18.5 9A8 8 0 0 0 4.6 6"/></svg>
@@ -42,7 +43,6 @@
   </header>
   <div id="status-bar" class="status-bar">
     <span id="status-text">起動中…</span>
-    <span class="disclaimer">参考情報。運航判断の正本は公式資料。</span>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="stale-banner" class="stale-banner hidden"></div>
@@ -94,7 +94,6 @@
         <button class="chip" data-hours="0">ALL</button>
       </nav>
       <div id="notam-list"></div>
-      <p class="hint">※参考情報です。公式のNOTAM確認の代替にはなりません。</p>
     </section>
 
     <section id="tab-airport" class="tab-panel">

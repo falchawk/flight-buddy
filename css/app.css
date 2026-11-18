@@ -89,7 +89,6 @@ a.btn{display:inline-block;text-decoration:none;margin:4px 0}
 .pill.bad{color:#fff;background:var(--red)}
 .status-bar{display:flex;justify-content:space-between;gap:4px 10px;flex-wrap:wrap;padding:6px 14px;font-size:12px;color:var(--text-dim);background:var(--bg-status);border-bottom:.5px solid var(--line);flex:none}
 #status-text{color:var(--text);font-weight:500}
-.disclaimer{color:var(--text-dim);font-size:11.5px}
 .stale-banner{flex:none;padding:8px 14px;font-size:13px;font-weight:500;background:var(--warn-bg);color:var(--warn-fg)}
 .stale-banner.bad{background:var(--bad-bg);color:var(--bad-fg)}
 #pages{flex:1;overflow:hidden;position:relative}
@@ -366,7 +365,11 @@ label.block{margin-top:14px}
 .vmc-basis.strict{color:var(--ifr);border-color:var(--ifr)}
 
 /* ヘッダーのテーマ切替（自動→ライト→ダーク）。現在のモードのアイコンだけ表示 */
-#theme-btn{min-width:36px;width:36px;padding:0}
+#theme-btn{min-width:36px;width:36px;padding:0;position:relative}
+#theme-btn .th-auto{display:none}
+#theme-btn[data-mode="auto"] .th-auto{display:block;position:absolute;left:0;right:0;bottom:3px;text-align:center;font-size:8px;line-height:1;font-weight:800;letter-spacing:.02em;color:var(--accent);pointer-events:none}
+#theme-btn[data-mode="auto"] svg.ic-auto{width:18px;height:18px;margin-top:-9px}
+@media (max-width:440px){.app-header #theme-btn[data-mode="auto"] svg.ic-auto{width:18px;height:18px}}
 #theme-btn svg{display:none}
 #theme-btn[data-mode="auto"] .ic-auto,#theme-btn[data-mode="light"] .ic-light,#theme-btn[data-mode="dark"] .ic-dark{display:block}
 .app-header{gap:4px}
@@ -377,7 +380,9 @@ label.block{margin-top:14px}
 #wx-btn svg{width:23px;height:23px}
 #wx-btn .wx-arrow{transform-box:fill-box;transform-origin:center}
 #wx-btn.spinning svg{animation:none}
-#wx-btn.spinning .wx-arrow{animation:spin .9s linear infinite}
+/* WX の円弧矢印は時計回り（矢じりが円弧の始点側＝sweep=0 の逆向き）なので、回転も時計回りに合わせる */
+#wx-btn.spinning .wx-arrow{animation:spin-cw .9s linear infinite}
+@keyframes spin-cw{to{transform:rotate(360deg)}}
 #wx-btn:disabled,#refresh-btn:disabled{opacity:.45}
 .toast{position:fixed;left:50%;top:calc(var(--header-h) + env(safe-area-inset-top) + 8px);transform:translate(-50%,-6px);z-index:3000;max-width:min(92vw,420px);padding:9px 14px;border-radius:12px;background:var(--bg-card);color:var(--text);box-shadow:var(--shadow);border:1px solid var(--line-strong);font-size:12.5px;line-height:1.45;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
 .toast.show{opacity:1;transform:translate(-50%,0)}

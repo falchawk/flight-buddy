@@ -10,7 +10,7 @@
       "operatingHours": "24H"
     },
     "RJFF": {
-      "operatingHours": "0700-2200 JST（目安・要確認）"
+      "operatingHours": "0700-2200 JST"
     }
   },
   "include_restricted": true,

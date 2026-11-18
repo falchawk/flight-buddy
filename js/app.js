@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.2';
+  const APP_VERSION = '1.9.3';
   const REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
@@ -114,7 +114,7 @@
     { const w = state.pack?.wxOverlay, wl = wxLastText(); if (w) src += ` ／ 気象はパック ${hhmmJ(w.generatedAt)} 分に更新済み`; if (wl) src += ` ／ ${wl}`; }
     $('status-text').textContent = `パック ${fmtJst(m.generatedAt)}（${fmtUtc(m.generatedAt)}）・ ${src}`;
     if (ageH > 3) {
-      banner.textContent = ageH > 12 ? `⚠ パックが ${ageText(m.generatedAt)} のものです。最新の公式情報を確認してください。` : `パックは ${ageText(m.generatedAt)} に作成されました。`;
+      banner.textContent = ageH > 12 ? `⚠ パックが ${ageText(m.generatedAt)} のものです。` : `パックは ${ageText(m.generatedAt)} に作成されました。`;
       banner.className = `stale-banner${ageH > 12 ? ' bad' : ''}`;
     } else banner.className = 'stale-banner hidden';
   }
@@ -507,7 +507,7 @@
         ${p.foreign ? '' : `<details class="lost-comm-details field"><summary>Lost Communication Procedures &#9662;</summary>${sw?.lostComm?.ok && sw.lostComm.text ? `<div class="lost-comm-source">SWIM（AIP AD 2 ${esc(icao)}${sw.lostComm.fetchedAt ? `・${esc(fmtJst(sw.lostComm.fetchedAt))}取得` : ''}）</div><div class="lost-comm-body">${esc(sw.lostComm.text)}</div>` : `<div class="lost-comm-body">未取得${sw?.lostComm?.reason ? `（${esc(sw.lostComm.reason)}）` : (state.pack?.airports?.swimTargets && !state.pack.airports.swimTargets.includes(icao) ? '（SWIM の取得対象外）' : '')}</div>`}</details>`}`;
       list.appendChild(card);
     }
-    if (state.pack?.airports?.source) { const s = document.createElement('p'); s.className = 'hint'; s.textContent = `出所：${state.pack.airports.source}。運用時間などは目安です。`; list.appendChild(s); }
+    if (state.pack?.airports?.source) { const s = document.createElement('p'); s.className = 'hint'; s.textContent = `出所：${state.pack.airports.source}`; list.appendChild(s); }
   }
 
   // ---------------------------------------------------------------- DUTY

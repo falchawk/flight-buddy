@@ -187,7 +187,7 @@ def build_flights(staging, profiles, extra_airports_json="/workspace/fb-flights/
             ops[r[10]] = ops.get(r[10], 0) + 1
     used = {r[1] for r in rows} | {r[2] for r in rows}
     return {"schema": "flight-buddy-flights/2", "fetchedAt": staging.get("fetchedAt"),
-            "note": "時刻は時刻表（現地時刻）。運休・臨時便・当日の遅延は反映しない。参考情報。",
+            "note": "時刻は時刻表（現地時刻）。運休・臨時便・当日の遅延は反映しない。",
             "cols": ["num", "dep", "arr", "std", "sta", "type", "days", "from", "to", "src", "op", "codeshare", "note"],
             "carriers": carriers, "operators": ops, "airportNames": {k: v for k, v in ja.items() if k in used and v},
             "rows": rows}

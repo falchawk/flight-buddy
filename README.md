@@ -1,7 +1,5 @@
 # Flight Buddy（オフライン対応 運航前ブリーフィング PWA）
 
-> **参考情報。運航判断の正本は公式資料。**
-
 旧版（Render + サーバー取得）の作り直しです。**サーバーはありません。**
 
 - アプリ本体は静的ファイル（GitHub Pages）。
@@ -42,6 +40,7 @@ python3 /workspace/flight-buddy/scripts/auto_update.py
   - ひまわり（赤外/可視/水蒸気）: 気象庁 bosai の日付入りタイル（`himawari/data/satimg/targetTimes_fd.json` の最新 basetime、フルディスク z5・10分毎・観測の約5分後に公開）を Pillow で日本域（117–152E, 20–47.5N）に切り出して合成し、海岸線・県境（気象庁 `tile/jma/transparent-cities`）・経緯線・右下に JST 時刻を重ねる。直近2時間。タイルが取れない時だけ旧 `mscweb/.../jpn_*.jpg`（日付なしで毎日上書きされるため Last-Modified が枠の時刻以降のものだけ採用）にフォールバック。雲頂高度: 直近2時間（10分毎）。
   - 高層天気図 › 福岡FIR解説報（FBJP の右隣）: 気象庁 航空気象情報「全国航空気象解説報（福岡FIR）」`https://www.data.jma.go.jp/airinfo/data/pict/ajpn_cmnt/qyya83.png`（ページ: `awfo_ajpn_cmnt_fukuokafir.html`、ログイン不要の公開画像）。1日2回（16時台・4時台 JST）。URL に日付が無いので 15分ごとに HEAD で ETag/Last-Modified を見て、変わった時だけ本文を取得。掲載時刻はファイルの Last-Modified、ISSUED/VALID は画像内。
   - 下層悪天予想図: 東日本（fbtk）を上、西日本（fbos）を下に積んで表示。
+  - 地上天気図 ASAS/FSAS24/FSAS48 と AUPQ35/78・FXJP854・FXFE502/5782 は、気象庁のベクター PDF（`yoho/data/wxchart/quick/{ASAS_COLOR,FSAS24_COLOR_ASIA,FSAS48_COLOR_ASIA}.pdf`、`bosai/numericmap/data/nwpmap/*_{00,12}.pdf`）を pdftoppm で長辺3000px の可逆 WebP（各 0.3〜1.1MB）にして使用。ETag/Last-Modified が変わった時だけ取得（15分ごとは HEAD のみ）。基準時刻は bosai 一覧の発表時刻つきファイル名と PDF の Last-Modified を突き合わせて決定。PDF が取れない／bosai の方が新しい時だけ従来の PNG（600×512）にフォールバック。ビューアはピンチ・ホイールで原寸の12倍まで拡大可。
   - 降水ナウキャスト/雷/今後の雨は気象庁 rain.html と同じ `bosai/rain/data/*/time.json`（5分/10分毎）の最新を使用（約5分遅れ）。ナウキャスト/雷/今後の雨: 全国＋19地域（地図・境界線を重ね表示）。
 - SWIM: `/workspace/fb-staging/notam/<ICAO>.json`（USV001 応答）、`atis.json`（LGV062 応答）、`profile/<ICAO>.json`（LGV220 応答）を
   そのまま置けば整形して取り込みます（`{"fetchedAt":"…Z","response":<応答>}` 形式も可）。6時間（ATIS は1.5時間）より古いものは使いません。

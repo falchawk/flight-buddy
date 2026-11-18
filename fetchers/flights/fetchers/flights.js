@@ -560,7 +560,7 @@ function googleFlightSearchUrl(flightNumberFull) {
 }
 
 async function fetchFromHtml(airline, date) {
-  return { ok: false, flights: [], failReason: '時刻表HTMLの自動解析は未対応です。公式サイトでご確認ください。' };
+  return { ok: false, flights: [], failReason: '時刻表HTMLの自動解析は未対応です。' };
 }
 
 // ----------------------------------------------------------------------------
@@ -705,7 +705,7 @@ async function fetchRararaktSchedule(icao3, getRaraRaw) {
       source: 'rararakt',
       url: RARARAKT_DATA_URL,
       failReason: null,
-      note: '非公式の参考データ（rararakt.com/flightnbr/）を使用中。時刻は変更される場合があるため、必ず公式サイトでもご確認ください。',
+      note: '非公式の参考データ（rararakt.com/flightnbr/）を使用中。時刻は変更される場合があります。',
     };
   } catch (err) {
     return { ok: false, flights: [], source: null, url: RARARAKT_DATA_URL, failReason: `参考データ（rararakt.com）の取得失敗：${err.message}` };
@@ -746,7 +746,7 @@ async function withRararaktFallback(icao3, primaryResult, getRaraRaw) {
   const reason = (primaryResult && primaryResult.failReason) ? `${primaryResult.failReason}のため使用` : '公式サイト・同梱データのいずれも利用できないため使用';
   return {
     ...raraResult,
-    note: `${reason}。非公式・最終手段のデータです。時刻は変更される場合があるため、必ず公式サイトでもご確認ください。`,
+    note: `${reason}。非公式・最終手段のデータです。時刻は変更される場合があります。`,
   };
 }
 
@@ -2164,7 +2164,7 @@ async function fetchAllAirlineSchedules(date) {
         result = await withRararaktFallback(airline.icao3, {
           ok: false,
           flights: [],
-          failReason: '公式PDFは便名欄の文字コードに不具合があり、このアプリからは機械的に読み取れません。公式サイトでご確認ください。',
+          failReason: '公式PDFは便名欄の文字コードに不具合があり、このアプリからは機械的に読み取れません。',
         }, getRaraRaw);
       } else {
         result = await fetchFromHtml(airline, date);

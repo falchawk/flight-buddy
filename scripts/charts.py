@@ -187,6 +187,61 @@ class Fetcher:
                 self.urlmap[key] = {"f": rel, "t": time.time(), "sig": sig}
         return rel, lm
 
+    def pdf_cond_image(self, url, long_px=3000, max_kb=1500):
+        """ベクター PDF（1ページ）を、ETag/Last-Modified が変わった時だけ取得して pdftoppm で長辺 long_px の WebP（可逆）にする。
+        1.5MB を超える時は PNG8 → 非可逆 WebP の順に落とす。戻り値 (blobパス or None, Last-Modified(UTC) or None)。"""
+        import io
+        from PIL import Image
+        key = f"pdf:{long_px}:{url}"
+        h = {}
+        st, _, _ = self._raw(url, retries=1, hdrs=h, method="HEAD")
+        if st != 200:
+            return None, None
+        lm = self.parse_lm(h)
+        sig = f"{h.get('etag', '')}|{h.get('last-modified', '')}"
+        with self.lock:
+            hit = self.urlmap.get(key)
+        if hit and hit.get("sig") == sig and os.path.exists(os.path.join(self.blob_dir, os.path.basename(hit["f"]))):
+            with self.lock:
+                hit["t"] = time.time()
+                self.stats["cached"] += 1
+                self.stats["unchanged"] = self.stats.get("unchanged", 0) + 1
+            return hit["f"], lm
+        st, body, _ = self._raw(url, timeout=60)
+        if st != 200 or body[:4] != b"%PDF":
+            return None, None
+        with tempfile.TemporaryDirectory() as td:
+            pdf = os.path.join(td, "in.pdf")
+            with open(pdf, "wb") as f:
+                f.write(body)
+            info = subprocess.run(["pdfinfo", pdf], check=True, timeout=30, capture_output=True, text=True).stdout
+            m = re.search(r"Page size:\s+([\d.]+) x ([\d.]+) pts", info)
+            wpt, hpt = (float(m.group(1)), float(m.group(2))) if m else (1191.0, 842.0)
+            dpi = max(72, round(long_px / (max(wpt, hpt) / 72.0)))
+            subprocess.run(["pdftoppm", "-png", "-r", str(dpi), "-f", "1", "-l", "1", "-singlefile", pdf, os.path.join(td, "out")],
+                           check=True, timeout=120, capture_output=True)
+            im = Image.open(os.path.join(td, "out.png")).convert("RGB")
+        buf = io.BytesIO()
+        im.save(buf, "WEBP", lossless=True, method=6)
+        out, ext = buf.getvalue(), "webp"
+        if len(out) > max_kb * 1024:
+            b2 = io.BytesIO()
+            im.quantize(256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).save(b2, "PNG", optimize=True)
+            if len(b2.getvalue()) <= max_kb * 1024:
+                out, ext = b2.getvalue(), "png"
+            else:
+                for q in (92, 88, 84, 80):
+                    b3 = io.BytesIO()
+                    im.save(b3, "WEBP", quality=q, method=6)
+                    out, ext = b3.getvalue(), "webp"
+                    if len(out) <= max_kb * 1024:
+                        break
+        rel = self.store(out, ext)
+        with self.lock:
+            self.stats["hits"] += 1
+            self.urlmap[key] = {"f": rel, "t": time.time(), "sig": sig}
+        return rel, lm
+
     def pdf_page1_png(self, url):
         st, body, ct = self._raw(url, timeout=40)
         if st != 200 or body[:4] != b"%PDF":
@@ -230,18 +285,59 @@ def variant(vid, label, frames, default_frame=None, group=None):
 
 
 # =============================================================================== 1. 地上天気図
+SFC_PDF = "https://www.data.jma.go.jp/yoho/data/wxchart/quick"
+SFC_PDFS = {"asas": "ASAS_COLOR.pdf", "fsas24": "FSAS24_COLOR_ASIA.pdf", "fsas48": "FSAS48_COLOR_ASIA.pdf"}
+
+
+def pdf_base_time(lm, entries, key):
+    """PDF の基準時刻。PDF には日時が文字として入っていない（図形化）ので、bosai 一覧（発表時刻つきファイル名）のうち
+    発表時刻が PDF の Last-Modified と数分以内のものの基準時刻を使う。無ければ Last-Modified から合成時刻を推定する。"""
+    if lm is None:
+        return None
+    best = None
+    for issue, base in entries:
+        d = abs((issue - lm).total_seconds())
+        if d <= 600 and (best is None or d < best[0]):
+            best = (d, base)
+    if best:
+        return best[1]
+    step, lag = (6, 2) if key == "asas" else (12, 4)
+    t = lm - dt.timedelta(hours=lag)
+    return t.replace(hour=t.hour // step * step, minute=0, second=0, microsecond=0)
+
+
 def surface_charts(F, errors):
+    """地上天気図。気象庁のベクター PDF（yoho/wxchart/quick）を長辺 3000px の WebP にして使う（拡大しても潰れない）。
+    PDF が取れない／bosai 一覧の方が新しい時は、従来の bosai weather_map の PNG（600×512）にフォールバック。"""
     lst = F.text("https://www.jma.go.jp/bosai/weather_map/data/list.json")
     out = {}
     try:
         d = json.loads(lst)["asia"]
     except Exception:  # noqa: BLE001
-        errors.append("地上天気図: list.json 取得失敗")
-        return out
+        d = {}
+        errors.append("地上天気図: list.json 取得失敗（PDF のみで継続）")
     for key, region, need, fh in (("asas", "now", "JCIasas", 0), ("fsas24", "ft24", "JCIfsas24", 24), ("fsas48", "ft48", "JCIfsas48", 48)):
         names = [n for n in d.get(region, []) if need in n and "JRcolor" in n]
+        entries = []
+        for n in names:
+            m = re.match(r"(\d{14})_.*_C_\d+_(\d{14})_", n)
+            if m:
+                entries.append((parse14(m.group(1)), parse14(m.group(2))))
+        bosai_base = max((b for _, b in entries), default=None)
+        pdf, lm = None, None
+        try:
+            pdf, lm = F.pdf_cond_image(f"{SFC_PDF}/{SFC_PDFS[key]}")
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"地上天気図 {key}: PDF 変換失敗 {type(e).__name__}: {e}")
+        base = pdf_base_time(lm, entries, key) if pdf else None
+        if pdf and base and (bosai_base is None or base >= bosai_base):
+            valid = base + dt.timedelta(hours=fh)
+            fr = frame(("実況 " if fh == 0 else f"{fh}時間予想 ") + lbl(valid) + "（PDF・高解像度）", [pdf], valid, "ANALYSIS" if fh == 0 else "FORECAST")
+            fr["issued"] = iso(lm)
+            out[key] = fr
+            continue
         if not names:
-            errors.append(f"地上天気図 {key}: 一覧に無し")
+            errors.append(f"地上天気図 {key}: 一覧にも PDF にも無し")
             continue
         name = names[-1]
         m = re.search(r"_C_\d+_(\d{14})_", name)
@@ -249,7 +345,7 @@ def surface_charts(F, errors):
         f = F.image("https://www.jma.go.jp/bosai/weather_map/data/png/" + name, immutable=True)
         if f:
             valid = base + dt.timedelta(hours=fh) if base else None
-            out[key] = frame(("実況 " if fh == 0 else f"{fh}時間予想 ") + (lbl(valid) if valid else ""), [f], valid,
+            out[key] = frame(("実況 " if fh == 0 else f"{fh}時間予想 ") + (lbl(valid) if valid else "") + "（PNG・低解像度）", [f], valid,
                              "ANALYSIS" if fh == 0 else "FORECAST")
     return out
 
@@ -679,16 +775,7 @@ FIR_URL = f"{JMA_AIR}/pict/ajpn_cmnt/qyya83.png"
 
 def upper_charts(F, errors):
     out = {}
-    (a35, t35), (a78, t78), (f854, t854) = F.many(lambda a: nkishou(F, *a),
-                                                 [("aupq35", "e1", "aupq35"), ("aupq78", "e1", "aupq78"), ("fxjp854", "e2", "fxjp854")])
-    if a35 or a78:
-        out["aupq"] = [frame(f"AUPQ35 / AUPQ78（掲載 {t35 or t78}）", [a35, a78], layout="row")]
-    else:
-        errors.append("AUPQ: 取得できず（n-kishou.com）")
-    if f854:
-        out["fxjp854"] = [frame(f"FXJP854（掲載 {t854}）", [f854])]
-    else:
-        errors.append("FXJP854: 取得できず（n-kishou.com）")
+    NWP = "https://www.jma.go.jp/bosai/numericmap/data/nwpmap"
     f = F.image(f"{JMA_AIR}/pict/fbjp/fbjp.png")
     out["fbjp"] = [frame("FBJP 国内悪天予想図（最新）", [f])] if f else []
     if not f:
@@ -723,15 +810,44 @@ def upper_charts(F, errors):
                 break
         if not got:
             errors.append(f"{name}: 取得できず")
+    # 気象庁 bosai numericmap のベクター PDF（00/12UTC 初期）。日付の無い URL なので Last-Modified の新しい方を採り、変わった時だけ取り直す。
+    # n-kishou.com の画像（590px 幅）より桁違いに鮮明。PDF が取れなかった時だけ従来の n-kishou 画像にフォールバック。
+    def nwp_pdf(key):
+        for lm, hh, init in newest_run(lambda hh: f"{NWP}/{key}_{hh}.pdf"):
+            try:
+                got, _ = F.pdf_cond_image(f"{NWP}/{key}_{hh}.pdf")
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"{key}: PDF変換失敗 {type(e).__name__}: {e}")
+                got = None
+            if got:
+                return got, init, hh
+        return None, None, None
+    p35, p78, p854 = F.many(nwp_pdf, ["aupq35", "aupq78", "fxjp854"])
+    if p35[0] and p78[0]:
+        out["aupq"] = [frame(f"AUPQ35 / AUPQ78（{p35[1]:%d}日{p35[2]}UTC 解析・PDF）", [p35[0], p78[0]], p35[1], layout="row")]
+    else:
+        (a35, t35), (a78, t78) = F.many(lambda a: nkishou(F, *a), [("aupq35", "e1", "aupq35"), ("aupq78", "e1", "aupq78")])
+        if a35 or a78:
+            out["aupq"] = [frame(f"AUPQ35 / AUPQ78（掲載 {t35 or t78}・低解像度）", [a35, a78], layout="row")]
+        else:
+            errors.append("AUPQ: 取得できず（気象庁PDF・n-kishou.com とも）")
+    if p854[0]:
+        out["fxjp854"] = [frame(f"FXJP854（{p854[1]:%d}日{p854[2]}UTC 初期・PDF）", [p854[0]], p854[1])]
+    else:
+        f854, t854 = nkishou(F, "fxjp854", "e2", "fxjp854")
+        if f854:
+            out["fxjp854"] = [frame(f"FXJP854（掲載 {t854}・低解像度）", [f854])]
+        else:
+            errors.append("FXJP854: 取得できず（気象庁PDF・n-kishou.com とも）")
     for key, name in (("fxfe502", "FXFE502"), ("fxfe5782", "FXFE5782")):
         got = None
-        for lm, hh, init in newest_run(lambda hh: f"https://www.jma.go.jp/bosai/numericmap/data/nwpmap/{key}_{hh}.pdf"):
+        for lm, hh, init in newest_run(lambda hh: f"{NWP}/{key}_{hh}.pdf"):
             try:
-                got = F.pdf_page1_png(f"https://www.jma.go.jp/bosai/numericmap/data/nwpmap/{key}_{hh}.pdf")
+                got, _ = F.pdf_cond_image(f"{NWP}/{key}_{hh}.pdf")
             except Exception as e:  # noqa: BLE001
                 errors.append(f"{name}: PDF変換失敗 {e}")
             if got:
-                out[key] = [frame(f"{name} {init:%d}日{hh}UTC 初期（PDF 1ページ目）", [got], init)]
+                out[key] = [frame(f"{name} {init:%d}日{hh}UTC 初期（PDF・高解像度）", [got], init)]
                 break
         if not got:
             errors.append(f"{name}: 取得できず")
@@ -848,17 +964,16 @@ def build_charts(data_dir, airports, workers=16):
             {"id": "a30", "label": "三十分大気解析", "product": parts.get("a30") or product("三十分大気解析", SRC_METAIR, [])},
         ]},
         {"id": "fxfe", "label": "高層天気図", "defaultItem": 1, "items": [
-            {"id": "aupq", "label": "AUPQ", "product": single("AUPQ35 / AUPQ78", "n-kishou.com（気象庁FAX図）", up.get("aupq"))},
+            {"id": "aupq", "label": "AUPQ", "product": single("AUPQ35 / AUPQ78", "気象庁 数値予報天気図（PDF）／取得失敗時は n-kishou.com", up.get("aupq"))},
             {"id": "fbjp", "label": "FBJP", "product": single("FBJP 国内悪天予想図", SRC_JMA, up.get("fbjp"))},
             {"id": "fircmnt", "label": "福岡FIR解説報", "product": single(
                 "全国航空気象解説報（福岡FIR）", "気象庁 航空気象情報（" + FIR_PAGE + "）", up.get("fircmnt"),
                 note="福岡FIRの悪天（ジェット気流・CAT・MTW・CB）の根拠を解説する図。1日2回（おおむね16時台・4時台 JST）発表で、上段=12UTC・下段=翌00UTC の予想。"
-                     "発表時刻（ISSUED）と有効時刻（VALID）は図の左上に記載。ここに出す『掲載』時刻は気象庁サーバー上のファイル更新時刻です。"
-                     "量的な予報は最新の飛行場予報・SIGMET を優先してください。")},
+                     "発表時刻（ISSUED）と有効時刻（VALID）は図の左上に記載。ここに出す『掲載』時刻は気象庁サーバー上のファイル更新時刻です。")},
             {"id": "fxjp106", "label": "FXJP106", "product": single("FXJP106 国内航空路6・12時間予想断面図", SRC_JMA, up.get("fxjp106"))},
             {"id": "fxfe502", "label": "FXFE502", "product": single("FXFE502", SRC_JMA, up.get("fxfe502"))},
             {"id": "fxfe5782", "label": "FXFE5782", "product": single("FXFE5782", SRC_JMA, up.get("fxfe5782"))},
-            {"id": "fxjp854", "label": "FXJP854", "product": single("FXJP854", "n-kishou.com（気象庁FAX図）", up.get("fxjp854"))},
+            {"id": "fxjp854", "label": "FXJP854", "product": single("FXJP854", "気象庁 数値予報天気図（PDF）／取得失敗時は n-kishou.com", up.get("fxjp854"))},
         ]},
         {"id": "lowLevel", "label": "下層悪天", "defaultItem": 0, "items": [
             {"id": "lowsigwx", "label": "下層悪天予想図", "product": single("下層悪天予想図（西日本・東日本）", SRC_JMA, parts.get("lowlevel"), default_frame=0)},
