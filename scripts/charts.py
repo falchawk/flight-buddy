@@ -967,16 +967,16 @@ def build_charts(data_dir, airports, workers=16):
             {"id": "aupq", "label": "AUPQ", "product": single("AUPQ35 / AUPQ78", "気象庁 数値予報天気図（PDF）／取得失敗時は n-kishou.com", up.get("aupq"))},
             {"id": "fbjp", "label": "FBJP", "product": single("FBJP 国内悪天予想図", SRC_JMA, up.get("fbjp"))},
             {"id": "fircmnt", "label": "福岡FIR解説報", "product": single(
-                "全国航空気象解説報（福岡FIR）", "気象庁 航空気象情報（" + FIR_PAGE + "）", up.get("fircmnt"),
+                "全国航空気象解説報（福岡FIR）", "気象庁 航空気象情報", up.get("fircmnt"),
                 note="福岡FIRの悪天（ジェット気流・CAT・MTW・CB）の根拠を解説する図。1日2回（おおむね16時台・4時台 JST）発表で、上段=12UTC・下段=翌00UTC の予想。"
-                     "発表時刻（ISSUED）と有効時刻（VALID）は図の左上に記載。ここに出す『掲載』時刻は気象庁サーバー上のファイル更新時刻です。")},
+                     "発表時刻（ISSUED）と有効時刻（VALID）は図の左上に記載。ここに出す『掲載』時刻は気象庁サーバー上のファイル更新時刻です。出典ページ: " + FIR_PAGE)},
             {"id": "fxjp106", "label": "FXJP106", "product": single("FXJP106 国内航空路6・12時間予想断面図", SRC_JMA, up.get("fxjp106"))},
             {"id": "fxfe502", "label": "FXFE502", "product": single("FXFE502", SRC_JMA, up.get("fxfe502"))},
             {"id": "fxfe5782", "label": "FXFE5782", "product": single("FXFE5782", SRC_JMA, up.get("fxfe5782"))},
             {"id": "fxjp854", "label": "FXJP854", "product": single("FXJP854", "気象庁 数値予報天気図（PDF）／取得失敗時は n-kishou.com", up.get("fxjp854"))},
         ]},
         {"id": "lowLevel", "label": "下層悪天", "defaultItem": 0, "items": [
-            {"id": "lowsigwx", "label": "下層悪天予想図", "product": single("下層悪天予想図（西日本・東日本）", SRC_JMA, parts.get("lowlevel"), default_frame=0)},
+            {"id": "lowsigwx", "label": "下層悪天予想図", "product": single("下層悪天予想図（東日本・西日本）", SRC_JMA, parts.get("lowlevel"), default_frame=0)},
             {"id": "narrow", "label": "狭域悪天予想図", "product": product("狭域悪天予想図", SRC_METAIR, parts.get("narrow") or [], "kanto")},
         ]},
         {"id": "windy", "label": "Windy", "defaultItem": 0, "items": [
