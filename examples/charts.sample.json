@@ -1,0 +1,7 @@
+{
+  "_note": "--charts-dir のフォルダに charts.json という名前で置くと、ファイル名からの推定より優先されます。restricted:true の図は公開リポジトリでは --allow-restricted なしでは除外されます。",
+  "charts": [
+    { "file": "CS_Fukuoka-Tokyo_ANALYSIS_20261118_0600UTC.png", "title": "三十分大気解析 断面図 福岡-東京（解析）", "category": "断面図", "validTime": "2026-11-18T06:00:00Z", "source": "JMA MetAir", "restricted": true },
+    { "file": "fbjp_public.png", "title": "国内悪天予想図（公開版）", "category": "悪天", "validTime": "2026-11-18T06:00:00Z", "source": "気象庁ホームページ（出典明記）", "restricted": false }
+  ]
+}

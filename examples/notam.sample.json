@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "source": "SAMPLE（例：ボットがSWIM等から取得して整形したもの）",
+  "fetchedAt": "2026-11-18T07:00:00Z",
+  "airports": {
+    "RJTT": {
+      "items": [
+        { "id": "A1234/26", "issued": "2026-11-18T05:00:00Z", "effectiveFrom": "2026-11-18T13:00:00Z", "effectiveTo": "2026-11-18T20:00:00Z", "text": "SAMPLE: RWY 16L/34R CLSD DUE TO MAINT." },
+        { "id": "A1100/26", "issued": "2026-11-12T00:00:00Z", "effectiveFrom": "2026-11-12T00:00:00Z", "effectiveTo": null, "text": "SAMPLE: TWY C2 CLSD." }
+      ]
+    },
+    "RJFF": { "items": [] }
+  }
+}

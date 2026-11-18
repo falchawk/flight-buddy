@@ -1,0 +1,11 @@
+{
+  "_note": "build_pack.py が取得対象にする空港など。秘密情報（ID・パスワード）は絶対に書かないこと。",
+  "airports": ["RJTT", "RJFF"],
+  "public_repo": true,
+  "keep_packs": 3,
+  "timezone_offset_hours": 9,
+  "airport_static": {
+    "RJTT": { "operatingHours": "24H" },
+    "RJFF": { "operatingHours": "0700-2200 JST（目安・要確認）" }
+  }
+}
