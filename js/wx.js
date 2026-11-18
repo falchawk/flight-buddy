@@ -10,7 +10,7 @@
     if (/^\d{4}$/.test(t)) return Number(t) < 3 * SM_M; // 視程（m）。時刻 dddd/dddd や風は \d{4} だけの形にならない
     if ((m = t.match(/^(M|P)?(\d{1,2})SM$/))) return m[1] !== 'P' && Number(m[2]) < 3;
     if ((m = t.match(/^(M|P)?(\d)\/(\d)SM$/))) return m[1] !== 'P' && (prev && /^\d$/.test(prev) ? Number(prev) : 0) + Number(m[2]) / Number(m[3]) < 3;
-    if ((m = t.match(/^(BKN|OVC|VV)(\d{3})(?:CB|TCU)?$/))) return Number(m[2]) * 100 < 1000;
+    if ((m = t.match(/^(BKN|OVC|VV)(\d{3})(?:CB|TCU|\/+)?$/))) return Number(m[2]) * 100 < 1000;
     return false;
   }
   // 1つの文字列を空白で区切り、IFR/LIFR の要因のトークンだけ <span class="hl-ifr"> にする（RMK 以降は対象外）
