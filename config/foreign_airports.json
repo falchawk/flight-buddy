@@ -778,23 +778,6 @@
    "verified": false,
    "source": "https://www.aussieairliners.org/a320/vh-yxu/vh-yxu.html"
   },
-  "YPAS": {
-   "icao": "YPAS",
-   "iata": "ASP",
-   "name": "Alice Springs Airport",
-   "country": "Australia",
-   "airlines": [
-    "GK"
-   ],
-   "kind": [
-    "ferry"
-   ],
-   "verified": false,
-   "source": "https://www.aussieairliners.org/a320/vh-yxu/vh-yxu.html",
-   "lat": -23.8067,
-   "lon": 133.9022,
-   "coordNote": "名称・IATA(ASP)はアリススプリングス（正しいICAOは YBAS の可能性）。座標はアリススプリングスの目安"
-  },
   "LOWW": {
    "icao": "LOWW",
    "iata": "VIE",
@@ -839,6 +822,21 @@
    ],
    "verified": false,
    "source": "https://ja.wikipedia.org/wiki/%E3%82%B9%E3%82%AB%E3%82%A4%E3%83%9E%E3%83%BC%E3%82%AF"
+  },
+  "YBAS": {
+   "icao": "YBAS",
+   "iata": "ASP",
+   "name": "Alice Springs Airport",
+   "country": "Australia",
+   "airlines": [
+    "GK"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": false,
+   "source": "https://www.aussieairliners.org/a320/vh-yxu/vh-yxu.html",
+   "note": "元データは YPAS と記載していたが、出典（aussieairliners.org VH-YXU/JA06JJ）は「It arrived at Alice Springs … Ferry route: Tokyo - Manila - Darwin - Alice Springs」。Alice Springs の ICAO は YBAS（IATA ASP）なので訂正（2026-11-18）"
   }
  }
 }

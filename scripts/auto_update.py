@@ -107,7 +107,7 @@ def refresh_flights(path):
         return "no-runner"
     if os.path.exists(path) and time.time() - os.path.getmtime(path) < FLIGHTS_MAX_AGE_H * 3600:
         return "fresh"
-    r = subprocess.run(["node", FLIGHTS_RUNNER, path], capture_output=True, text=True, timeout=150)
+    r = subprocess.run(["node", FLIGHTS_RUNNER, path], capture_output=True, text=True, timeout=240)
     line = (r.stdout.strip().splitlines() or [""])[-1]
     log(line or r.stderr.strip()[-300:])
     return "updated" if r.returncode == 0 else "failed"

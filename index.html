@@ -20,9 +20,21 @@
 <link rel="stylesheet" href="css/app.css" />
 </head>
 <body>
+<div id="onboarding" class="onboarding hidden">
+  <div class="onboarding-box card">
+    <h1 class="brand">Flight Buddy<span class="brand-deer"><svg viewBox="0 0 100 80" width="22" height="18" aria-hidden="true"><g fill="currentColor"><ellipse cx="45" cy="52" rx="26" ry="14"/><rect x="58" y="26" width="8" height="26" rx="3"/><ellipse cx="66" cy="24" rx="9" ry="7"/><path d="M62 18 L58 6 M62 18 L66 4 M70 18 L74 6 M70 18 L70 4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><rect x="24" y="60" width="4" height="16"/><rect x="34" y="62" width="4" height="16"/><rect x="52" y="62" width="4" height="16"/><rect x="60" y="60" width="4" height="16"/><rect x="18" y="46" width="6" height="4" rx="2"/></g></svg></span></h1>
+    <p class="disclaimer">参考情報。運航判断の正本は公式資料。</p>
+    <p>主要空港を選んでください。あとでSETTINGSから追加・削除できます。</p>
+    <input id="ob-search" type="search" placeholder="名称・IATA・ICAOで検索（例：羽田 / HND / RJTT）" autocomplete="off" />
+    <ul id="ob-results" class="airport-list"></ul>
+    <h3>SELECTED</h3>
+    <ul id="ob-selected" class="airport-list selected"></ul>
+    <button id="ob-start" class="btn btn-primary" disabled>START</button>
+  </div>
+</div>
 <div id="app">
   <header class="app-header">
-    <div class="brand">Flight Buddy</div>
+    <div class="brand">Flight Buddy<span class="brand-deer"><svg viewBox="0 0 100 80" width="22" height="18" aria-hidden="true"><g fill="currentColor"><ellipse cx="45" cy="52" rx="26" ry="14"/><rect x="58" y="26" width="8" height="26" rx="3"/><ellipse cx="66" cy="24" rx="9" ry="7"/><path d="M62 18 L58 6 M62 18 L66 4 M70 18 L74 6 M70 18 L70 4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><rect x="24" y="60" width="4" height="16"/><rect x="34" y="62" width="4" height="16"/><rect x="52" y="62" width="4" height="16"/><rect x="60" y="60" width="4" height="16"/><rect x="18" y="46" width="6" height="4" rx="2"/></g></svg></span></div>
     <div class="header-status">
       <span id="clock" class="pill clock">--</span>
       <span id="net-pill" class="pill">--</span>
@@ -137,6 +149,13 @@
       <div id="ap-sync"></div>
       <p class="hint">パックには METAR/TAF のある国内空港がすべて入っているので、ここで選んだ空港がそのまま表示されます（端末内の設定。オフラインでも切替可）。日本の航空会社が使う海外空港（56）も収録済みで、下の国別一覧から追加できます。リスト外の空港は「Botに同期」で追加できます。</p>
       <div id="ap-browse"></div>
+      <h3>FEEDBACK</h3>
+      <p class="hint">文章で自由に書いてください。端末に保存され、「Botに送る」で GitHub issue としてボットに渡せます（ボットはブリーフ作成時に参照。オンライン時のみ）。</p>
+      <textarea id="feedback-text" rows="6" placeholder="自由に書いてください"></textarea>
+      <div class="row"><button id="feedback-save" class="btn">SAVE</button><a id="feedback-send" class="btn" target="_blank" rel="noopener">Botに送る</a><span id="feedback-saved-msg" class="hint hidden">保存しました</span></div>
+      <h3>SWIM（ATIS・NOTAM・空港情報）</h3>
+      <p class="hint">SWIM の ID・パスワードはボット側だけにあり、この端末とパックには入りません。下は最新パックの取得状況です。</p>
+      <div id="swim-status" class="hint"></div>
       <h3>DISPLAY（表示）</h3>
       <nav id="theme-chips" class="chips theme-chips">
         <button class="chip" data-theme-opt="auto">自動（端末設定）</button>
