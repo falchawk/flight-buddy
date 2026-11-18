@@ -135,14 +135,14 @@
       <ul id="ap-results" class="airport-list"></ul>
       <ul id="ap-selected" class="airport-list selected"></ul>
       <div id="ap-sync"></div>
-      <p class="hint">パックには METAR/TAF のある国内空港がすべて入っているので、ここで選んだ空港がそのまま表示されます（端末内の設定。オフラインでも切替可）。日本の航空会社が使う海外空港（56）も収録済みで、下の国別一覧から追加できます。リスト外の空港は「Botに同期」で追加できます。</p>
+      <p class="hint">ボットはパックの全空港（METAR/TAF のある国内空港すべて＋日本の航空会社が使う海外空港56）を10分ごとに取得しています。この端末はここで選んだ空港の分だけダウンロード・表示します（端末内の設定。選択を増やした空港はオンライン時に自動で取得。オフラインでは保存済みの空港だけ表示）。下の国別一覧からも追加できます。</p>
       <div id="ap-browse"></div>
       <h3>FEEDBACK</h3>
       <p class="hint">文章で自由に書いてください。端末に保存され、「Botに送る」で GitHub issue としてボットに渡せます（ボットはブリーフ作成時に参照。オンライン時のみ）。</p>
       <textarea id="feedback-text" rows="6" placeholder="自由に書いてください"></textarea>
       <div class="row"><button id="feedback-save" class="btn">SAVE</button><a id="feedback-send" class="btn" target="_blank" rel="noopener">Botに送る</a><span id="feedback-saved-msg" class="hint hidden">保存しました</span></div>
       <h3>SWIM（ATIS・NOTAM・空港情報）</h3>
-      <p class="hint">SWIM は box 上で10分ごとに取得（ATIS 10分・NOTAM/空港プロファイル 30分・AIP 1日）。ID・パスワードは box の環境変数だけにあり、この端末とパックには入りません。下は最新パックの取得状況です。</p>
+      <p class="hint">SWIM は box 上で10分ごとに国内の全空港を取得（ATIS・NOTAM・空港プロファイル・AIP Lost Comm。AIP は毎回目次で版を確認し、変わった空港だけ PDF を取り直し）。ID・パスワードは box の環境変数だけにあり、この端末とパックには入りません。下は最新パックの取得状況です。</p>
       <div id="swim-status" class="hint"></div>
       <h3>DISPLAY（表示）</h3>
       <nav id="theme-chips" class="chips theme-chips">

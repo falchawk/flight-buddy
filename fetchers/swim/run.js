@@ -4,8 +4,11 @@
 //   ログイン: GET /swim/login（XSRF）→ POST /swim/api/login → redirectUrl を辿る
 //   認証情報は環境変数 SWIM_USER / SWIM_PASS だけ。ログ・ファイル・パックには一切出さない。
 //   Cookie は SWIM_COOKIE_JAR（既定 /workspace/fb-secrets/swim-cookies.json, 600）にだけ保存。
-// 取得間隔（SWIM への負荷を抑える）: ATIS 10分 / 空港プロファイル(METAR・TAF・運用情報) 30分 / NOTAM 30分 / AIP(Lost Comm) 24時間
-//   ※ 空港が増えた時はその部品をすぐ取り直す。--force で全部取り直し。
+// 取得間隔: 自動更新（10分ごと）の毎回、ATIS・空港プロファイル(METAR・TAF・運用情報)・NOTAM・AIP(Lost Comm) を全部取る。
+//   ただし手動実行が重なっても SWIM を叩きすぎないよう、前回から5分未満の部品は取らない。--force で無視。
+//   同時リクエストは SWIM_MAX_PARALLEL（既定4）まで。
+//   AIP は毎回目次（1リクエスト）で各空港の AD 2 PDF の URL（AIRAC 日付入り）を確認し、変わった空港だけ PDF を取り直す。
+//   PDF の取得は1回 AIP_BUDGET_S 秒（既定90秒）まで。残りは次回に回す（初回や AIRAC 切り替え直後だけ）。
 // 出力: <out>/swim.json（正規化済み。scripts/swim_staging.py が読む）
 'use strict';
 const fs = require('fs');
@@ -16,7 +19,8 @@ const OUT_DIR = opt('--out', '/workspace/fb-staging/swim');
 const AIRPORTS = (opt('--airports', '') || '').split(',').map((s) => s.trim().toUpperCase()).filter((s) => /^[A-Z]{4}$/.test(s));
 const FORCE = args.includes('--force');
 const MIN = 60 * 1000;
-const INTERVAL = { atis: 9.5 * MIN, profile: 29.5 * MIN, notam: 29.5 * MIN, aip: 24 * 60 * MIN };
+const INTERVAL = { atis: 5 * MIN, profile: 5 * MIN, notam: 5 * MIN, aip: 5 * MIN };
+const AIP_BUDGET_MS = (Number(process.env.AIP_BUDGET_S) || 90) * 1000;
 const now = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
 
 (async () => {
@@ -61,7 +65,10 @@ const now = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
           const r = await swim.fetchNotamFromSwim(AIRPORTS);
           res.notam = { fetchedAt: at, airports: AIRPORTS, ok: r.ok, note: r.note || null, notesByIcao: r.notesByIcao || {}, items: r.items || [] };
         } else if (part === 'aip') {
-          const r = await fetchLostCommProceduresByIcao(AIRPORTS);
+          const prevAip = (prev.aip && prev.aip.byIcao) || {};
+          const pf = prev.aip && prev.aip.fetchedAt;
+          for (const k of Object.keys(prevAip)) if (prevAip[k] && !prevAip[k].fetchedAt) prevAip[k] = { ...prevAip[k], fetchedAt: pf };
+          const r = await fetchLostCommProceduresByIcao(AIRPORTS, prevAip, t0 + AIP_BUDGET_MS);
           res.aip = { fetchedAt: at, airports: AIRPORTS, ok: r.ok, byIcao: r.byIcao };
         }
       } catch (e) {
@@ -90,5 +97,5 @@ const now = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   const T = AIRPORTS.length;
   const atisT = AIRPORTS.filter((i) => swim.ATIS_SUPPORTED_ICAO.has(i)).length;
   // 1行・空白区切りの key=value（値に空白なし）。auto_update.py がこの行を読む
-  console.log(`SWIM OK fetched=${parts.join('+') || 'none'} atis=${n('atis')}/${T} profile=${n('profile')}/${T} notam=${out.notam && out.notam.ok ? out.notam.items.length : 'NG'} aip=${n('aip')}/${T} atisSupported=${atisT} time=${((Date.now() - t0) / 1000).toFixed(0)}s`);
+  console.log(`SWIM OK fetched=${parts.join('+') || 'none'} atis=${n('atis')}/${T} profile=${n('profile')}/${T} notam=${out.notam && out.notam.ok ? out.notam.items.length : 'NG'} aip=${n('aip')}/${T} atisSupported=${atisT} req=${session.requestCount()} time=${((Date.now() - t0) / 1000).toFixed(0)}s`);
 })().catch((e) => { console.log(`SWIM FAILED reason=${String((e && e.code) || (e && e.message) || 'error').replace(/\s+/g, '-').slice(0, 40)}`); process.exit(1); });

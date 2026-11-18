@@ -145,7 +145,7 @@ def profiles(swim):
         lc = (aip.get("byIcao") or {}).get(icao)
         if lc:
             pr["lostComm"] = {"ok": bool(lc.get("ok")), "text": lc.get("text"), "url": lc.get("url"), "reason": lc.get("reason"),
-                              "fetchedAt": aip.get("fetchedAt")}
+                              "fetchedAt": lc.get("fetchedAt") or aip.get("fetchedAt"), "checkedAt": aip.get("fetchedAt")}
         out[icao] = pr
     return out
 

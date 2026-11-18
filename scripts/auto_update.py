@@ -6,13 +6,15 @@ Flight Buddy 自動更新（ルーティン用の入口）
 
 1. 多重起動防止ロック
 2. 端末内の data/ が無ければ公開中のパック（Release asset）から復元
-3. build_pack で新しいパックを作成（全国の空港 + 同期issueの空港、METAR/TAF、NOTAMファイルがあれば）
+3. SWIM と時刻表を並行して取得し、build_pack で新しいパックを作成（パックの全空港＝国内の観測空港＋海外リスト。毎回全部）
    - 図: 旧 Flight Buddy の8分類（地上天気図・衛星・レーダー・三十分大気解析・高層・下層悪天・Windy・AIRPORT）を
          気象庁 / MetAir / n-kishou から plain HTTP で並列取得（ログイン不要。ブラウザ不要）
    - SWIM: fetchers/swim/run.js（wx-brief main のログイン・取得コード）で NOTAM・ATIS・空港プロファイル・AIP Lost Comm を取得
-           → /workspace/fb-staging/swim/swim.json。認証は環境変数 SWIM_USER / SWIM_PASS、Cookie は /workspace/fb-secrets（600）
-   - 時刻表: fetchers/flights/run.js（6時間ごと）
-   - ブリーフ: /workspace/fb-staging/brief.md が前回より新しければ採用、でなければ前回本文を引き継ぎ（＋自動サマリー）
+           （国内の全空港・毎回。同時4リクエストまで）→ /workspace/fb-staging/swim/swim.json。
+           認証は環境変数 SWIM_USER / SWIM_PASS、Cookie は /workspace/fb-secrets（600）
+   - 時刻表: fetchers/flights/run.js（毎回確認し、中身が変わった時だけ差し替え）
+   - パックは共有ファイル（図など）＋空港別ファイル（ap/<ICAO>.json）。端末は選んだ空港の分だけダウンロード
+   - ブリーフ: /workspace/fb-staging/brief.md が前回より新しければ採用、でなければ前回本文を引き継ぎ
    - 中身が前回と同じなら何もしない（公開しない）
 4. data/ を tar.gz にして GitHub Release "pack-data" の asset を差し替え → Pages デプロイ workflow を起動
    （データは git の履歴に入らないので、リポジトリが肥大化しない）
@@ -25,6 +27,7 @@ import os
 import signal
 import subprocess
 import sys
+import concurrent.futures
 import tarfile
 import time
 
@@ -104,16 +107,17 @@ SWIM_RUNNER = os.path.join(ROOT, "fetchers", "swim", "run.js")  # SWIM 取得（
 
 
 def refresh_swim(staging):
-    """SWIM（ATIS 10分・空港プロファイル/NOTAM 30分・AIP 24時間。間隔は run.js 側で判定）。失敗しても本体は続ける。"""
+    """SWIM（ATIS・空港プロファイル・NOTAM・AIP を毎回、国内の全空港）。失敗しても本体は続ける。"""
     if not os.path.exists(SWIM_RUNNER):
         return "skip(no-runner)"
+    t0 = time.time()
     cfg = build_pack.read_json(os.path.join(ROOT, "config", "pack_config.json"), {}) or {}
     targets = build_pack.swim_targets(cfg)
     try:
         r = subprocess.run(["node", SWIM_RUNNER, "--out", os.path.join(staging, "swim"), "--airports", ",".join(targets)],
-                           capture_output=True, text=True, timeout=150)
+                           capture_output=True, text=True, timeout=240)
     except subprocess.TimeoutExpired:
-        log("SWIM タイムアウト（150秒）")
+        log("SWIM タイムアウト（240秒）")
         return "fail(timeout)"
     line = next((ln for ln in reversed(r.stdout.strip().splitlines()) if ln.startswith("SWIM ")), "")
     log(line or r.stderr.strip()[-300:])
@@ -121,25 +125,40 @@ def refresh_swim(staging):
     if line.startswith("SWIM SKIP"):
         return "skip(no-creds)"
     if r.returncode == 0 and line.startswith("SWIM OK"):
-        # 例: swim=ok(atis:5/7,notam:314,profile:7/7,aip:7/7,fetched:atis)  ※空白なし。fetched:none＝間隔前で前回分を使用
+        # 例: swim=ok(atis:23/134,notam:1045,profile:129/134,aip:75/134,fetched:atis+profile+notam+aip,t:25s)  ※空白なし
         return (f"ok(atis:{kv.get('atis', '?')},notam:{kv.get('notam', '?')},profile:{kv.get('profile', '?')},"
-                f"aip:{kv.get('aip', '?')},fetched:{kv.get('fetched', '?')})")
+                f"aip:{kv.get('aip', '?')},fetched:{kv.get('fetched', '?')},t:{time.time() - t0:.0f}s)")
     return f"fail({kv.get('reason', 'exit' + str(r.returncode))})"
 
 
-FLIGHTS_MAX_AGE_H = 6
+def _flights_body(path):
+    d = build_pack.read_json(path, {}) or {}
+    d.pop("fetchedAt", None)
+    d.pop("generatedAt", None)
+    return json.dumps(d, sort_keys=True, ensure_ascii=False)
 
 
 def refresh_flights(path):
-    """時刻表は1日数回で十分（6時間より古い時だけ取り直す）。失敗しても本体の更新は続ける。"""
+    """時刻表も毎回確認し、中身が変わった時だけ差し替える。失敗したら前回分のまま。"""
     if not os.path.exists(FLIGHTS_RUNNER):
-        return "no-runner"
-    if os.path.exists(path) and time.time() - os.path.getmtime(path) < FLIGHTS_MAX_AGE_H * 3600:
-        return "fresh"
-    r = subprocess.run(["node", FLIGHTS_RUNNER, path], capture_output=True, text=True, timeout=240)
+        return "skip(no-runner)"
+    t0 = time.time()
+    tmp = path + ".new"
+    try:
+        r = subprocess.run(["node", FLIGHTS_RUNNER, tmp], capture_output=True, text=True, timeout=240)
+    except subprocess.TimeoutExpired:
+        log("時刻表 タイムアウト（240秒）")
+        return "fail(timeout)"
     line = (r.stdout.strip().splitlines() or [""])[-1]
     log(line or r.stderr.strip()[-300:])
-    return "updated" if r.returncode == 0 else "failed"
+    t = f"t:{time.time() - t0:.0f}s"
+    if r.returncode != 0 or not os.path.exists(tmp):
+        return f"fail(kept-prev,{t})"
+    if os.path.exists(path) and _flights_body(tmp) == _flights_body(path):
+        os.remove(tmp)
+        return f"same({t})"
+    os.replace(tmp, path)
+    return f"updated({t})"
 
 
 def main():
@@ -179,8 +198,12 @@ def main():
         if os.path.exists(a.notam_file):
             argv += ["--notam-file", a.notam_file]
         os.makedirs(a.swim_dir, exist_ok=True)
-        sw = refresh_swim(a.swim_dir)
-        fl = refresh_flights(a.flights_file)
+        # SWIM と時刻表は相手先が別なので並行して取る
+        with concurrent.futures.ThreadPoolExecutor(2) as ex:
+            f_sw = ex.submit(refresh_swim, a.swim_dir)
+            f_fl = ex.submit(refresh_flights, a.flights_file)
+            sw, fl = f_sw.result(), f_fl.result()
+        t_build = time.time()
         if os.path.exists(a.flights_file):
             argv += ["--flights-file", a.flights_file]
         if os.path.exists(a.duty_file):
@@ -194,7 +217,7 @@ def main():
         # 要点を先頭に（途中で切れても swim/flights が読めるように）。値に空白は入れない
         print(f"FLIGHT-BUDDY OK pack={r['packId']} swim={sw} flights={fl} changed={'yes' if r['changed'] else 'no'} "
               f"pushed={'yes' if pushed else 'no'} chartErrors={len(errs)} airports={r['airports']} "
-              f"frames={r['charts']} packMB={(r.get('bytes') or 0) / 1e6:.1f} time={time.time() - t0:.0f}s")
+              f"frames={r['charts']} sharedMB={(r.get('sharedBytes') or 0) / 1e6:.1f} build={time.time() - t_build:.0f}s time={time.time() - t0:.0f}s")
         for e in errs[:20]:
             print("  chart-error:", e)
         return 0

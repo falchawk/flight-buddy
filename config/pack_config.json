@@ -1,17 +1,7 @@
 {
   "_note": "build_pack.py が取得対象にする空港など。秘密情報（ID・パスワード）は絶対に書かないこと。",
   "airport_set": "japan_all",
-  "default_airports": [
-    "RJTT",
-    "RJBB",
-    "RJGG",
-    "RJSS",
-    "RJFF",
-    "RJDC",
-    "RJFR"
-  ],
   "extra_airports": [],
-  "sync_repo": "falchawk/flight-buddy",
   "public_repo": true,
   "keep_packs": 3,
   "timezone_offset_hours": 9,
@@ -26,5 +16,5 @@
   "include_restricted": true,
   "_restricted_note": "MetAir図はユーザーがMetAirから個別に利用許可を得たため既定で含める（2026-11-18）。許可が無くなったら false に戻すこと。",
   "foreign_airports_file": "config/foreign_airports.json",
-  "_default_airports_note": "wx-brief main（3c60eec）public/js/app.js DEFAULT_MAIN_AIRPORTS と同じ7空港。SWIM（NOTAM・ATIS・空港プロファイル・AIP）はこの7空港＋同期issueの国内空港を取る。"
+  "_airports_note": "パックの空港＝気象庁の国内観測空港（japan_all）＋extra_airports＋海外空港リスト。自動更新は全空港を毎回取得し、端末は SETTINGS で選んだ空港だけダウンロードする。"
 }

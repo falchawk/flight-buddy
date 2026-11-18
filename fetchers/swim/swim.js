@@ -179,6 +179,8 @@ async function fetchNotamForIcao(icao) {
     err.httpStatus = res.status;
     throw err;
   }
+  // 「検索結果が存在しません」（IFUV000M1001）は NOTAM 0件（全空港を取るようになって判明。旧版は大空港だけで未遭遇）
+  if (json && !json.error && json.ret && json.ret.result === '1' && Array.isArray(json.ret.msgList) && json.ret.msgList.some((m) => String(m).startsWith('IFUV000M1001'))) return [];
   if (json.error || !json.ret || json.ret.result !== '0') {
     const err = new Error((json && json.errMsg) || 'NOTAM応答の形式が想定と異なります。');
     err.code = 'NOTAM_RESPONSE_ERROR';

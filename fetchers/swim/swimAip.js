@@ -173,13 +173,24 @@ function extractLostCommSection(rawPdfText) {
 // で試す。フォルダ自体が無い（目次取得が404）ときだけ次の日付候補へ進む。
 // 目次は取れたが該当空港のリンクが無い／PDFに項目が見つからない、は
 // 「その空港は未取得」として確定させる（別の日付を探し直したりしない）。
-async function fetchLostCommForIcao(icao, dateCandidates) {
+// 目次は全空港で同じなので、1回の実行で日付ごとに1回だけ取る（SWIM への負荷を減らす）
+const menuCache = new Map();
+function fetchMenu(menuUrl) {
+  if (!menuCache.has(menuUrl)) {
+    menuCache.set(menuUrl, swimFetch(menuUrl).then(async (r) => ({ status: r.status, ok: r.ok, html: r.ok ? await r.text() : '' })));
+  }
+  return menuCache.get(menuUrl);
+}
+
+// prev: 前回の結果 {ok,text,url,reason}。目次の AD 2 リンク（AIRAC 日付入りの PDF URL）が前回と同じなら
+// PDF を取り直さず前回の結果を使う（＝毎回確認し、変わった時だけ差し替え）。deadline を過ぎたら PDF は次回へ回す。
+async function fetchLostCommForIcao(icao, dateCandidates, prev, deadline) {
   let lastReason = '取得失敗';
   for (const dateStr of dateCandidates) {
     const menuUrl = `${AIP_BASE_URL}/${dateStr}/eAIP/${dateStr}/JP-menu-en-JP.html`;
     let menuRes;
     try {
-      menuRes = await swimFetch(menuUrl);
+      menuRes = await fetchMenu(menuUrl);
     } catch (err) {
       lastReason = `SWIM通信エラー：${err.message}`;
       continue;
@@ -193,7 +204,7 @@ async function fetchLostCommForIcao(icao, dateCandidates) {
       lastReason = `目次取得エラー（HTTP ${menuRes.status}）`;
       continue;
     }
-    const menuHtml = await menuRes.text();
+    const menuHtml = menuRes.html;
     const href = findAd2HrefForIcao(menuHtml, icao);
     if (!href) {
       // フォルダは実在するが、この空港のAD-2リンクが目次に無い→未取得
@@ -201,6 +212,10 @@ async function fetchLostCommForIcao(icao, dateCandidates) {
       return { ok: false, reason: `目次に${icao}のAD 2リンクが見つかりません`, url: menuUrl };
     }
     const pdfUrl = new URL(href, menuUrl).toString();
+    if (prev && prev.url === pdfUrl && (prev.ok || prev.final)) return { ...prev, reused: true };
+    if (deadline && Date.now() > deadline) {
+      return prev && prev.ok ? { ...prev, reused: true, pendingUrl: pdfUrl } : { ok: false, reason: 'PDFは次回の更新で取得します（1回の取得時間の上限）', url: pdfUrl, pending: true };
+    }
     let pdfRes;
     try {
       pdfRes = await swimFetch(pdfUrl);
@@ -225,7 +240,7 @@ async function fetchLostCommForIcao(icao, dateCandidates) {
     }
     const section = extractLostCommSection(pdfText);
     if (!section) {
-      return { ok: false, reason: 'PDF内にLost Communication Procedures相当の項目が見つかりません', url: pdfUrl };
+      return { ok: false, reason: 'PDF内にLost Communication Procedures相当の項目が見つかりません', url: pdfUrl, final: true };
     }
     return { ok: true, text: section, url: pdfUrl };
   }
@@ -238,7 +253,7 @@ async function fetchLostCommForIcao(icao, dateCandidates) {
  * @returns {Promise<{ok: boolean, byIcao: object}>}
  *   byIcao[icao] = { ok, text, url, reason }
  */
-async function fetchLostCommProceduresByIcao(icaoCodes) {
+async function fetchLostCommProceduresByIcao(icaoCodes, prevByIcao = {}, deadline = 0) {
   const requestedIcaos = Array.isArray(icaoCodes) ? [...new Set(icaoCodes.filter(Boolean))] : [];
   const byIcao = {};
   if (requestedIcaos.length === 0) {
@@ -252,22 +267,19 @@ async function fetchLostCommProceduresByIcao(icaoCodes) {
   }
 
   const dateCandidates = buildAipDateCandidates(new Date());
-  console.log('[SWIM-AIP] Lost Communication Procedures取得開始 対象空港:', requestedIcaos.join(','), ' 日付候補:', dateCandidates.join(','));
 
-  await Promise.all(requestedIcaos.map(async (icao) => {
+  // 3並列で順に処理（締め切り判定を PDF ごとに効かせるため）
+  let next = 0;
+  const one = async (icao) => {
     try {
-      const result = await fetchLostCommForIcao(icao, dateCandidates);
-      byIcao[icao] = { ok: result.ok, text: result.ok ? result.text : null, url: result.url || null, reason: result.ok ? null : result.reason };
-      if (result.ok) {
-        console.log(`[SWIM-AIP] 取得成功 ${icao} (${result.url})`);
-      } else {
-        console.error(`[SWIM-AIP] 取得失敗 ${icao}:`, result.reason);
-      }
+      const result = await fetchLostCommForIcao(icao, dateCandidates, prevByIcao[icao], deadline);
+      byIcao[icao] = { ok: result.ok, text: result.ok ? result.text : null, url: result.url || null, reason: result.ok ? null : result.reason,
+        final: Boolean(result.final), pending: Boolean(result.pending), reused: Boolean(result.reused), fetchedAt: result.reused ? (result.fetchedAt || null) : new Date().toISOString() };
     } catch (err) {
       byIcao[icao] = { ok: false, text: null, url: null, reason: `想定外のエラー：${err.message}` };
-      console.error(`[SWIM-AIP] 想定外のエラー ${icao}:`, err.message);
     }
-  }));
+  };
+  await Promise.all(Array.from({ length: 3 }, async () => { while (next < requestedIcaos.length) await one(requestedIcaos[next++]); }));
 
   const anyOk = requestedIcaos.some((icao) => byIcao[icao] && byIcao[icao].ok);
   return { ok: anyOk, byIcao };

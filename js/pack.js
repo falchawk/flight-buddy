@@ -4,6 +4,8 @@
 //   画像は内容アドレスなので、前のパックと同じ画像は再ダウンロードしない（差分だけ）。sha256 で検証し、
 //   全部揃った時だけ「完了」として登録する（中途半端なパックは表示しない）
 // - 完了パックは最新と1つ前（KEEP=2件）を保持。どちらからも参照されない画像は削除
+// - v1.7〜：パックは「共有ファイル（図など）」＋「空港別ファイル（ap/<ICAO>.json と飛行場時系列の画像）」。
+//   端末は SETTINGS で選んだ空港の分だけダウンロードする（選択を増やすと、オンライン時にその空港の分だけ追加で取る）
 (function () {
   const BASE = new URL('./', location.href).href;
   const LS_KEY = 'fb.packs.v1';
@@ -63,25 +65,36 @@
     await Promise.all(workers);
   }
 
+  // 選んだ空港のうち、このパックに空港別ファイルがあるもの
+  const apList = (manifest, selected) => (manifest.airportFiles ? (selected || []).filter((i) => manifest.airportFiles[i]) : []);
+  // 端末がダウンロードする量（共有＋選んだ空港）
+  function deviceBytes(manifest, selected) {
+    if (!manifest.airportFiles) return manifest.totalBytes || 0;
+    const af = manifest.airportFiles;
+    return (manifest.sharedBytes || 0) + apList(manifest, selected).reduce((a, i) => a + af[i].bytes + (af[i].blobs || []).reduce((x, b) => x + b.bytes, 0), 0);
+  }
+
   // onProgress(doneFiles, totalFiles, doneBytes, totalBytesToGet)
-  async function download(manifest, onProgress) {
+  // selected: SETTINGS で選んだ空港。既に保存済みのファイルは飛ばすので、選択を増やした時もこれで差分だけ取れる
+  async function download(manifest, onProgress, selected) {
     const cache = await caches.open(cacheName(manifest.packId));
     const bc = await caches.open(BLOBS);
-    const files = manifest.files || [];
-    const blobs = manifest.blobs || [];
-    // 既に持っている画像は飛ばす（差分のみ）
+    const aps = apList(manifest, selected);
+    const files = (manifest.files || []).concat(aps.map((i) => manifest.airportFiles[i]));
+    const blobs = (manifest.blobs || []).concat(...aps.map((i) => manifest.airportFiles[i].blobs || []));
+    // 既に持っているものは飛ばす（差分のみ）
     const have = new Set((await bc.keys()).map((r) => r.url));
     const needBlobs = blobs.filter((b) => !have.has(siteUrl(b.file)));
-    const total = files.length + needBlobs.length;
-    const totalBytes = files.reduce((a, f) => a + (f.bytes || 0), 0) + needBlobs.reduce((a, b) => a + (b.bytes || 0), 0);
+    const needFiles = [];
+    for (const f of files) if (!(await cache.match(packUrl(manifest, f.path)))) needFiles.push(f);
+    const total = needFiles.length + needBlobs.length;
+    const totalBytes = needFiles.reduce((a, f) => a + (f.bytes || 0), 0) + needBlobs.reduce((a, b) => a + (b.bytes || 0), 0);
     let done = 0, doneBytes = 0;
     const tick = (bytes) => { done++; doneBytes += bytes || 0; onProgress && onProgress(done, total, doneBytes, totalBytes); };
     onProgress && onProgress(0, total, 0, totalBytes);
-    await pool(files, PARALLEL, async (f) => {
+    await pool(needFiles, PARALLEL, async (f) => {
       const url = packUrl(manifest, f.path);
-      if (!(await cache.match(url))) {
-        try { await cache.put(url, await fetchVerified(url, f.sha256, f.type)); } catch (e) { throw new Error(`${f.path} の保存に失敗: ${e.message}`); }
-      }
+      try { await cache.put(url, await fetchVerified(url, f.sha256, f.type)); } catch (e) { throw new Error(`${f.path} の保存に失敗: ${e.message}`); }
       tick(f.bytes);
     });
     await pool(needBlobs, PARALLEL, async (b) => {
@@ -92,9 +105,11 @@
       tick(b.bytes);
     });
     await cache.put(packUrl(manifest, 'manifest.json'), new Response(JSON.stringify(manifest), { headers: { 'Content-Type': 'application/json' } }));
+    const prev = list().find((p) => p.packId === manifest.packId);
+    const gotAps = [...new Set([...(prev?.airports || []), ...aps])];
     const l = list().filter((p) => p.packId !== manifest.packId);
-    l.push({ packId: manifest.packId, generatedAt: manifest.generatedAt, totalBytes: manifest.totalBytes, files: files.length + blobs.length,
-      savedAt: new Date().toISOString(), base: manifest.base, newBytes: totalBytes });
+    l.push({ packId: manifest.packId, generatedAt: manifest.generatedAt, totalBytes: deviceBytes(manifest, gotAps), files: (manifest.files || []).length + gotAps.length,
+      savedAt: new Date().toISOString(), base: manifest.base, newBytes: (prev?.newBytes || 0) + totalBytes, airports: manifest.airportFiles ? gotAps : null });
     l.sort((a, b) => (a.packId < b.packId ? 1 : -1));
     const keep = l.slice(0, KEEP), drop = l.slice(KEEP);
     saveList(keep);
@@ -118,12 +133,14 @@
       const m = await manifestOf(p);
       if (!m) return; // 安全側: 目録が読めなければ消さない
       for (const b of m.blobs || []) want.add(siteUrl(b.file));
+      for (const i of p.airports || []) for (const b of m.airportFiles?.[i]?.blobs || []) want.add(siteUrl(b.file));
     }
     const bc = await caches.open(BLOBS);
     for (const r of await bc.keys()) if (!want.has(r.url)) await bc.delete(r);
   }
 
-  async function load(packId) {
+  // 空港別ファイルを、画面側が使う元の形（wx.airports / notam.airports / atis.airports / airports.airports / 飛行場時系列）に組み立てる
+  async function load(packId, selected) {
     const entry = list().find((p) => p.packId === packId);
     if (!entry) return null;
     const cache = await caches.open(cacheName(packId));
@@ -134,6 +151,27 @@
     for (const [key, path] of Object.entries(manifest.sections || {})) {
       const r = await cache.match(packUrl(manifest, path));
       out[key] = r ? await r.json() : null;
+    }
+    out.loadedAirports = new Set();
+    if (manifest.airportFiles) {
+      for (const k of ['wx', 'notam', 'atis', 'airports']) { out[k] = out[k] || {}; out[k].airports = {}; }
+      out.atis.reasons = {};
+      const series = [];
+      for (const icao of apList(manifest, selected)) {
+        const r = await cache.match(packUrl(manifest, manifest.airportFiles[icao].path));
+        if (!r) continue;
+        const d = await r.json();
+        out.loadedAirports.add(icao);
+        if (d.wx) out.wx.airports[icao] = d.wx;
+        if (d.notam) out.notam.airports[icao] = d.notam;
+        if (d.atis) out.atis.airports[icao] = d.atis;
+        if (d.atisReason) out.atis.reasons[icao] = d.atisReason;
+        if (d.profile) out.airports.airports[icao] = d.profile;
+        if (d.series) series.push(d.series);
+      }
+      for (const c of out.charts?.categories || []) for (const it of c.items || []) if (it.id === 'apseries') it.product.variants = series;
+    } else {
+      for (const icao of Object.keys(out.wx?.airports || {})) out.loadedAirports.add(icao); // 旧形式（全空港入り）
     }
     const bc = await caches.open(BLOBS);
     const blobUrls = new Map();
@@ -153,20 +191,24 @@
   }
 
   const verified = new Map();
-  async function verify(packId) {
-    if (verified.has(packId)) return verified.get(packId);
+  async function verify(packId, selected) {
+    const key = `${packId}|${(selected || []).join(',')}`;
+    if (verified.has(key)) return verified.get(key);
     const entry = list().find((p) => p.packId === packId);
     if (!entry) return { ok: false, have: 0, total: 0 };
     const cache = await caches.open(cacheName(packId));
     const m = await manifestOf(entry);
     if (!m) return { ok: false, have: 0, total: 0 };
+    const aps = apList(m, selected);
+    const files = m.files.concat(aps.map((i) => m.airportFiles[i]));
+    const blobs = (m.blobs || []).concat(...aps.map((i) => m.airportFiles[i].blobs || []));
     let have = 0;
-    for (const f of m.files) if (await cache.match(packUrl(m, f.path))) have++;
+    for (const f of files) if (await cache.match(packUrl(m, f.path))) have++;
     const bkeys = new Set((await (await caches.open(BLOBS)).keys()).map((r) => r.url));
-    for (const b of m.blobs || []) if (bkeys.has(siteUrl(b.file))) have++;
-    const total = m.files.length + (m.blobs || []).length;
-    const res = { ok: have === total, have, total };
-    if (res.ok) verified.set(packId, res);
+    for (const b of blobs) if (bkeys.has(siteUrl(b.file))) have++;
+    const total = files.length + blobs.length;
+    const res = { ok: have === total, have, total, bytes: deviceBytes(m, aps) };
+    if (res.ok) verified.set(key, res);
     return res;
   }
 
@@ -176,5 +218,5 @@
     verified.clear();
   }
 
-  window.FBPack = { list, checkRemote, download, load, verify, clearAll, cacheName };
+  window.FBPack = { list, checkRemote, download, load, verify, clearAll, cacheName, deviceBytes };
 })();

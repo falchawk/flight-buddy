@@ -5,14 +5,14 @@ Flight Buddy pack builder
 地上（ボットの端末）で実行し、オフライン用の「パック」を data/ 以下に書き出す。
 標準ライブラリのみ。ネット取得はすべてリトライ付き。
 
-出力:
-  data/packs/<packId>/manifest.json   … そのパックの目録（全ファイル一覧＋sha256）
-  data/packs/<packId>/wx.json         … METAR/TAF（aviationweather.gov）
-  data/packs/<packId>/notam.json      … NOTAM（SWIM。fetchers/swim/run.js の結果 <swim-dir>/swim/swim.json）
-  data/packs/<packId>/airports.json   … 空港プロファイル（滑走路・周波数・日の出日没 等）
+出力（共有ファイル＝全端末がダウンロード／空港別＝各端末が SETTINGS で選んだ空港だけダウンロード）:
+  data/packs/<packId>/manifest.json   … 目録（共有ファイル・共有の図・空港別ファイル airportFiles の一覧＋sha256＋サイズ）
+  data/packs/<packId>/index.json      … 全空港の一覧（名称・位置・国・飛行状態のみ。SETTINGS の空港選択と MAP 用。小さい）
+  data/packs/<packId>/ap/<ICAO>.json  … 空港別：METAR/TAF・NOTAM・ATIS・空港プロファイル（SWIM・AIP Lost Comm）・飛行場時系列の画像参照
+  data/packs/<packId>/wx.json ほか    … wx / notam / atis / airports は出所・取得時刻などの共通情報だけ（空港ごとの中身は ap/）
   data/packs/<packId>/brief.json      … ボットが書いたブリーフ本文（--brief）
-  data/packs/<packId>/charts.json     … 図のメタデータ（schema flight-buddy-charts/2: 8分類→項目→種類→コマ）
-  data/packs/<packId>/atis.json       … ATIS（SWIM ステージングがある時）
+  data/packs/<packId>/charts.json     … 図のメタデータ（schema flight-buddy-charts/2。飛行場時系列は ap/ 側）
+  data/packs/<packId>/flights.json    … 時刻表
   data/blobs/<sha256>.<ext>           … 図の画像（内容アドレス。パック間で共有・差分のみ端末へ）
   data/latest/manifest.json           … 最新パックの目録（アプリはまずこれを見る）
   data/previous/manifest.json         … 1つ前のパックの目録
@@ -360,26 +360,6 @@ def japan_stations():
     return {}
 
 
-def sync_issue_airports(repo):
-    """GitHub issue（label airports-sync、作成者=リポジトリ所有者）の最新1件からICAOを読む。gh が無ければ空。"""
-    owner = repo.split("/")[0]
-    try:
-        out = subprocess.run(["gh", "issue", "list", "-R", repo, "--label", "airports-sync", "--state", "all",
-                              "--author", owner, "--limit", "1", "--json", "number,body,createdAt"],
-                             capture_output=True, text=True, timeout=30, check=True).stdout
-        items = json.loads(out or "[]")
-    except Exception as e:  # noqa: BLE001
-        log("airports-sync issue 読み取り失敗（無視）:", e)
-        return [], None
-    if not items:
-        return [], None
-    body = items[0].get("body") or ""
-    m = re.search(r"AIRPORTS\s*:\s*([A-Za-z0-9 ,]+)", body)
-    toks = re.findall(r"[A-Za-z]{4}", m.group(1) if m else body)
-    icaos = [t.upper() for t in toks if ICAO_RE.match(t.upper())][:40]
-    return icaos, {"issue": items[0]["number"], "createdAt": items[0]["createdAt"], "airports": icaos}
-
-
 def foreign_airports(cfg):
     """海外空港（config/foreign_airports.json）。ICAO→{country, verified, airlines...}"""
     f = cfg.get("foreign_airports_file")
@@ -412,51 +392,27 @@ def fetch_ogimet(icao):
     return {"ok": True, "rawText": raw} if raw else {"ok": False, "reason": "CSVの本文列が空でした"}
 
 
-def swim_targets(cfg, sync_airports=None):
-    """SWIM（NOTAM・ATIS・空港プロファイル・AIP）を取る空港＝既定のメイン空港＋同期issueの国内空港。"""
-    s = [a.upper() for a in cfg.get("default_airports", [])]
-    if sync_airports is None and cfg.get("sync_repo"):
-        sync_airports, _ = sync_issue_airports(cfg["sync_repo"])
-    for a in sync_airports or []:
-        if re.match(r"^R[JO][A-Z]{2}$", a) and a not in s:
-            s.append(a)
-    return s
+def swim_targets(cfg, airports=None):
+    """SWIM（NOTAM・ATIS・空港プロファイル・AIP）を取る空港＝パックの空港のうち国内（RJ**/RO**）全部。"""
+    if airports is None:
+        airports, _ = resolve_airports(cfg)
+    return [a for a in airports if re.match(r"^R[JO][A-Z]{2}$", a)]
 
 
 def resolve_airports(cfg, override=None):
+    """パックの空港＝気象庁の国内観測空港（japan_all）＋config の追加＋海外空港リスト。全部を毎回取得する。"""
     stations = japan_stations()
     if override:
-        return [a.strip().upper() for a in override.split(",") if a.strip()], stations, None
+        return [a.strip().upper() for a in override.split(",") if a.strip()], stations
     s = set()
     if cfg.get("airport_set") == "japan_all":
         s |= set(stations)
     s |= {a.upper() for a in cfg.get("airports", []) + cfg.get("extra_airports", [])}
-    s |= {a.upper() for a in cfg.get("default_airports", [])}
     s |= set(foreign_airports(cfg))
-    sync = None
-    if cfg.get("sync_repo"):
-        extra, sync = sync_issue_airports(cfg["sync_repo"])
-        s |= set(extra)
-    return sorted(a for a in s if ICAO_RE.match(a)), stations, sync
+    return sorted(a for a in s if ICAO_RE.match(a)), stations
 
 
 # ----------------------------------------------------------------------------- brief / charts helpers
-def auto_brief_text(wx, focus):
-    lines = ["# 自動サマリー（METAR/TAF）", "ボットのブリーフ本文が更新されていない時の自動生成です。"]
-    for icao in focus:
-        e = wx["airports"].get(icao)
-        if not e or not e.get("ok"):
-            lines.append(f"- **{icao}**：未取得")
-            continue
-        m = (e.get("metar") or [{}])[0]
-        gusts = [int(g) for g in re.findall(r"\d{3}\d{2,3}G(\d{2,3})KT", (e.get("taf") or {}).get("raw") or "")]
-        lines.append(f"- **{icao}** {m.get('fltCat') or ''}：{m.get('raw') or 'METARなし'}"
-                     + (f"（TAF最大ガスト {max(gusts)}kt）" if gusts else ""))
-    return "\n".join(lines)
-
-
-
-
 def pack_signature(pack_dir):
     """生成時刻を除いた中身の指紋（変化が無ければ公開をスキップするため）。"""
     h = hashlib.sha256()
@@ -499,15 +455,92 @@ def merge_prev_products(new, prev):
     return n
 
 
+# ----------------------------------------------------------------------------- 空港別ファイル
+# 端末は SETTINGS で選んだ空港の ap/<ICAO>.json（＋その空港の飛行場時系列の画像）と共有ファイルだけをダウンロードする。
+AP_DIR = "ap"
+
+
+def split_pack(pack_dir, charts):
+    """組み立て済みの wx/notam/atis/airports/charts を、共有ファイル＋空港別ファイルに分ける。
+    戻り値: {ICAO: [blob path, ...]}（空港別の画像）"""
+    wx = read_json(os.path.join(pack_dir, "wx.json"), {}) or {}
+    notam = read_json(os.path.join(pack_dir, "notam.json"), {}) or {}
+    atis = read_json(os.path.join(pack_dir, "atis.json"), {}) or {}
+    prof = read_json(os.path.join(pack_dir, "airports.json"), {}) or {}
+    series = {}
+    for c in charts.get("categories", []):
+        for it in c["items"]:
+            if it["id"] == "apseries":
+                for v in it["product"].get("variants") or []:
+                    series[v["id"]] = v
+                it["product"]["variants"] = []
+                it["product"]["perAirport"] = True
+    ids = sorted(set(wx.get("airports", {})) | set(prof.get("airports", {})) | set((notam.get("airports") or {})) | set(series))
+    os.makedirs(os.path.join(pack_dir, AP_DIR), exist_ok=True)
+    index, ap_blobs = {}, {}
+    atis_reasons = atis.get("reasons") or {}
+    for icao in ids:
+        e = (wx.get("airports") or {}).get(icao)
+        p = (prof.get("airports") or {}).get(icao)
+        d = {"icao": icao, "wx": e, "notam": (notam.get("airports") or {}).get(icao), "profile": p,
+             "atis": (atis.get("airports") or {}).get(icao), "atisReason": atis_reasons.get(icao), "series": series.get(icao)}
+        write_json(os.path.join(pack_dir, AP_DIR, f"{icao}.json"), d)
+        mt = ((e or {}).get("metar") or [{}])[0]
+        index[icao] = {k: v for k, v in {"name": (p or {}).get("name"), "iata": (p or {}).get("iata"), "lat": (p or {}).get("lat"), "lon": (p or {}).get("lon"),
+                                          "country": (p or {}).get("country"), "foreign": (p or {}).get("foreign"), "verified": (p or {}).get("verified"),
+                                          "fltCat": mt.get("fltCat"), "series": icao in series}.items() if v is not None}
+        if icao in series:
+            ap_blobs[icao] = sorted({i["file"] for f in series[icao].get("frames", []) for i in f.get("images", []) if i.get("file", "").startswith("data/blobs/")})
+    wx.pop("airports", None); notam.pop("airports", None); atis.pop("airports", None); atis.pop("reasons", None); prof.pop("airports", None)
+    write_json(os.path.join(pack_dir, "wx.json"), wx)
+    write_json(os.path.join(pack_dir, "notam.json"), notam)
+    write_json(os.path.join(pack_dir, "atis.json"), atis)
+    write_json(os.path.join(pack_dir, "airports.json"), prof)
+    write_json(os.path.join(pack_dir, "charts.json"), charts)
+    write_json(os.path.join(pack_dir, "index.json"), {"airports": index})
+    return ap_blobs
+
+
+def join_pack(pack_dir):
+    """空港別ファイルを元の形（wx/notam/atis/airports/charts の airports 付き）に戻す（前回分の引き継ぎ用）。旧形式はそのまま。"""
+    out = {k: read_json(os.path.join(pack_dir, f"{k}.json")) for k in ("wx", "notam", "atis", "airports", "charts", "flights", "brief")}
+    apd = os.path.join(pack_dir, AP_DIR)
+    if not os.path.isdir(apd):
+        return out
+    for k in ("wx", "notam", "atis", "airports"):
+        out[k] = dict(out[k] or {}, airports={})
+    out["atis"]["reasons"] = {}
+    series = []
+    for n in sorted(os.listdir(apd)):
+        d = read_json(os.path.join(apd, n), {}) or {}
+        icao = d.get("icao") or n[:-5]
+        if d.get("wx") is not None:
+            out["wx"]["airports"][icao] = d["wx"]
+        if d.get("notam") is not None:
+            out["notam"]["airports"][icao] = d["notam"]
+        if d.get("profile") is not None:
+            out["airports"]["airports"][icao] = d["profile"]
+        if d.get("atis") is not None:
+            out["atis"]["airports"][icao] = d["atis"]
+        if d.get("atisReason"):
+            out["atis"]["reasons"][icao] = d["atisReason"]
+        if d.get("series"):
+            series.append(d["series"])
+    for c in (out.get("charts") or {}).get("categories", []):
+        for it in c["items"]:
+            if it["id"] == "apseries":
+                it["product"]["variants"] = series
+    return out
+
+
 # ----------------------------------------------------------------------------- main
 def build(args):
     cfg = read_json(args.config, {}) or {}
-    airports, stations, sync = resolve_airports(cfg, args.airports)
+    airports, stations = resolve_airports(cfg, args.airports)
     if not airports:
         raise SystemExit("空港が指定されていません (--airports か config)")
     public_repo = cfg.get("public_repo", True)
     keep = args.keep or cfg.get("keep_packs", 3)
-    default_airports = cfg.get("default_airports") or airports[:2]
 
     now = utcnow()
     pack_id = now.strftime("%Y%m%dT%H%M%SZ")
@@ -517,13 +550,14 @@ def build(args):
     prev_dir = os.path.join(DATA, "packs", prev_manifest["packId"]) if prev_manifest else None
     if prev_dir and not os.path.isdir(prev_dir):
         prev_dir = None
-    prev_wx = read_json(os.path.join(prev_dir, "wx.json")) if prev_dir else None
+    prev = join_pack(prev_dir) if prev_dir else {}
+    prev_wx = prev.get("wx")
 
     try:
         log(f"METAR/TAF取得: {len(airports)}空港")
         wx = fetch_wx(airports, prev_wx)
         swim = swim_staging.load_swim(args.swim_dir) if args.swim_dir else None
-        targets = (swim or {}).get("airports") or swim_targets(cfg, (sync or {}).get("airports") or [])
+        targets = swim_targets(cfg, airports)
         swim_staging.apply_priority(wx, swim, [t for t in targets if t in airports], fetch_ogimet)
         write_json(os.path.join(pack_dir, "wx.json"), wx)
         ok_n = sum(1 for e in wx["airports"].values() if e.get("ok") and not e.get("carriedOver"))
@@ -531,7 +565,7 @@ def build(args):
             raise RuntimeError("METAR/TAF が1空港も取得できませんでした（aviationweather.gov 障害？）")
 
         log("空港プロファイル作成")
-        prev_prof = read_json(os.path.join(prev_dir, "airports.json")) if prev_dir else None
+        prev_prof = prev.get("airports")
         profiles = fetch_airport_profiles(airports, cfg, now.astimezone(JST).date(), stations)
         if prev_prof:  # 取得できなかった滑走路等は前回値を流用
             for icao, p in profiles["airports"].items():
@@ -548,7 +582,7 @@ def build(args):
             write_json(os.path.join(pack_dir, "notam.json"), swim_staging.notam_json(swim, targets))
 
         # ---- brief
-        prev_brief = read_json(os.path.join(prev_dir, "brief.json")) if prev_dir else None
+        prev_brief = prev.get("brief")
         brief = None
         if args.brief and os.path.exists(args.brief):
             mtime = iso(dt.datetime.fromtimestamp(os.path.getmtime(args.brief), dt.timezone.utc))
@@ -561,12 +595,11 @@ def build(args):
             brief["carriedOver"] = True
         if brief is None:
             brief = {"ok": False, "text": None, "author": None, "writtenAt": None}
-        brief["autoText"] = auto_brief_text(wx, default_airports)
         write_json(os.path.join(pack_dir, "brief.json"), brief)
 
         # ---- charts（旧 Flight Buddy の8分類。plain HTTP で並列取得）
         blob_dir = os.path.join(DATA, "blobs")
-        prev_charts = (read_json(os.path.join(prev_dir, "charts.json"), {}) or {}) if prev_dir else {}
+        prev_charts = prev.get("charts") or {}
         if prev_charts.get("schema") != "flight-buddy-charts/2":
             prev_charts = {}
         if args.no_fetch_charts:
@@ -602,6 +635,16 @@ def build(args):
         for icao, p in sp.items():
             profiles["airports"].setdefault(icao, {"icao": icao})["swim"] = p
         profiles["swimTargets"] = targets
+        atis_d = swim_staging.atis_json(swim)
+        notam_d = read_json(os.path.join(pack_dir, "notam.json"), {}) or {}
+        profiles["swimSummary"] = {
+            "targets": len(targets),
+            "atis": len(atis_d.get("airports") or {}),
+            "atisSupported": sum(1 for t in targets if "対象外" not in ((atis_d.get("reasons") or {}).get(t) or "")),
+            "notam": sum(len(a.get("items") or []) for a in (notam_d.get("airports") or {}).values()),
+            "profile": sum(1 for t in targets if ((profiles["airports"].get(t) or {}).get("swim") or {}).get("ok")),
+            "lostComm": sum(1 for t in targets if (((profiles["airports"].get(t) or {}).get("swim") or {}).get("lostComm") or {}).get("ok")),
+        }
         write_json(os.path.join(pack_dir, "airports.json"), profiles)
 
         # ---- 時刻表（FLIGHTS・DUTY 照合用。ボットが1日数回取得した staging をそのまま入れる。無ければ前回分）
@@ -613,7 +656,7 @@ def build(args):
             except Exception as e:  # noqa: BLE001
                 log("時刻表の変換失敗（前回分を使用）:", e)
         if not flights and prev_dir:
-            flights = read_json(os.path.join(prev_dir, "flights.json"))
+            flights = prev.get("flights")
             if flights and flights.get("schema") != "flight-buddy-flights/2":
                 flights = None
         write_json(os.path.join(pack_dir, "flights.json"), flights or {"schema": "flight-buddy-flights/2", "fetchedAt": None, "carriers": [], "rows": []})
@@ -627,24 +670,26 @@ def build(args):
             return {"changed": False, "packId": prev_manifest["packId"], "airports": len(prev_manifest.get("airports", [])),
                     "charts": n_frames, "chartMode": "unchanged", "chartErrors": charts.get("errors", []),
                     "chartStats": charts.get("stats")}
+        ap_blob_paths = split_pack(pack_dir, charts)
     except BaseException:
         shutil.rmtree(pack_dir, ignore_errors=True)
         raise
 
-    files = []
-    for dirpath, _, names in os.walk(pack_dir):
-        for n in sorted(names):
-            if n == "manifest.json":
-                continue
-            p = os.path.join(dirpath, n)
-            rel = os.path.relpath(p, pack_dir).replace(os.sep, "/")
-            files.append({"path": rel, "bytes": os.path.getsize(p), "sha256": sha256(p),
-                          "type": mimetypes.guess_type(n)[0] or "application/octet-stream"})
-    blobs = []
-    for b in sorted(chartlib.referenced_blobs(charts)):
+    def fentry(p):
+        rel = os.path.relpath(p, pack_dir).replace(os.sep, "/")
+        return {"path": rel, "bytes": os.path.getsize(p), "sha256": sha256(p), "type": mimetypes.guess_type(p)[0] or "application/octet-stream"}
+
+    def bentry(b):
         p = os.path.join(ROOT, b)
-        if os.path.exists(p):
-            blobs.append({"file": b, "bytes": os.path.getsize(p)})
+        return {"file": b, "bytes": os.path.getsize(p)} if os.path.exists(p) else None
+
+    files = [fentry(os.path.join(pack_dir, n)) for n in sorted(os.listdir(pack_dir)) if n != "manifest.json" and os.path.isfile(os.path.join(pack_dir, n))]
+    blobs = [x for x in (bentry(b) for b in sorted(chartlib.referenced_blobs(charts))) if x]
+    airport_files = {}
+    for n in sorted(os.listdir(os.path.join(pack_dir, AP_DIR))):
+        icao = n[:-5]
+        airport_files[icao] = dict(fentry(os.path.join(pack_dir, AP_DIR, n)), blobs=[x for x in (bentry(b) for b in ap_blob_paths.get(icao, [])) if x])
+    ap_bytes = {i: f["bytes"] + sum(b["bytes"] for b in f["blobs"]) for i, f in airport_files.items()}
     manifest = {
         "schema": SCHEMA,
         "packId": pack_id,
@@ -652,18 +697,19 @@ def build(args):
         "generator": "scripts/build_pack.py",
         "base": f"data/packs/{pack_id}/",
         "airports": airports,
-        "defaultAirports": default_airports,
         "airportNames": {i: (stations.get(i) or {}).get("site") for i in airports if stations.get(i)},
-        "sync": sync,
         "sample": not brief["ok"],
         "duty": duty,
-        "sections": {"wx": "wx.json", "notam": "notam.json", "airports": "airports.json",
+        "sections": {"wx": "wx.json", "notam": "notam.json", "airports": "airports.json", "index": "index.json",
                      "brief": "brief.json", "charts": "charts.json", "atis": "atis.json", "flights": "flights.json"},
-        "files": files,
-        "blobs": blobs,
+        "files": files,          # 共有ファイル（全端末がダウンロード）
+        "blobs": blobs,          # 共有の図（全端末がダウンロード）
+        "airportFiles": airport_files,  # 空港別（端末は SETTINGS で選んだ空港だけダウンロード）
         "packBytes": sum(f["bytes"] for f in files),
         "blobBytes": sum(b["bytes"] for b in blobs),
-        "totalBytes": sum(f["bytes"] for f in files) + sum(b["bytes"] for b in blobs),
+        "sharedBytes": sum(f["bytes"] for f in files) + sum(b["bytes"] for b in blobs),
+        "airportBytes": sum(ap_bytes.values()),
+        "totalBytes": sum(f["bytes"] for f in files) + sum(b["bytes"] for b in blobs) + sum(ap_bytes.values()),
         "signature": signature,
         "previousPackId": prev_manifest["packId"] if prev_manifest else None,
     }
@@ -682,6 +728,7 @@ def build(args):
     for pid in ids[:keep]:
         m = read_json(os.path.join(packs_root, pid, "manifest.json"), {}) or {}
         keep_blobs |= {b["file"].split("/")[-1] for b in m.get("blobs", [])}
+        keep_blobs |= {b["file"].split("/")[-1] for f in (m.get("airportFiles") or {}).values() for b in f.get("blobs", [])}
     removed = 0
     for n in os.listdir(blob_dir):
         if n not in keep_blobs:
@@ -695,17 +742,17 @@ def build(args):
         index["packs"].append({"packId": pid, "generatedAt": m.get("generatedAt"), "totalBytes": m.get("totalBytes")})
     write_json(os.path.join(DATA, "index.json"), index)
     ok_wx = sum(1 for e in wx["airports"].values() if e.get("ok") and not e.get("carriedOver"))
-    log(f"完了 packId={pack_id} files={len(files)} blobs={len(blobs)} size={manifest['totalBytes']}B WX取得OK={ok_wx}/{len(airports)} "
+    log(f"完了 packId={pack_id} files={len(files)}+空港{len(airport_files)} blobs={len(blobs)} 共有={manifest['sharedBytes']}B 空港別={manifest['airportBytes']}B WX取得OK={ok_wx}/{len(airports)} "
         f"コマ={n_frames}({chart_mode}) 図エラー={len(charts.get('errors', []))}")
     return {"changed": True, "packId": pack_id, "airports": len(airports), "charts": n_frames, "chartMode": chart_mode,
-            "bytes": manifest["totalBytes"], "blobs": len(blobs), "chartErrors": charts.get("errors", []),
+            "bytes": manifest["totalBytes"], "sharedBytes": manifest["sharedBytes"], "airportBytes": ap_bytes, "blobs": len(blobs), "chartErrors": charts.get("errors", []),
             "chartStats": charts.get("stats")}
 
 
 def make_parser():
     ap = argparse.ArgumentParser(description="Flight Buddy オフライン用パックを作る")
     ap.add_argument("--config", default=os.path.join(ROOT, "config", "pack_config.json"))
-    ap.add_argument("--airports", help="カンマ区切りICAO（config/同期issueより優先）例: RJTT,RJFF")
+    ap.add_argument("--airports", help="カンマ区切りICAO（config より優先。テスト用）例: RJTT,RJFF")
     ap.add_argument("--brief", help="ブリーフ本文のテキスト/Markdownファイル")
     ap.add_argument("--brief-if-newer", action="store_true", help="--brief が前回より新しい時だけ採用（古ければ前回本文を引き継ぎ）")
     ap.add_argument("--notam-file", help="NOTAM JSON（形式は examples/notam.sample.json）")

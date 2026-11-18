@@ -322,18 +322,29 @@ async function ensureLoggedIn() {
  * へ戻された等）を検知したら、1回だけ再ログインしてやり直す
  * （「セッションはサーバで使い回す。切れたら再ログイン」というご指示のため）。
  */
+// SWIM への同時リクエスト数の上限（全空港を10分ごとに取るため、礼儀として絞る。既定4）
+const SWIM_MAX_PARALLEL = Math.max(1, Number(process.env.SWIM_MAX_PARALLEL) || 4);
+let swimActive = 0;
+const swimWaiters = [];
+async function withSlot(fn) {
+  if (swimActive >= SWIM_MAX_PARALLEL) await new Promise((r) => swimWaiters.push(r));
+  swimActive++;
+  try { return await fn(); } finally { swimActive--; const next = swimWaiters.shift(); if (next) next(); }
+}
+let swimRequestCount = 0;
+const requestCount = () => swimRequestCount;
+
 async function swimFetch(url, options = {}) {
   await ensureLoggedIn();
 
-  const doFetch = () =>
-    fetchWithTimeout(url, {
+  const doFetch = () => withSlot(() => { swimRequestCount++; return fetchWithTimeout(url, {
       ...options,
       headers: {
         'User-Agent': USER_AGENT,
         Cookie: cookieHeaderFor(url),
         ...(options.headers || {}),
       },
-    });
+    }); });
 
   let res;
   try {
@@ -343,7 +354,7 @@ async function swimFetch(url, options = {}) {
     throw makeError('FETCH_FAILED', `SWIM通信エラー：${e.message}`);
   }
   absorbSetCookies(url, res);
-  log('リクエスト:', domainOf(url), '→ status', res.status);
+  if (process.env.SWIM_DEBUG) log('リクエスト:', domainOf(url), '→ status', res.status);
 
   if (res.status === 401 || res.status === 403) {
     // セッション切れとみなし、1回だけ再ログインして再試行する。
@@ -363,4 +374,4 @@ async function swimFetch(url, options = {}) {
   return res;
 }
 
-module.exports = { swimFetch, ensureLoggedIn, resetSession, persistSession };
+module.exports = { swimFetch, ensureLoggedIn, resetSession, persistSession, requestCount };
