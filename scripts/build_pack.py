@@ -47,6 +47,7 @@ JST = dt.timezone(dt.timedelta(hours=9))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import charts as chartlib  # noqa: E402
 import swim_staging
+from flightcat import classify_metar  # noqa: E402
 import flights_pack  # noqa: E402
 
 
@@ -145,7 +146,7 @@ def fetch_wx(airports, prev_wx):
             "fetchedAt": now,
             "metar": [
                 {"raw": m.get("rawOb"), "obsTime": iso(dt.datetime.fromtimestamp(m["obsTime"], dt.timezone.utc)) if m.get("obsTime") else None,
-                 "fltCat": m.get("fltCat"), "type": m.get("metarType")}
+                 "fltCat": classify_metar(m.get("rawOb")) or m.get("fltCat"), "type": m.get("metarType")}
                 for m in ms[:4]
             ],
             "taf": ({"raw": ts[0].get("rawTAF"), "issueTime": ts[0].get("issueTime"),

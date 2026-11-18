@@ -136,59 +136,104 @@ function findAd2HrefForIcao(menuHtml, icao) {
 // ・終わりは「次の番号付き項目（N+1.）」か「次のAD 2.NN見出し」の早い方。
 const LOST_COMM_KEYWORD_RE = /(lost\s+communications?|communications?\s+failure|com\s+failure|radio\s+(?:communications?\s+)?failure)/i;
 const AD2_HEADING_RE = /AD\s?2\.\d{1,2}\s+[A-Z]{4,}/g;
-const ITEM_HEAD_RE = /\b(\d{1,2})\.\s+(?=[A-Z])/g;
 const MAX_SECTION_CHARS = 4000; // 想定外に長い場合の安全弁
+// 項目見出しの書き方は空港ごとに違う（v1.9.0 で RJAA ほか 11 空港の不具合を修正）:
+//   "3. Lost…"（数字＋ピリオド＋空白）／"3.Lost…"（空白なし。RJTJ・ROMY・RJK*・RJOT・RJTL・RORY）／
+//   "(II)Lost…"（ローマ数字。RJAA）／"a. LOST COMMUNICATIONS:"（英小文字。RJSM）
+// どれも「キーワードの直前に見出しが付いている」形（間は数文字だけ）。そこから同じ種類の次の見出し
+// （3→4、(II)→(III)、a→b）か次の "AD 2.NN" 見出しまでを切り出す。
+const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10, XI: 11, XII: 12 };
+const ROMAN_BY_N = Object.fromEntries(Object.entries(ROMAN).map(([k, v]) => [v, k]));
+const HEAD_RE = /(?<![\w.])(?:(\d{1,2})\.\s*(?=[A-Z]|[^\x00-\x7F])|\(\s*(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)\s*\)\s*(?=[A-Z])|([a-z])\.\s+(?=[A-Z]))/g;
+const PAGE_FOOTER_RE = /Civil Aviation Bureau,?\s*Japan\s*\(EFF:[^)]*\)\s*\d{1,2}\/\d{1,2}\/\d{2}\s*(?:AIP Japan\s*[A-Z]{4}\s*AD2(?:-\d+)?)?/g;
+const PAGE_HEADER_RE = /(?:[←→]\s*)?(?:[A-Z]{4}\s+)?AD2-\d+\s*(?:[←→]\s*)?|(?:[←→]\s*)?AIP Japan\s*(?:[←→]\s*)?(?:[A-Z]{4}\b)?/g;
+const TAIL_CAPS_RE = /(?<=[.)])\s+[A-Z][A-Z .'\/-]*$/; // 最後の文の後ろに残るページ見出し（空港名など。全部大文字）
+
+function headOf(m) {
+  if (m[1] != null) return { kind: 'n', n: parseInt(m[1], 10) };
+  if (m[2] != null) return { kind: 'r', n: ROMAN[m[2]] };
+  return { kind: 'a', n: m[3].charCodeAt(0) - 96 };
+}
+function nextHeadRe(h) {
+  if (h.kind === 'n') return new RegExp(`(?<![\\w.])${h.n + 1}\\.\\s*(?=[A-Z]|[^\\x00-\\x7F])`);
+  if (h.kind === 'r') return new RegExp(`(?<![\\w.])\\(\\s*${ROMAN_BY_N[h.n + 1] || 'XIII'}\\s*\\)\\s*(?=[A-Z])`);
+  return new RegExp(`(?<![\\w.])${String.fromCharCode(97 + h.n)}\\.\\s+(?=[A-Z])`);
+}
 
 function extractLostCommSection(rawPdfText) {
   // pdftotext -layout は改行・桁揃えの空白が付くため、まず1個の空白に畳んで
   // から探す（キーワードが行またぎになっていても拾えるようにするため）。
-  const text = String(rawPdfText || '').replace(/\s+/g, ' ').trim();
+  // 行頭の位置とインデントも覚えておく（入れ子の 1. 2. 3. と、本当の次の項目を見分けるため）
+  const lineIndent = new Map();
+  let text = '';
+  for (const line of String(rawPdfText || '').split('\n')) {
+    const t = line.trim().replace(/\s+/g, ' ');
+    if (!t) continue;
+    if (text) text += ' ';
+    lineIndent.set(text.length, line.length - line.trimStart().length);
+    text += t;
+  }
   const kw = LOST_COMM_KEYWORD_RE.exec(text);
   if (!kw) return null;
   const kwIndex = kw.index;
 
-  // キーワードが属するAD 2.NN見出しの範囲内だけで番号付き項目を探す
-  // （別の見出しの番号と混同しないため）。
+  // キーワードが属するAD 2.NN見出しの範囲内だけで探す（別の見出しの番号と混同しないため）。
   AD2_HEADING_RE.lastIndex = 0;
   let lastHeading = null;
   let hm;
-  while ((hm = AD2_HEADING_RE.exec(text)) && hm.index < kwIndex) {
-    lastHeading = hm;
-  }
+  while ((hm = AD2_HEADING_RE.exec(text)) && hm.index < kwIndex) lastHeading = hm;
   const searchFloor = lastHeading ? lastHeading.index + lastHeading[0].length : 0;
 
-  ITEM_HEAD_RE.lastIndex = searchFloor;
-  let lastItemHead = null;
-  let im;
-  while ((im = ITEM_HEAD_RE.exec(text)) && im.index < kwIndex) {
-    lastItemHead = im;
+  // 見出し候補：キーワードの直前（間が 12 文字以内）にあるもの。無ければ（想定外の構成）、直前の数字/ローマ数字の見出し。
+  let near = null; let any = null; let im;
+  HEAD_RE.lastIndex = searchFloor;
+  while ((im = HEAD_RE.exec(text)) && im.index < kwIndex) {
+    const end = im.index + im[0].length;
+    if (kwIndex - end <= 12) near = im;
+    if (im[3] == null) any = im;
   }
+  const head = near || any;
 
-  let sectionStart;
-  let itemNumber = null;
-  if (lastItemHead) {
-    sectionStart = lastItemHead.index;
-    itemNumber = parseInt(lastItemHead[1], 10);
-  } else {
-    // 番号付き項目が見つからない（想定外の構成）ときは、直前のAD 2.NN見出し
-    // の直後（無ければ先頭）を安全側の開始位置にする。
-    sectionStart = searchFloor;
-  }
+  let sectionStart = searchFloor;
+  let h = null;
+  if (head) { sectionStart = head.index; h = headOf(head); }
 
   let sectionEnd = text.length;
-  if (itemNumber !== null) {
-    const nextItemRe = new RegExp(`\\b${itemNumber + 1}\\.\\s+(?=[A-Z])`);
-    const tail = text.slice(kwIndex);
-    const nextItemMatch = nextItemRe.exec(tail);
-    if (nextItemMatch) sectionEnd = Math.min(sectionEnd, kwIndex + nextItemMatch.index);
+  const tail = text.slice(kwIndex);
+  if (h) {
+    // 項目の中に (I) … (II) の入れ子の一覧があり、その中の "3. If unable" が次の項目に見えることがある（RJSN・RJOT ほか）。
+    // (I) の途中（(II) の前）にある数字見出しは次の項目として数えない。
+    const re = new RegExp(nextHeadRe(h).source, 'g');
+    let m;
+    while ((m = re.exec(tail))) {
+      const seg = tail.slice(0, m.index);
+      // 開始見出しが行頭にあるとき、それよりずっと深いインデントの行頭の "3." は入れ子の連番（次の項目ではない）
+      const startIndent = lineIndent.get(sectionStart);
+      const candIndent = lineIndent.get(kwIndex + m.index);
+      if (h.kind === 'n' && startIndent != null && candIndent != null && candIndent > startIndent + 3) continue;
+      const iAt = seg.search(/\(\s*I\s*\)|(?<![\w.])I\.\s/);
+      // (I) の後ろに "<この項目の番号>." がもう出ている＝入れ子の連番（RJSN: 項目2 の中の 1. 2. 3.）。次の項目ではない
+      if (h.kind === 'n' && iAt >= 0 && !/\(\s*II\s*\)|(?<![\w.])II\.\s/.test(seg) && new RegExp(`(?<![\\w.])${h.n}\\.\\s*(?=[A-Z])`).test(seg.slice(iAt))) continue;
+      sectionEnd = Math.min(sectionEnd, kwIndex + m.index);
+      break;
+    }
+  }
+  // 番号が飛ぶ場合（RJFT: 2. の次が 4.）：行頭でインデントが開始見出しと同じ数字見出し（N+1〜N+3）も次の項目とみなす
+  const startIndent2 = lineIndent.get(sectionStart);
+  if (h && h.kind === 'n' && startIndent2 != null) {
+    const re2 = new RegExp(`(?<![\\w.])(?:${h.n + 1}|${h.n + 2}|${h.n + 3})\\.\\s*(?=[A-Z]|[^\\x00-\\x7F])`, 'g');
+    let m2;
+    while ((m2 = re2.exec(tail))) {
+      const ci = lineIndent.get(kwIndex + m2.index);
+      if (ci != null && ci <= startIndent2 + 3) { sectionEnd = Math.min(sectionEnd, kwIndex + m2.index); break; }
+    }
   }
   AD2_HEADING_RE.lastIndex = 0;
-  const headingTail = text.slice(kwIndex);
-  const nextHeadingMatch = AD2_HEADING_RE.exec(headingTail);
+  const nextHeadingMatch = AD2_HEADING_RE.exec(tail);
   if (nextHeadingMatch) sectionEnd = Math.min(sectionEnd, kwIndex + nextHeadingMatch.index);
 
   sectionEnd = Math.min(sectionEnd, sectionStart + MAX_SECTION_CHARS);
-  const section = text.slice(sectionStart, sectionEnd).trim();
+  const section = text.slice(sectionStart, sectionEnd).replace(PAGE_FOOTER_RE, ' ').replace(PAGE_HEADER_RE, ' ').replace(/\s+/g, ' ').trim().replace(TAIL_CAPS_RE, '');
   return section.length > 20 ? section : null;
 }
 

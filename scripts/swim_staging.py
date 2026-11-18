@@ -12,55 +12,16 @@ import datetime as dt
 import json
 import os
 import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from flightcat import classify_metar  # noqa: E402
 
 UTC = dt.timezone.utc
 MAX_AGE_H = {"atis": 1.0, "profile": 3.0, "notam": 6.0, "aip": 24 * 35}  # これより古い部品は使わない
 
-METERS_PER_SM = 1609.344
 
-
-# ---------------------------------------------------------------- lib/flightCategory.js の移植（同じ判定）
-def _vis_sm(t):
-    text = f" {t} "
-    if re.search(r"\bCAVOK\b", text):
-        return 10000 / METERS_PER_SM
-    m = re.search(r"\s(M|P)?(\d{1,2})(?:\s(\d)/(\d))?SM\b", text)
-    if m:
-        sm = float(m[2])
-        if m[3] and m[4]:
-            sm += float(m[3]) / float(m[4])
-        return sm
-    m = re.search(r"\s(M|P)?(\d)/(\d)SM\b", text)
-    if m:
-        return float(m[2]) / float(m[3])
-    m = re.search(r"\s(?:\d{3}|VRB)\d{2}(?:G\d{2})?(?:KT|MPS)\s+(\d{4})\b", text)
-    if m:
-        return float(m[1]) / METERS_PER_SM
-    return None
-
-
-def _ceil_ft(t):
-    if re.search(r"\bCAVOK\b", t):
-        return None
-    hs = [int(h) * 100 for h in re.findall(r"\b(?:BKN|OVC|VV)(\d{3})\b", t)]
-    return min(hs) if hs else None
-
-
-def classify_metar(text):
-    """wx-brief lib/flightCategory.js classifyMetarText と同じ。判定できなければ None。"""
-    if not text:
-        return None
-    c, v = _ceil_ft(text), _vis_sm(text)
-    fc = None if c is None else ("LIFR" if c < 500 else "IFR" if c < 1000 else "MVFR" if c <= 3000 else "VFR")
-    fv = None if v is None else ("LIFR" if v < 1 else "IFR" if v < 3 else "MVFR" if v <= 5 else "VFR")
-    rank = {"LIFR": 0, "IFR": 1, "MVFR": 2, "VFR": 3}
-    if not fc and not fv:
-        return None
-    if not fc:
-        return fv
-    if not fv:
-        return fc
-    return fc if rank[fc] <= rank[fv] else fv
+# 飛行状態の判定は scripts/flightcat.py（日本の航空法優先＋MVFR/LIFR だけ FAA）
 
 
 # ---------------------------------------------------------------- 読み込み

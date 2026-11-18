@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.8.1';
+  const APP_VERSION = '1.9.0';
   const REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
@@ -160,7 +160,7 @@
       const e = wx?.airports?.[icao];
       if (!e || !e.ok) return `<tr><td>${esc(icao)}</td><td colspan="3" class="hint">${e ? '未取得' : esc(missText(icao))}</td></tr>`;
       const mt = e.metar?.[0];
-      const cat = mt ? (mt.fltCat || window.FBWx.flightCategory(mt.raw)) : null;
+      const cat = mt ? (window.FBWx.flightCategory(mt.raw) || mt.fltCat) : null;
       const wind = (mt?.raw || '').match(/\b(\d{3}|VRB)(\d{2,3})(G\d{2,3})?KT\b/);
       const gusts = [...((e.taf?.raw || '').matchAll(/\b(?:\d{3}|VRB)\d{2,3}G(\d{2,3})KT\b/g))].map((m) => Number(m[1]));
       return `<tr><td><strong>${esc(icao)}</strong> <span class="hint">${esc(apName(icao))}</span></td><td>${cat ? `<span class="badge ${cat}">${cat}</span>` : ''}</td><td>${esc(wind ? wind[0] : '--')}</td><td>${gusts.length ? `G${Math.max(...gusts)}` : '--'}</td></tr>`;
@@ -184,7 +184,7 @@
   }
   function renderWxCards(list) {
     const wx = state.pack?.wx, atis = state.pack?.atis;
-    if (wx) list.insertAdjacentHTML('beforeend', `<p class="hint" style="margin:0 14px">取得 ${esc(fmtJst(wx.fetchedAt))} ／ 出所 ${esc(wx.source)}</p><div class="legend" style="margin:4px 14px">TAF：<span class="taf-token-becmg">BECMG</span> <span class="taf-token-tempo">TEMPO</span> <span class="taf-token-fm">FM</span> <span class="taf-token-prob">PROB30/40</span>（旧版と同じ色。ライトモードは見やすいよう同じ色相で濃いめ）。METAR の TEMPO/BECMG も同じ色。<span class="hl-ifr">赤</span>＝IFR/LIFR の要因（視程 3SM(4800m) 未満・シーリング 1000ft 未満）。MVFR は強調しません。</div>`);
+    if (wx) list.insertAdjacentHTML('beforeend', `<p class="hint" style="margin:0 14px">取得 ${esc(fmtJst(wx.fetchedAt))} ／ 出所 ${esc(wx.source)}</p><div class="legend" style="margin:4px 14px">TAF：<span class="taf-token-becmg">BECMG</span> <span class="taf-token-tempo">TEMPO</span> <span class="taf-token-fm">FM</span> <span class="taf-token-prob">PROB30/40</span>（旧版と同じ色。ライトモードは見やすいよう同じ色相で濃いめ）。METAR の TEMPO/BECMG も同じ色。<span class="hl-ifr">赤</span>＝IFR/LIFR の要因（視程 5000m 未満・シーリング 1000ft 未満）。MVFR は強調しません。<br>飛行状態：IFR/VFR の境界は日本の航空法（施行規則第5条第4号）＝視程 5000m・雲高 300m(1000ft)。日本に無い MVFR/LIFR だけ FAA 基準。VFR 視程 &gt;5SM かつ シーリング &gt;3000ft ／ MVFR 視程 5000m〜5SM または 1000〜3000ft ／ IFR 視程 &lt;5000m または &lt;1000ft ／ LIFR 視程 &lt;1SM または &lt;500ft。</div>`);
     for (const icao of mainAirports()) {
       const e = wx?.airports?.[icao];
       const card = document.createElement('div'); card.className = 'card';
@@ -193,7 +193,7 @@
       else if (!e.ok) body = `<div class="sub-label">METAR</div>${naBox('METAR なし（aviationweather.gov にこの局の配信がありません）')}<div class="sub-label">TAF</div>${naBox('TAF なし（この局は TAF を出していないか配信がありません）')}`;
       else {
         const latest = e.metar?.[0];
-        const cat = latest ? (latest.fltCat || window.FBWx.flightCategory(latest.raw)) : null;
+        const cat = latest ? (window.FBWx.flightCategory(latest.raw) || latest.fltCat) : null;
         body = `${e.carriedOver ? `<p class="hint"><span class="badge stale">STALE</span> 今回の取得に失敗したため前回の値です（${esc(fmtJst(e.fetchedAt))}取得）</p>` : ''}
           <div class="sub-label">METAR ${latest ? `${esc(fmtUtc(latest.obsTime))}（${esc(fmtJst(latest.obsTime, false))}）` : ''} ${cat ? `<span class="badge ${cat}">${cat}</span>` : ''} <span class="doc-status ${latest ? 'ok' : 'fail'}">${esc(e.metarSource || 'NONE')}</span></div>
           ${latest ? `<div class="raw">${window.FBWx.highlight(latest.raw)}</div>` : naBox('METAR 未取得')}
@@ -363,7 +363,7 @@
       if (lat == null || lon == null) continue;
       const e = wx[icao], mt = e?.metar?.[0];
       // 選んでいない空港は一覧（index.json）の飛行状態だけ（METAR 本文などは選んだ空港の分だけダウンロード）
-      const cat = mt ? (mt.fltCat || window.FBWx.flightCategory(mt.raw)) : (idx[icao]?.fltCat || null);
+      const cat = mt ? (window.FBWx.flightCategory(mt.raw) || mt.fltCat) : (idx[icao]?.fltCat || null);
       list.push({ icao, lat, lon, cat, sel: sel.includes(icao), name: apName(icao), codes: apCodes(icao),
         popupHtml: () => {
           const n = state.pack?.notam?.airports?.[icao];

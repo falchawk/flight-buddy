@@ -13,7 +13,7 @@
 ## タブ
 | タブ（旧版と同じ順） | 内容 | 状態 |
 |---|---|---|
-| MAP | 空港の飛行状態（VFR/MVFR/IFR/LIFR）を簡易地図（Natural Earth, 端末内）に表示。タップで METAR/TAF | 簡易版（背景タイル・航路線・NOTAM影響は未対応） |
+| MAP | 空港の飛行状態（VFR/MVFR/IFR/LIFR）を地図（同梱の Natural Earth＋オンライン時は Esri 背景タイル・地名）に表示。5度の経緯線、現在地、鹿島スタジアム（公式エンブレム）。飛行状態は日本の航空法（施行規則第5条第4号）優先、MVFR/LIFR だけ FAA 基準（scripts/flightcat.py） | 簡易版（航路線・NOTAM影響は未対応） |
 | DUTY | 日付・会社・便番号・バッファ・メモ（端末内保存） | 動作 |
 | WX | 旧版の8分類（地上天気図／衛星画像／レーダーエコー／三十分大気解析／高層天気図／下層悪天／Windy／AIRPORT）。AIRPORT > METAR TAF ATIS に空港ごとの METAR（過去分つき）・TAF・ATIS。IFR/LIFR の要因だけ赤 | 動作（Windy はオンライン専用、ATIS は SWIM ステージング待ち） |
 | BRIEF | 選択空港サマリー＋ボットのブリーフ本文 | 動作 |

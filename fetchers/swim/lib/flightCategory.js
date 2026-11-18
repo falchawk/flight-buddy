@@ -13,9 +13,12 @@
 // fetchers/metair.jsは全廃済み）。
 //
 // 【判定のしきい値（米FAAの定義）】
+//   ※ Flight Buddy では日本の航空法優先に変更（旧版は IFR/VFR の境界が視程 3sm）:
+//   IFR/VFR の境界 ＝ 航空法施行規則 第5条第4号（地上視程 5,000m・雲高 300m≒1,000ft）
+//   MVFR/LIFR だけ FAA 基準。正本は scripts/flightcat.py（ここは同じ値に揃えてある）
 //   VFR ： シーリング(雲底) > 3,000ft   かつ 視程 > 5sm（統計マイル）
-//   MVFR： シーリング 1,000〜3,000ft    または 視程 3〜5sm
-//   IFR ： シーリング   500〜1,000ft    または 視程 1〜3sm
+//   MVFR： シーリング 1,000〜3,000ft    または 視程 5,000m〜5sm
+//   IFR ： シーリング   500〜1,000ft    または 視程 1sm〜5,000m
 //   LIFR： シーリング < 500ft           または 視程 < 1sm
 // シーリングと視程のどちらか悪い方（より制限の厳しい方）を採用します
 // （どちらか片方しか読み取れなかったときは、読み取れた方だけで判定します）。
@@ -58,7 +61,7 @@ function parseVisibilitySm(metarText) {
   // 例: "...12008KT 9999 FEW020..." の "9999"。
   // 風グループ（KT/MPSで終わる、風向風速のグループ）を先に探し、その直後の
   // 4桁数字を視程として読み取る（RVRの "R27/1200" 等と混同しないため）。
-  const windMatch = text.match(/\s(?:\d{3}|VRB)\d{2}(?:G\d{2})?(?:KT|MPS)\s+(\d{4})\b/);
+  const windMatch = text.match(/\s(?:\d{3}|VRB)\d{2}(?:G\d{2})?(?:KT|MPS)\s+(?:\d{3}V\d{3}\s+)?(\d{4})\b/);
   if (windMatch) {
     const meters = Number(windMatch[1]);
     return meters / METERS_PER_STATUTE_MILE;
@@ -109,7 +112,7 @@ function categoryFromCeiling(ceilingFt) {
 function categoryFromVisibility(visibilitySm) {
   if (visibilitySm === null || visibilitySm === undefined) return null;
   if (visibilitySm < 1) return 'LIFR';
-  if (visibilitySm < 3) return 'IFR';
+  if (visibilitySm * METERS_PER_STATUTE_MILE < 5000) return 'IFR'; // 航空法施行規則 第5条第4号：地上視程 5,000m
   if (visibilitySm <= 5) return 'MVFR';
   return 'VFR';
 }

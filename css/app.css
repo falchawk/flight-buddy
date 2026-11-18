@@ -72,7 +72,8 @@ a.btn{display:inline-block;text-decoration:none;margin:4px 0}
 .btn-icon:active{background:var(--accent-soft)}
 .btn-icon svg{width:22px;height:22px}
 .btn-icon.spinning svg{animation:spin .9s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
+/* 矢印アイコン（M4 4v6h6 / M20 20v-6h-6 ＋ sweep=0 の円弧）は反時計回りなので、回転も反時計回りに合わせる */
+@keyframes spin{to{transform:rotate(-360deg)}}
 
 /* ---------- shell */
 #app{display:flex;flex-direction:column;height:100%}
@@ -269,6 +270,7 @@ label.block{margin-top:14px}
 .map-legend{display:flex;gap:4px;flex-wrap:wrap}
 .map-meta{font-size:11px;font-weight:600;color:var(--text-dim);background:var(--bg-panel);padding:4px 9px;border-radius:999px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
 .map-meta:empty{display:none}
+.map-thresh{font-size:10px;line-height:1.35;font-weight:600;color:var(--text-dim);background:var(--bg-panel);padding:4px 9px;border-radius:10px;max-width:calc(100vw - 24px);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
 .leaflet-container{background:var(--map-sea);font-family:inherit}
 .fb-land{fill:var(--map-land);stroke:var(--map-coast)}
 .fb-grat{stroke:var(--text);stroke-opacity:.12}
@@ -281,7 +283,10 @@ label.block{margin-top:14px}
 .fb-pos.leaflet-marker-icon{position:absolute}
 .fb-pos .halo{position:absolute;inset:0;border-radius:50%;background:rgba(41,182,246,.28)}
 .fb-pos svg{position:absolute;left:9px;top:9px;filter:drop-shadow(0 0 2px rgba(0,0,0,.6))}
-.fb-kashima{color:var(--text-dim);opacity:.85}
+.fb-kashima{color:var(--text-dim)}
+.fb-kashima .emb{width:28px;height:28px;display:block;filter:drop-shadow(0 0 1.5px rgba(0,0,0,.55))}
+.fb-kashima .deer{opacity:.85}
+.fb-geo-msg{display:none;position:absolute;z-index:1000;left:50%;top:12px;transform:translateX(-50%);max-width:min(88vw,360px);padding:8px 12px;border-radius:12px;background:var(--bg-card);color:var(--text);box-shadow:var(--shadow);font-size:12px;line-height:1.45;pointer-events:none}
 .fb-map-btn{width:36px;height:36px;border-radius:10px!important;border:none!important;background:var(--bg-panel)!important;color:var(--accent);display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow)}
 .fb-map-btn svg{width:20px;height:20px}
 .fb-map-btn.fb-tiles-btn{color:var(--text-dim)}.fb-map-btn.fb-tiles-btn.on{color:var(--accent)}
@@ -356,3 +361,4 @@ label.block{margin-top:14px}
 /* ライトモードだけ：TAF 変化群の色を同じ色相のまま濃くする（白地でコントラスト 4.6:1 以上）。ダークは旧版と同じ色のまま */
 :root[data-theme="light"]{--taf-becmg:#0875a5;--taf-tempo:#866a1d;--taf-fm:#2f7b4f;--taf-prob:#806b3e}
 @media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--taf-becmg:#0875a5;--taf-tempo:#866a1d;--taf-fm:#2f7b4f;--taf-prob:#806b3e}}
+.map-legend .badge{background:var(--bg-panel);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}

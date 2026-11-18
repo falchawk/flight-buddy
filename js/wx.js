@@ -2,15 +2,16 @@
 (function () {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   // ---- IFR / LIFR の要因だけ赤にする（風・視程の一般的な強調表示はしない。MVFR も強調しない）
-  // 判定は旧版（wx-brief main lib/flightCategory.js）と同じ：視程 < 3sm(4828m) = IFR / < 1sm(1609m) = LIFR、
-  // シーリング（BKN/OVC/VV）< 1000ft = IFR / < 500ft = LIFR。要素ごとに見て、IFR 以下になっている要素だけを赤にする。
-  const SM_M = 1609.344;
+  // 判定は scripts/flightcat.py と同じ：IFR/VFR の境界は日本の航空法（施行規則第5条第4号：地上視程 5,000m・雲高 300m≒1,000ft）、
+  // MVFR/LIFR だけ FAA。視程 < 5,000m = IFR / < 1SM(1,609m) = LIFR、シーリング（BKN/OVC/VV）< 1,000ft = IFR / < 500ft = LIFR。
+  // 要素ごとに見て、IFR 以下になっている要素だけを赤にする。（旧版は視程の IFR 境界が 3SM=4,828m）
+  const SM_M = 1609.344, IFR_VIS_M = 5000, IFR_CEIL_FT = 1000, LIFR_CEIL_FT = 500, MVFR_CEIL_FT = 3000, MVFR_VIS_M = 5 * SM_M;
   function ifrToken(t, prev) {
     let m;
-    if (/^\d{4}$/.test(t)) return Number(t) < 3 * SM_M; // 視程（m）。時刻 dddd/dddd や風は \d{4} だけの形にならない
-    if ((m = t.match(/^(M|P)?(\d{1,2})SM$/))) return m[1] !== 'P' && Number(m[2]) < 3;
-    if ((m = t.match(/^(M|P)?(\d)\/(\d)SM$/))) return m[1] !== 'P' && (prev && /^\d$/.test(prev) ? Number(prev) : 0) + Number(m[2]) / Number(m[3]) < 3;
-    if ((m = t.match(/^(BKN|OVC|VV)(\d{3})(?:CB|TCU|\/+)?$/))) return Number(m[2]) * 100 < 1000;
+    if (/^\d{4}$/.test(t)) return Number(t) < IFR_VIS_M; // 視程（m）。時刻 dddd/dddd や風は \d{4} だけの形にならない
+    if ((m = t.match(/^(M|P)?(\d{1,2})SM$/))) return m[1] !== 'P' && Number(m[2]) * SM_M < IFR_VIS_M;
+    if ((m = t.match(/^(M|P)?(\d)\/(\d)SM$/))) return m[1] !== 'P' && ((prev && /^\d$/.test(prev) ? Number(prev) : 0) + Number(m[2]) / Number(m[3])) * SM_M < IFR_VIS_M;
+    if ((m = t.match(/^(BKN|OVC|VV)(\d{3})(?:CB|TCU|\/+)?$/))) return Number(m[2]) * 100 < IFR_CEIL_FT;
     return false;
   }
   // 1つの文字列を空白で区切り、IFR/LIFR の要因のトークンだけ <span class="hl-ifr"> にする（RMK 以降は対象外）
@@ -123,19 +124,28 @@
       return `<div class="taf-line${relevant ? ' taf-line-relevant' : ''}">${r.html}</div>`;
     }).join('');
   }
-  // 簡易フライトカテゴリ（APIにfltCatが無い時用、FAA基準）
+  // フライトカテゴリ（pack に fltCat が無い時用）。scripts/flightcat.py の classify_metar と同じ判定。判定できなければ null。
+  function visM(raw) {
+    const t = ` ${raw} `; let m;
+    if (/\bCAVOK\b/.test(t)) return 10000;
+    if ((m = t.match(/\s(M|P)?(\d{1,2})(?:\s(\d)\/(\d))?SM\b/))) return (Number(m[2]) + (m[3] && m[4] ? Number(m[3]) / Number(m[4]) : 0)) * SM_M;
+    if ((m = t.match(/\s(M|P)?(\d)\/(\d)SM\b/))) return Number(m[2]) / Number(m[3]) * SM_M;
+    if ((m = t.match(/\s(?:\d{3}|VRB)\d{2}(?:G\d{2})?(?:KT|MPS)\s+(?:\d{3}V\d{3}\s+)?(\d{4})\b/))) return Number(m[1]);
+    return null;
+  }
+  function ceilFt(raw) {
+    if (/\bCAVOK\b/.test(raw)) return null;
+    const hs = [...String(raw).matchAll(/\b(?:BKN|OVC|VV)(\d{3})\b/g)].map((x) => Number(x[1]) * 100);
+    return hs.length ? Math.min(...hs) : null;
+  }
   function flightCategory(raw) {
-    let vis = 10, ceil = 99999;
-    String(raw || '').split(/\s+/).forEach((t) => {
-      let m;
-      if (/^\d{4}$/.test(t)) vis = Math.min(vis, Number(t) / 1609);
-      if (t === 'CAVOK') vis = 10;
-      if ((m = t.match(/^(BKN|OVC|VV)(\d{3})/))) ceil = Math.min(ceil, Number(m[2]) * 100);
-    });
-    if (ceil < 500 || vis < 1) return 'LIFR';
-    if (ceil < 1000 || vis < 3) return 'IFR';
-    if (ceil <= 3000 || vis <= 5) return 'MVFR';
-    return 'VFR';
+    if (!raw) return null;
+    const v = visM(raw), c = ceilFt(raw);
+    const fv = v == null ? null : v < SM_M ? 'LIFR' : v < IFR_VIS_M ? 'IFR' : v <= MVFR_VIS_M ? 'MVFR' : 'VFR';
+    const fc = c == null ? null : c < LIFR_CEIL_FT ? 'LIFR' : c < IFR_CEIL_FT ? 'IFR' : c <= MVFR_CEIL_FT ? 'MVFR' : 'VFR';
+    const rank = { LIFR: 0, IFR: 1, MVFR: 2, VFR: 3 };
+    if (!fv || !fc) return fv || fc;
+    return rank[fv] <= rank[fc] ? fv : fc;
   }
   window.FBWx = { esc, highlight, tafLines, tafLinesWithWindow, flightCategory };
 })();
