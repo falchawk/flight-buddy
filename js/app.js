@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.3';
+  const APP_VERSION = '1.9.4';
   const REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
@@ -386,7 +386,7 @@
   // ---------------------------------------------------------------- FLIGHTS（パックの時刻表から便名検索。通信しない）
   const fl = { carrier: lsGet('fb.flCarrier', 'ALL'), date: null };
   const apShort = (code) => { const p = state.pack?.airports?.airports?.[code]; const a = airportInfo(code); const nm = a?.name || state.pack?.flights?.airportNames?.[code] || p?.name || ''; const iata = a?.iata || p?.iata || (code.length === 3 ? code : ''); return { iata: iata || code, name: nm }; };
-  const SRC_JA = { odpt: 'ODPT', 'ana-pdf': 'ANA公式PDF', 'official-pdf': '公式PDF', live: '公式サイト', official: '公式', toki: 'トキエア公式', board: '空港の発着案内', rararakt: 'rararakt.com（最終手段）' };
+  const SRC_JA = { odpt: 'ODPT', 'ana-pdf': 'ANA公式PDF', 'official-pdf': '公式PDF', live: '公式サイト', official: '公式', toki: 'トキエア公式', board: '空港の発着案内', rararakt: 'rararakt' };
   function setupFlights() {
     fl.date = todayJst();
     $('fl-date').value = fl.date;
@@ -426,7 +426,7 @@
         if (cinfo && !cinfo.count) html += `<p class="hint"><span class="badge na">未収録</span> ${esc(cinfo.name)} の時刻表はまだパックに入っていません。</p>`;
       }
       const onlyRara = rows.length && r.results.every((x) => x[9] === 'rararakt');
-      if (code && (!rows.length || onlyRara)) html += (onlyRara ? '<p class="hint">この便は rararakt（最終手段）にしかありません。Google でも確認できます。</p>' : '') + (navigator.onLine
+      if (code && (!rows.length || onlyRara)) html += (onlyRara ? '<p class="hint">この便は rararakt にしかありません。Google でも確認できます。</p>' : '') + (navigator.onLine
         ? `<p><a class="btn" href="https://www.google.com/search?q=${encodeURIComponent(code + ' フライト 運航状況')}" target="_blank" rel="noopener">Google で検索</a></p><p class="hint">外部サイト（オンライン時のみ）。</p>`
         : '<p class="hint">オフラインのため外部サイトでの確認はできません。</p>');
     }

@@ -746,7 +746,7 @@ async function withRararaktFallback(icao3, primaryResult, getRaraRaw) {
   const reason = (primaryResult && primaryResult.failReason) ? `${primaryResult.failReason}のため使用` : '公式サイト・同梱データのいずれも利用できないため使用';
   return {
     ...raraResult,
-    note: `${reason}。非公式・最終手段のデータです。時刻は変更される場合があります。`,
+    note: `${reason}。非公式のデータ（rararakt）です。時刻は変更される場合があります。`,
   };
 }
 

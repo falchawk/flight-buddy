@@ -21,7 +21,7 @@ JP_CARRIERS = [
 IATA2 = {c[0]: c for c in JP_CARRIERS if "*" not in c[0]}
 ICAO3_TO_IATA2 = {"JAL": "JL", "ANA": "NH", "SFJ": "7G", "SNJ": "6J", "ADO": "HD", "SKY": "BC", "FDA": "JH",
                   "IBX": "FW", "APJ": "MM", "JJP": "GK"}
-SRC_LABEL = {"board": "空港の発着案内", "rararakt": "rararakt（最終手段）", "toki": "トキエア公式", "odpt": "ODPT", "ana-pdf": "ANA公式PDF", "official-pdf": "公式PDF", "live": "公式サイト",
+SRC_LABEL = {"board": "空港の発着案内", "rararakt": "rararakt", "toki": "トキエア公式", "odpt": "ODPT", "ana-pdf": "ANA公式PDF", "official-pdf": "公式PDF", "live": "公式サイト",
              "official": "公式", "bundle": "同梱"}
 
 
