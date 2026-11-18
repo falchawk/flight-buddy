@@ -19,5 +19,6 @@
     }
   },
   "include_restricted": true,
-  "_restricted_note": "MetAir図はユーザーがMetAirから個別に利用許可を得たため既定で含める（2026-11-18）。許可が無くなったら false に戻すこと。"
+  "_restricted_note": "MetAir図はユーザーがMetAirから個別に利用許可を得たため既定で含める（2026-11-18）。許可が無くなったら false に戻すこと。",
+  "foreign_airports_file": "config/foreign_airports.json"
 }

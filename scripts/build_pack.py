@@ -46,7 +46,8 @@ IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 JST = dt.timezone(dt.timedelta(hours=9))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import charts as chartlib  # noqa: E402
-import swim_staging  # noqa: E402
+import swim_staging
+import flights_pack  # noqa: E402
 
 
 def log(*a):
@@ -172,6 +173,7 @@ def chunks(lst, n):
 
 
 def fetch_airport_profiles(airports, cfg, pack_date, stations=None):
+    foreign = foreign_airports(cfg)
     static = cfg.get("airport_static", {})
     info = []
     for chunk in chunks(airports, 60):
@@ -185,7 +187,8 @@ def fetch_airport_profiles(airports, cfg, pack_date, stations=None):
         a = by.get(icao, {})
         st = static.get(icao, {})
         stn = (stations or {}).get(icao, {})
-        lat, lon = a.get("lat", stn.get("lat")), a.get("lon", stn.get("lon"))
+        fo0 = foreign.get(icao, {})
+        lat, lon = a.get("lat", stn.get("lat", fo0.get("lat"))), a.get("lon", stn.get("lon", fo0.get("lon")))
         sun = []
         if lat is not None and lon is not None:
             for d in range(2):
@@ -214,7 +217,16 @@ def fetch_airport_profiles(airports, cfg, pack_date, stations=None):
             "operatingHours": st.get("operatingHours"),
             "approaches": st.get("approaches"),
             "notes": st.get("notes"),
+            "country": (foreign or {}).get(icao, {}).get("country") or ("Japan" if (stations or {}).get(icao) else (a.get("country") or None)),
+            "foreign": icao in (foreign or {}),
+            "verified": (foreign or {}).get(icao, {}).get("verified", True),
+            "jpAirlines": (foreign or {}).get(icao, {}).get("airlines"),
         }
+        if icao in (foreign or {}):
+            fo = foreign[icao]
+            p = out["airports"][icao]
+            p["iata"] = p["iata"] or fo.get("iata")
+            p["name"] = p["name"] or fo.get("name")
     return out
 
 
@@ -368,6 +380,15 @@ def sync_issue_airports(repo):
     return icaos, {"issue": items[0]["number"], "createdAt": items[0]["createdAt"], "airports": icaos}
 
 
+def foreign_airports(cfg):
+    """海外空港（config/foreign_airports.json）。ICAO→{country, verified, airlines...}"""
+    f = cfg.get("foreign_airports_file")
+    if not f:
+        return {}
+    d = read_json(f if os.path.isabs(f) else os.path.join(ROOT, f), {}) or {}
+    return {k: v for k, v in (d.get("airports") or {}).items() if ICAO_RE.match(k)}
+
+
 def resolve_airports(cfg, override=None):
     stations = japan_stations()
     if override:
@@ -377,6 +398,7 @@ def resolve_airports(cfg, override=None):
         s |= set(stations)
     s |= {a.upper() for a in cfg.get("airports", []) + cfg.get("extra_airports", [])}
     s |= {a.upper() for a in cfg.get("default_airports", [])}
+    s |= set(foreign_airports(cfg))
     sync = None
     if cfg.get("sync_repo"):
         extra, sync = sync_issue_airports(cfg["sync_repo"])
@@ -410,7 +432,7 @@ def pack_signature(pack_dir):
         for m in e.get("metar") or []:
             h.update((m.get("raw") or "").encode())
         h.update(((e.get("taf") or {}).get("raw") or "").encode())
-    for name in ("notam.json", "brief.json", "atis.json", "airports.json"):
+    for name in ("notam.json", "brief.json", "atis.json", "airports.json", "flights.json"):
         d = read_json(os.path.join(pack_dir, name), {}) or {}
         d.pop("fetchedAt", None)
         h.update(json.dumps(d, sort_keys=True, ensure_ascii=False).encode())
@@ -547,6 +569,20 @@ def build(args):
         else:
             write_json(os.path.join(pack_dir, "atis.json"), {"ok": False, "note": "ATIS 未取得", "airports": {}})
 
+        # ---- 時刻表（FLIGHTS・DUTY 照合用。ボットが1日数回取得した staging をそのまま入れる。無ければ前回分）
+        staging_fl = read_json(args.flights_file) if args.flights_file and os.path.exists(args.flights_file) else None
+        flights = None
+        if staging_fl:
+            try:
+                flights = flights_pack.build_flights(staging_fl, profiles)
+            except Exception as e:  # noqa: BLE001
+                log("時刻表の変換失敗（前回分を使用）:", e)
+        if not flights and prev_dir:
+            flights = read_json(os.path.join(prev_dir, "flights.json"))
+            if flights and flights.get("schema") != "flight-buddy-flights/2":
+                flights = None
+        write_json(os.path.join(pack_dir, "flights.json"), flights or {"schema": "flight-buddy-flights/2", "fetchedAt": None, "carriers": [], "rows": []})
+
         duty = read_json(args.duty_file) if args.duty_file else (prev_manifest or {}).get("duty")
 
         signature = pack_signature(pack_dir)
@@ -587,7 +623,7 @@ def build(args):
         "sample": not brief["ok"],
         "duty": duty,
         "sections": {"wx": "wx.json", "notam": "notam.json", "airports": "airports.json",
-                     "brief": "brief.json", "charts": "charts.json", "atis": "atis.json"},
+                     "brief": "brief.json", "charts": "charts.json", "atis": "atis.json", "flights": "flights.json"},
         "files": files,
         "blobs": blobs,
         "packBytes": sum(f["bytes"] for f in files),
@@ -644,6 +680,7 @@ def make_parser():
     ap.add_argument("--workers", type=int, default=16, help="図の並列取得数")
     ap.add_argument("--swim-dir", help="SWIM 応答のステージングフォルダ（notam/ atis.json profile/）")
     ap.add_argument("--duty-file", help="DUTY情報JSON（任意）")
+    ap.add_argument("--flights-file", help="時刻表 JSON（flight-buddy-flights/1）")
     ap.add_argument("--keep", type=int, help="保持するパック数")
     ap.add_argument("--skip-if-unchanged", action="store_true", help="中身が前回と同じならパックを作らない")
     return ap

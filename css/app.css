@@ -264,20 +264,43 @@ label.block{margin-top:14px}
 
 @media (max-width:440px){.brand{display:none}}
 
-/* ---------- MAP（簡易・オフライン） */
-.map-box{background:var(--bg-inset);border-radius:var(--radius);overflow:hidden;border:.5px solid var(--line);box-shadow:var(--shadow);margin-top:10px}
-.map-svg{display:block;width:100%;height:auto;max-height:62vh}
-.map-svg .land.jp{fill:var(--map-land);stroke:var(--map-coast);stroke-width:1.2}
-.map-svg .land.other{fill:var(--map-land-other);stroke:var(--map-coast);stroke-width:.8}
-.map-svg .dot{stroke:var(--bg-inset);stroke-width:1.5}
-.map-svg .dot.VFR{fill:var(--vfr)}.map-svg .dot.MVFR{fill:var(--mvfr)}.map-svg .dot.IFR{fill:var(--ifr)}.map-svg .dot.LIFR{fill:var(--lifr)}.map-svg .dot.NA{fill:var(--text-faint)}
-.map-svg .ring{fill:none;stroke:var(--text);stroke-width:2}
-.map-svg .lbl{font-size:16px;font-weight:700;fill:var(--text);paint-order:stroke;stroke:var(--bg-inset);stroke-width:4px;font-family:ui-monospace,"SF Mono",Menlo,monospace}
-.map-svg .hit{fill:transparent;cursor:pointer}
-.map-legend{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 2px}
-:root{--map-land:#1f2c44;--map-land-other:#172235;--map-coast:#3a4d6e}
-:root[data-theme="light"]{--map-land:#dfe6ef;--map-land-other:#e9edf3;--map-coast:#9fb0c6}
-@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--map-land:#dfe6ef;--map-land-other:#e9edf3;--map-coast:#9fb0c6}}
+/* ---------- MAP（Leaflet＋同梱基図） */
+.tab-panel.map-panel{padding:0;overflow:hidden}
+.map-panel .map-box{position:absolute;inset:0;background:var(--map-sea)}
+.map-overlay{position:absolute;left:10px;bottom:10px;z-index:500;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.map-legend{display:flex;gap:4px;flex-wrap:wrap}
+.map-meta{font-size:11px;font-weight:600;color:var(--text-dim);background:var(--bg-panel);padding:4px 9px;border-radius:999px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.map-meta:empty{display:none}
+.leaflet-container{background:var(--map-sea);font-family:inherit}
+.fb-land{fill:var(--map-land);stroke:var(--map-coast)}
+.fb-grat{stroke:var(--text);stroke-opacity:.12}
+.fb-grat-lbl{font-size:9px;font-variant-numeric:tabular-nums;color:var(--text-dim);white-space:nowrap;text-shadow:0 0 3px var(--map-sea)}
+.fb-ap.leaflet-marker-icon{position:absolute}
+.fb-ap .dot{position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;border:1.5px solid var(--map-sea)}
+.fb-ap.sel .dot{width:14px;height:14px;margin:-7px 0 0 -7px;border-width:2px}
+.fb-ap .ring{position:absolute;inset:0;border-radius:50%;border:2px solid var(--text);opacity:.85}
+.fb-ap .ap-code{position:absolute;left:28px;top:5px;font:700 12px ui-monospace,"SF Mono",Menlo,monospace;color:var(--text);text-shadow:0 0 3px var(--map-sea),0 0 3px var(--map-sea);white-space:nowrap}
+.fb-pos.leaflet-marker-icon{position:absolute}
+.fb-pos .halo{position:absolute;inset:0;border-radius:50%;background:rgba(41,182,246,.28)}
+.fb-pos svg{position:absolute;left:9px;top:9px;filter:drop-shadow(0 0 2px rgba(0,0,0,.6))}
+.fb-kashima{color:var(--text-dim);opacity:.85}
+.fb-map-btn{width:36px;height:36px;border-radius:10px!important;border:none!important;background:var(--bg-panel)!important;color:var(--accent);display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow)}
+.fb-map-btn svg{width:20px;height:20px}
+.fb-map-btn.fb-tiles-btn{color:var(--text-dim)}.fb-map-btn.fb-tiles-btn.on{color:var(--accent)}
+.fb-map-btn:disabled{opacity:.45}
+.leaflet-bar{border:none!important;box-shadow:var(--shadow)!important;border-radius:10px!important;overflow:hidden}
+.leaflet-bar a{background:var(--bg-panel)!important;color:var(--text)!important;border-bottom:.5px solid var(--line)!important}
+.leaflet-control-attribution{background:var(--bg-panel)!important;color:var(--text-dim)!important;font-size:9px!important;border-radius:6px 0 0 0}
+.leaflet-control-attribution a{color:var(--text-dim)!important}
+.fb-popup .leaflet-popup-content-wrapper,.fb-popup .leaflet-popup-tip{background:var(--bg-card);color:var(--text);border-radius:var(--radius);box-shadow:var(--shadow)}
+.fb-popup .leaflet-popup-content{margin:12px 14px;font-size:13px;line-height:1.5;min-width:220px}
+.fb-popup .raw{font-size:12px;padding:7px 9px}
+.pop-title{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.pop-title .codes{color:var(--accent);font:600 12px ui-monospace,"SF Mono",Menlo,monospace}
+.leaflet-tooltip{background:var(--bg-card);color:var(--text);border:none;border-radius:8px;box-shadow:var(--shadow);font-size:12px}
+:root{--map-sea:#0b1424;--map-land:#1c2940;--map-coast:#34486a}
+:root[data-theme="light"]{--map-sea:#dbe6f2;--map-land:#f7f8fa;--map-coast:#9cadc4}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--map-sea:#dbe6f2;--map-land:#f7f8fa;--map-coast:#9cadc4}}
 
 /* ---------- 未対応タブの印 */
 .tab-btn{position:relative}
@@ -285,3 +308,21 @@ label.block{margin-top:14px}
 .notice-card .card-title{font-size:16px}
 .wx-cards{padding:0 10px 4px}
 @media (max-width:480px){.tab-btn{min-width:0;font-size:9px;letter-spacing:0}.tab-btn svg{width:22px;height:22px}}
+/* FLIGHTS */
+.flight-list{list-style:none;padding:0;margin:8px 0;background:var(--bg-card);border-radius:var(--radius);overflow:hidden;border:.5px solid var(--line);box-shadow:var(--shadow)}
+.fl-row{padding:11px 16px;position:relative}
+.fl-row+.fl-row::before{content:"";position:absolute;left:16px;right:0;top:0;border-top:.5px solid var(--line)}
+.fl-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:15px}
+.fl-num{font-family:ui-monospace,"SF Mono",Menlo,monospace;color:var(--accent);min-width:64px}
+.fl-route{font-variant-numeric:tabular-nums}
+.fl-off{opacity:.55}
+#fl-search{width:100%;margin:8px 0}
+#fl-status-box{margin-top:14px;padding:12px 14px}
+#fl-status-box summary{cursor:pointer;font-weight:600}
+.tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;margin-top:8px;border:.5px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+.tbl th,.tbl td{padding:7px 9px;text-align:left;border-bottom:.5px solid var(--line);vertical-align:top}
+.tbl tr:last-child td{border-bottom:none}
+.tbl th{background:var(--bg-inset);font-weight:600}
+/* SETTINGS 国別 */
+.ap-group{margin:6px 0}
+.ap-group summary{cursor:pointer;padding:10px 4px;font-weight:600}

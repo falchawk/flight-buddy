@@ -97,6 +97,22 @@ def publish():
     return size
 
 
+FLIGHTS_RUNNER = "/workspace/fb-flights/run.js"   # 旧 wx-brief の時刻表取得コード（リポジトリ外。公開しない）
+FLIGHTS_MAX_AGE_H = 6
+
+
+def refresh_flights(path):
+    """時刻表は1日数回で十分（6時間より古い時だけ取り直す）。失敗しても本体の更新は続ける。"""
+    if not os.path.exists(FLIGHTS_RUNNER):
+        return "no-runner"
+    if os.path.exists(path) and time.time() - os.path.getmtime(path) < FLIGHTS_MAX_AGE_H * 3600:
+        return "fresh"
+    r = subprocess.run(["node", FLIGHTS_RUNNER, path], capture_output=True, text=True, timeout=150)
+    line = (r.stdout.strip().splitlines() or [""])[-1]
+    log(line or r.stderr.strip()[-300:])
+    return "updated" if r.returncode == 0 else "failed"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--charts-dir", help="任意: 追加の図フォルダ（通常は不要）")
@@ -104,6 +120,7 @@ def main():
     ap.add_argument("--brief", default="/workspace/fb-staging/brief.md")
     ap.add_argument("--notam-file", default="/workspace/fb-staging/notam.json")
     ap.add_argument("--duty-file", default="/workspace/fb-staging/duty.json")
+    ap.add_argument("--flights-file", default="/workspace/fb-staging/flights.json")
     ap.add_argument("--no-publish", action="store_true")
     ap.add_argument("--force", action="store_true", help="変化が無くても新しいパックを作って公開")
     a = ap.parse_args()
@@ -132,6 +149,9 @@ def main():
             argv += ["--brief", a.brief]
         if os.path.exists(a.notam_file):
             argv += ["--notam-file", a.notam_file]
+        fl = refresh_flights(a.flights_file)
+        if os.path.exists(a.flights_file):
+            argv += ["--flights-file", a.flights_file]
         if os.path.exists(a.duty_file):
             argv += ["--duty-file", a.duty_file]
         r = build_pack.build(build_pack.make_parser().parse_args(argv))
@@ -144,7 +164,7 @@ def main():
         print(f"FLIGHT-BUDDY OK pack={r['packId']} airports={r['airports']} frames={r['charts']}({r['chartMode']}) "
               f"images={r.get('blobs', '-')} packMB={(r.get('bytes') or 0) / 1e6:.1f} tarMB={size / 1e6:.1f} "
               f"fetch={st.get('seconds', '-')}s req={st.get('requests', '-')} chartErrors={len(errs)} "
-              f"changed={'yes' if r['changed'] else 'no'} pushed={'yes' if pushed else 'no'} time={time.time() - t0:.0f}s")
+              f"flights={fl} changed={'yes' if r['changed'] else 'no'} pushed={'yes' if pushed else 'no'} time={time.time() - t0:.0f}s")
         for e in errs[:20]:
             print("  chart-error:", e)
         return 0

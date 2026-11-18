@@ -1,0 +1,844 @@
+{
+ "_note": "日本の航空会社が運航・フェリー等で使う海外空港（ユーザー決定 2026-11-18）。airports=確認済み、unverified=出典が弱いもの。excluded は使わない。",
+ "generated": "2026-11-18",
+ "airports": {
+  "RCTP": {
+   "icao": "RCTP",
+   "iata": "TPE",
+   "name": "Taiwan Taoyuan International Airport",
+   "country": "Taiwan",
+   "airlines": [
+    "6J",
+    "7G",
+    "BC",
+    "GK",
+    "HD",
+    "MM"
+   ],
+   "kind": [
+    "charter",
+    "ferry",
+    "scheduled"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/158796"
+  },
+  "RKPK": {
+   "icao": "RKPK",
+   "iata": "PUS",
+   "name": "Gimhae International Airport (Busan)",
+   "country": "South Korea",
+   "airlines": [
+    "7G",
+    "MM"
+   ],
+   "kind": [
+    "charter",
+    "former",
+    "scheduled"
+   ],
+   "verified": true,
+   "source": "https://ja.wikipedia.org/wiki/%E3%82%B9%E3%82%BF%E3%83%BC%E3%83%95%E3%83%A9%E3%82%A4%E3%83%A4%E3%83%BC"
+  },
+  "PGUM": {
+   "icao": "PGUM",
+   "iata": "GUM",
+   "name": "Antonio B. Won Pat International Airport (Guam)",
+   "country": "Guam (US)",
+   "airlines": [
+    "7G",
+    "BC"
+   ],
+   "kind": [
+    "charter",
+    "ferry",
+    "former"
+   ],
+   "verified": true,
+   "source": "http://www.aviationwire.jp/archives/24226"
+  },
+  "VHHH": {
+   "icao": "VHHH",
+   "iata": "HKG",
+   "name": "Hong Kong International Airport",
+   "country": "Hong Kong",
+   "airlines": [
+    "7G",
+    "GK",
+    "JH",
+    "MM"
+   ],
+   "kind": [
+    "charter",
+    "ferry",
+    "scheduled"
+   ],
+   "verified": true,
+   "source": "https://en.wikipedia.org/wiki/StarFlyer"
+  },
+  "RKSI": {
+   "icao": "RKSI",
+   "iata": "ICN",
+   "name": "Incheon International Airport (Seoul)",
+   "country": "South Korea",
+   "airlines": [
+    "6J",
+    "7G",
+    "BC",
+    "MM"
+   ],
+   "kind": [
+    "charter",
+    "scheduled"
+   ],
+   "verified": true,
+   "source": "http://www.starflyer.jp/starflyer/news/2010/news_20110215.pdf"
+  },
+  "RKJB": {
+   "icao": "RKJB",
+   "iata": "MWX",
+   "name": "Muan International Airport",
+   "country": "South Korea",
+   "airlines": [
+    "7G"
+   ],
+   "kind": [
+    "charter"
+   ],
+   "verified": true,
+   "source": "https://ja.wikipedia.org/wiki/%E3%82%B9%E3%82%BF%E3%83%BC%E3%83%95%E3%83%A9%E3%82%A4%E3%83%A4%E3%83%BC"
+  },
+  "VMMC": {
+   "icao": "VMMC",
+   "iata": "MFM",
+   "name": "Macau International Airport",
+   "country": "Macau",
+   "airlines": [
+    "7G",
+    "JH"
+   ],
+   "kind": [
+    "charter",
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://ja.wikipedia.org/wiki/%E3%82%B9%E3%82%BF%E3%83%BC%E3%83%95%E3%83%A9%E3%82%A4%E3%83%A4%E3%83%BC"
+  },
+  "RCSS": {
+   "icao": "RCSS",
+   "iata": "TSA",
+   "name": "Taipei Songshan Airport",
+   "country": "Taiwan",
+   "airlines": [
+    "7G"
+   ],
+   "kind": [
+    "charter"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/46674"
+  },
+  "RPLL": {
+   "icao": "RPLL",
+   "iata": "MNL",
+   "name": "Ninoy Aquino International Airport (Manila)",
+   "country": "Philippines",
+   "airlines": [
+    "7G",
+    "GK"
+   ],
+   "kind": [
+    "ferry",
+    "scheduled"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/26747"
+  },
+  "LFBO": {
+   "icao": "LFBO",
+   "iata": "TLS",
+   "name": "Toulouse-Blagnac Airport",
+   "country": "France",
+   "airlines": [
+    "7G",
+    "BC",
+    "GK",
+    "MM"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/279537"
+  },
+  "OMDW": {
+   "icao": "OMDW",
+   "iata": "DWC",
+   "name": "Al Maktoum International Airport (Dubai World Central)",
+   "country": "United Arab Emirates",
+   "airlines": [
+    "7G",
+    "JH"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/279537"
+  },
+  "VTBU": {
+   "icao": "VTBU",
+   "iata": "UTP",
+   "name": "U-Tapao-Rayong-Pattaya International Airport",
+   "country": "Thailand",
+   "airlines": [
+    "7G"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/279537"
+  },
+  "RCKH": {
+   "icao": "RCKH",
+   "iata": "KHH",
+   "name": "Kaohsiung International Airport",
+   "country": "Taiwan",
+   "airlines": [
+    "6J",
+    "GK",
+    "HD",
+    "JH",
+    "MM"
+   ],
+   "kind": [
+    "charter",
+    "ferry",
+    "scheduled"
+   ],
+   "verified": true,
+   "source": "https://www.airdo.jp/corporate/info/history/"
+  },
+  "KBFI": {
+   "icao": "KBFI",
+   "iata": "BFI",
+   "name": "Boeing Field / King County International Airport (Seattle)",
+   "country": "United States",
+   "airlines": [
+    "6J",
+    "BC"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/159089"
+  },
+  "PANC": {
+   "icao": "PANC",
+   "iata": "ANC",
+   "name": "Ted Stevens Anchorage International Airport",
+   "country": "United States",
+   "airlines": [
+    "6J",
+    "BC"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/159089"
+  },
+  "PGSN": {
+   "icao": "PGSN",
+   "iata": "SPN",
+   "name": "Saipan International Airport",
+   "country": "Northern Mariana Islands (US)",
+   "airlines": [
+    "BC"
+   ],
+   "kind": [
+    "charter",
+    "former",
+    "scheduled"
+   ],
+   "verified": true,
+   "source": "https://ja.wikipedia.org/wiki/%E3%82%B9%E3%82%AB%E3%82%A4%E3%83%9E%E3%83%BC%E3%82%AF"
+  },
+  "PTRO": {
+   "icao": "PTRO",
+   "iata": "ROR",
+   "name": "Roman Tmetuchl International Airport (Palau)",
+   "country": "Palau",
+   "airlines": [
+    "BC"
+   ],
+   "kind": [
+    "charter",
+    "former"
+   ],
+   "verified": true,
+   "source": "https://ja.wikipedia.org/wiki/%E3%82%B9%E3%82%AB%E3%82%A4%E3%83%9E%E3%83%BC%E3%82%AF"
+  },
+  "PHKO": {
+   "icao": "PHKO",
+   "iata": "KOA",
+   "name": "Kona International Airport (Hawaii)",
+   "country": "United States",
+   "airlines": [
+    "BC"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/342927"
+  },
+  "SBSJ": {
+   "icao": "SBSJ",
+   "iata": "SJK",
+   "name": "São José dos Campos Airport (Embraer)",
+   "country": "Brazil",
+   "airlines": [
+    "JH"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.fujidream.co.jp/company/press/doc/180314_2.pdf"
+  },
+  "SBRF": {
+   "icao": "SBRF",
+   "iata": "REC",
+   "name": "Recife/Guararapes–Gilberto Freyre International Airport",
+   "country": "Brazil",
+   "airlines": [
+    "JH"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/203127"
+  },
+  "GVAC": {
+   "icao": "GVAC",
+   "iata": "SID",
+   "name": "Amílcar Cabral International Airport (Sal)",
+   "country": "Cabo Verde",
+   "airlines": [
+    "JH"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/203127"
+  },
+  "LEAM": {
+   "icao": "LEAM",
+   "iata": "LEI",
+   "name": "Almería Airport",
+   "country": "Spain",
+   "airlines": [
+    "JH"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/203127"
+  },
+  "LCLK": {
+   "icao": "LCLK",
+   "iata": "LCA",
+   "name": "Larnaca International Airport",
+   "country": "Cyprus",
+   "airlines": [
+    "JH"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/203127"
+  },
+  "VEBN": {
+   "icao": "VEBN",
+   "iata": "VNS",
+   "name": "Lal Bahadur Shastri Airport (Varanasi)",
+   "country": "India",
+   "airlines": [
+    "JH"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/203127"
+  },
+  "VVDN": {
+   "icao": "VVDN",
+   "iata": "DAD",
+   "name": "Da Nang International Airport",
+   "country": "Vietnam",
+   "airlines": [
+    "JH"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/203127"
+  },
+  "SBNT": {
+   "icao": "SBNT",
+   "iata": "NAT",
+   "name": "Natal International Airport",
+   "country": "Brazil",
+   "airlines": [
+    "JH"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.traicy.com/posts/20190325107557/"
+  },
+  "KCMH": {
+   "icao": "KCMH",
+   "iata": "CMH",
+   "name": "John Glenn Columbus International Airport (Port Columbus)",
+   "country": "United States",
+   "airlines": [
+    "JH"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.traicy.com/posts/20240309292726/"
+  },
+  "CYYT": {
+   "icao": "CYYT",
+   "iata": "YYT",
+   "name": "St. John's International Airport",
+   "country": "Canada",
+   "airlines": [
+    "JH"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.traicy.com/posts/20240309292726/"
+  },
+  "LPPD": {
+   "icao": "LPPD",
+   "iata": "PDL",
+   "name": "João Paulo II Airport (Ponta Delgada, Azores)",
+   "country": "Portugal",
+   "airlines": [
+    "JH"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.traicy.com/posts/20240309292726/"
+  },
+  "VECC": {
+   "icao": "VECC",
+   "iata": "CCU",
+   "name": "Netaji Subhas Chandra Bose International Airport (Kolkata)",
+   "country": "India",
+   "airlines": [
+    "JH"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.traicy.com/posts/20240309292726/"
+  },
+  "CYMX": {
+   "icao": "CYMX",
+   "iata": "YMX",
+   "name": "Montréal–Mirabel International Airport",
+   "country": "Canada",
+   "airlines": [
+    "FW"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.traicy.com/posts/20141022163336/"
+  },
+  "RKSS": {
+   "icao": "RKSS",
+   "iata": "GMP",
+   "name": "Gimpo International Airport (Seoul)",
+   "country": "South Korea",
+   "airlines": [
+    "MM"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "source": "https://ja.wikipedia.org/wiki/Peach_Aviation"
+  },
+  "ZSPD": {
+   "icao": "ZSPD",
+   "iata": "PVG",
+   "name": "Shanghai Pudong International Airport",
+   "country": "China",
+   "airlines": [
+    "GK",
+    "MM"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "source": "https://ja.wikipedia.org/wiki/Peach_Aviation"
+  },
+  "VTBS": {
+   "icao": "VTBS",
+   "iata": "BKK",
+   "name": "Suvarnabhumi Airport (Bangkok)",
+   "country": "Thailand",
+   "airlines": [
+    "MM"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "source": "https://ja.wikipedia.org/wiki/Peach_Aviation"
+  },
+  "WSSS": {
+   "icao": "WSSS",
+   "iata": "SIN",
+   "name": "Singapore Changi Airport",
+   "country": "Singapore",
+   "airlines": [
+    "MM"
+   ],
+   "kind": [
+    "scheduled"
+   ],
+   "verified": true,
+   "source": "https://ja.wikipedia.org/wiki/Peach_Aviation"
+  },
+  "UACC": {
+   "icao": "UACC",
+   "iata": "NQZ",
+   "name": "Astana (Nursultan Nazarbayev) International Airport",
+   "country": "Kazakhstan",
+   "airlines": [
+    "MM"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/211719"
+  },
+  "EDHI": {
+   "icao": "EDHI",
+   "iata": "XFW",
+   "name": "Hamburg-Finkenwerder Airport (Airbus)",
+   "country": "Germany",
+   "airlines": [
+    "GK",
+    "MM"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/241118"
+  },
+  "OMAA": {
+   "icao": "OMAA",
+   "iata": "AUH",
+   "name": "Abu Dhabi International Airport",
+   "country": "United Arab Emirates",
+   "airlines": [
+    "GK"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/253145"
+  },
+  "VVNB": {
+   "icao": "VVNB",
+   "iata": "HAN",
+   "name": "Noi Bai International Airport (Hanoi)",
+   "country": "Vietnam",
+   "airlines": [
+    "GK"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/253145"
+  },
+  "LFBF": {
+   "icao": "LFBF",
+   "iata": "",
+   "name": "Toulouse-Francazal Airport",
+   "country": "France",
+   "airlines": [
+    "GK"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/350954",
+   "lat": 43.5456,
+   "lon": 1.3678,
+   "coordNote": "座標は手入力の目安（AWC空港APIに無いため）"
+  },
+  "UBBB": {
+   "icao": "UBBB",
+   "iata": "GYD",
+   "name": "Heydar Aliyev International Airport (Baku)",
+   "country": "Azerbaijan",
+   "airlines": [
+    "GK"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/350954"
+  },
+  "UAAA": {
+   "icao": "UAAA",
+   "iata": "ALA",
+   "name": "Almaty International Airport",
+   "country": "Kazakhstan",
+   "airlines": [
+    "GK"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": true,
+   "source": "https://www.aviationwire.jp/archives/350954"
+  },
+  "OMDB": {
+   "icao": "OMDB",
+   "iata": "DXB",
+   "name": "Dubai International Airport",
+   "country": "United Arab Emirates",
+   "airlines": [
+    "GK",
+    "JH"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": false,
+   "source": "https://www.aussieairliners.org/a320/vh-yxu/vh-yxu.html"
+  },
+  "ZSJN": {
+   "icao": "ZSJN",
+   "iata": "TNA",
+   "name": "Jinan Yaoqiang International Airport",
+   "country": "China",
+   "airlines": [
+    "HD"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": false,
+   "source": "https://ja.wikipedia.org/wiki/AIRDO"
+  },
+  "LBSF": {
+   "icao": "LBSF",
+   "iata": "SOF",
+   "name": "Sofia Airport",
+   "country": "Bulgaria",
+   "airlines": [
+    "7G"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": false,
+   "source": "https://www.aviationwire.jp/archives/46674"
+  },
+  "VAAH": {
+   "icao": "VAAH",
+   "iata": "AMD",
+   "name": "Sardar Vallabhbhai Patel International Airport (Ahmedabad)",
+   "country": "India",
+   "airlines": [
+    "7G"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": false,
+   "source": "https://flyteam.jp/news/article/139622"
+  },
+  "LGTS": {
+   "icao": "LGTS",
+   "iata": "SKG",
+   "name": "Thessaloniki Airport",
+   "country": "Greece",
+   "airlines": [
+    "7G"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": false,
+   "source": "https://flyteam.jp/news/article/139622"
+  },
+  "LFMT": {
+   "icao": "LFMT",
+   "iata": "MPL",
+   "name": "Montpellier–Méditerranée Airport",
+   "country": "France",
+   "airlines": [
+    "7G"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": false,
+   "source": "https://flyteam.jp/news/article/139622"
+  },
+  "ESSA": {
+   "icao": "ESSA",
+   "iata": "ARN",
+   "name": "Stockholm Arlanda Airport",
+   "country": "Sweden",
+   "airlines": [
+    "FW"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": false,
+   "source": "https://flyteam.jp/news/article/133753"
+  },
+  "WSSL": {
+   "icao": "WSSL",
+   "iata": "XSP",
+   "name": "Seletar Airport (Singapore)",
+   "country": "Singapore",
+   "airlines": [
+    "GK",
+    "MM"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": false,
+   "source": "https://www.aviationwire.jp/archives/175250"
+  },
+  "WMKK": {
+   "icao": "WMKK",
+   "iata": "KUL",
+   "name": "Kuala Lumpur International Airport",
+   "country": "Malaysia",
+   "airlines": [
+    "MM"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": false,
+   "source": "https://www.aviationwire.jp/archives/178279"
+  },
+  "YPDN": {
+   "icao": "YPDN",
+   "iata": "DRW",
+   "name": "Darwin International Airport",
+   "country": "Australia",
+   "airlines": [
+    "GK"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": false,
+   "source": "https://www.aussieairliners.org/a320/vh-yxu/vh-yxu.html"
+  },
+  "YPAS": {
+   "icao": "YPAS",
+   "iata": "ASP",
+   "name": "Alice Springs Airport",
+   "country": "Australia",
+   "airlines": [
+    "GK"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": false,
+   "source": "https://www.aussieairliners.org/a320/vh-yxu/vh-yxu.html",
+   "lat": -23.8067,
+   "lon": 133.9022,
+   "coordNote": "名称・IATA(ASP)はアリススプリングス（正しいICAOは YBAS の可能性）。座標はアリススプリングスの目安"
+  },
+  "LOWW": {
+   "icao": "LOWW",
+   "iata": "VIE",
+   "name": "Vienna International Airport",
+   "country": "Austria",
+   "airlines": [
+    "BC"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": false,
+   "source": "https://ja.wikipedia.org/wiki/%E3%82%B9%E3%82%AB%E3%82%A4%E3%83%9E%E3%83%BC%E3%82%AF"
+  },
+  "LETL": {
+   "icao": "LETL",
+   "iata": "TEV",
+   "name": "Teruel Airport",
+   "country": "Spain",
+   "airlines": [
+    "BC"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": false,
+   "source": "https://ja.wikipedia.org/wiki/%E3%82%B9%E3%82%AB%E3%82%A4%E3%83%9E%E3%83%BC%E3%82%AF",
+   "lat": 40.4031,
+   "lon": -1.2181,
+   "coordNote": "座標は手入力の目安（AWC空港APIに無いため）"
+  },
+  "KMZJ": {
+   "icao": "KMZJ",
+   "iata": "MZJ",
+   "name": "Pinal Airpark (Marana, Arizona)",
+   "country": "United States",
+   "airlines": [
+    "BC"
+   ],
+   "kind": [
+    "ferry"
+   ],
+   "verified": false,
+   "source": "https://ja.wikipedia.org/wiki/%E3%82%B9%E3%82%AB%E3%82%A4%E3%83%9E%E3%83%BC%E3%82%AF"
+  }
+ }
+}

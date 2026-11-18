@@ -4,11 +4,11 @@
 // - data/blobs/* は内容アドレスの画像。fb-blobs から返す（cache-first・パック間で共有）
 // - 外部（Windy等）は一切キャッシュしない（オンライン専用）
 // - data/latest/*, data/index.json は network-first（オフライン時はキャッシュ）
-const VERSION = 'v1.3.0';
+const VERSION = 'v1.4.0';
 const SHELL_CACHE = `fb-shell-${VERSION}`;
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
-  'js/airports-data.js', 'js/map-data.js', 'js/sun.js', 'js/tas.js', 'js/wx.js', 'js/pack.js', 'js/viewer.js', 'js/app.js',
+  'js/airports-data.js', 'js/map.js', 'js/flights.js', 'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css', 'vendor/basemap.js', 'vendor/leaflet/images/layers.png', 'vendor/leaflet/images/layers-2x.png', 'vendor/leaflet/images/marker-icon.png', 'vendor/leaflet/images/marker-icon-2x.png', 'vendor/leaflet/images/marker-shadow.png', 'js/sun.js', 'js/tas.js', 'js/wx.js', 'js/pack.js', 'js/viewer.js', 'js/app.js',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 
