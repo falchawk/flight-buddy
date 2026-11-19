@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.14';
+  const APP_VERSION = '1.9.15';
   const REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
@@ -133,6 +133,7 @@
     btns.forEach((b) => b.addEventListener('click', () => go(b.dataset.tab)));
     let t0 = lsGet(LS.tab, 'map');
     if (t0 === 'charts') t0 = 'wx'; // 旧版（v1.2）のCHARTSタブは WX に統合
+    if (t0 === 'brief') { t0 = 'wx'; chartSel.cat = 'brief'; saveSel(); } // BRIEF は WX の最初のサブタブに移動（保存済みのタブが BRIEF なら WX → BRIEF を開く）
     if (!document.getElementById(`tab-${t0}`)) t0 = 'map';
     go(t0);
     go.current = () => lsGet(LS.tab, 'map');
@@ -287,13 +288,17 @@
     const meta = $('charts-meta'), catsNav = $('chart-cats'), itemsNav = $('chart-items'), vbox = $('chart-variants'), body = $('chart-body');
     catsNav.innerHTML = ''; itemsNav.innerHTML = ''; vbox.innerHTML = ''; body.innerHTML = '';
     if (state.pack?.manifest?.packId !== chartsPackId) { for (const k of Object.keys(frameIdx)) delete frameIdx[k]; chartsPackId = state.pack?.manifest?.packId; }
-    if (!ch) { meta.textContent = 'パックがありません。'; return; }
-    const cats = chartCats();
-    if (!cats.length) { meta.innerHTML = '<span class="hint">このパックには図がありません（旧形式のパック）。更新をお待ちください。</span>'; return; }
-    const errs = ch.errors || [];
-    meta.innerHTML = `取得 ${esc(fmtJst(ch.fetchedAt))}（${esc(ageText(ch.fetchedAt))}）・ 端末に保存済み（Windy 以外はオフライン表示可）${errs.length ? ` <details class="chart-errors"><summary>今回取得できなかった図 ${errs.length}件</summary><div class="hint">${errs.map(esc).join('<br>')}</div></details>` : ''}`;
+    // WX の最初のサブタブ＝BRIEF（旧・独立タブ）。最後に選んだサブタブは従来どおり覚えている。初めて開いた時の既定は BRIEF
+    const cats = [{ id: 'brief', label: 'BRIEF' }, ...chartCats()];
     let cat = cats.find((c) => c.id === chartSel.cat) || cats[0];
     cats.forEach((c) => catsNav.appendChild(chip(c.label, c === cat, () => { chartSel.cat = c.id; saveSel(); renderCharts(); })));
+    const isBrief = cat.id === 'brief';
+    $('brief-pane').hidden = !isBrief; meta.hidden = isBrief;
+    if (isBrief) { meta.innerHTML = ''; renderBrief(); return; }
+    if (!ch) { meta.textContent = 'パックがありません。'; return; }
+    if (cats.length < 2) { meta.innerHTML = '<span class="hint">このパックには図がありません（旧形式のパック）。更新をお待ちください。</span>'; return; }
+    const errs = ch.errors || [];
+    meta.innerHTML = `取得 ${esc(fmtJst(ch.fetchedAt))}（${esc(ageText(ch.fetchedAt))}）・ 端末に保存済み（Windy 以外はオフライン表示可）${errs.length ? ` <details class="chart-errors"><summary>今回取得できなかった図 ${errs.length}件</summary><div class="hint">${errs.map(esc).join('<br>')}</div></details>` : ''}`;
     const items = cat.items || [];
     let item = items.find((it) => it.id === chartSel.item[cat.id]) || items[cat.defaultItem || 0] || items[0];
     if (items.length > 1) items.forEach((it) => itemsNav.appendChild(chip(it.label, it === item, () => { chartSel.item[cat.id] = it.id; saveSel(); renderCharts(); })));
@@ -770,7 +775,7 @@
   // ---------------------------------------------------------------- pack flow
   function renderAll() {
     const dutyChanged = applyDutyDefault();
-    renderStatus(); renderBrief(); renderMap(); renderCharts(); renderNotam(); renderAirport(); renderDuty(); renderFlights(); renderSwimStatus();
+    renderStatus(); renderMap(); renderCharts(); renderNotam(); renderAirport(); renderDuty(); renderFlights(); renderSwimStatus();
     setupAirportPicker.renderSel && setupAirportPicker.renderSel();
     renderPackInfo();
     if (dutyChanged) ensureAirports();   // 自動入力した便の空港をこの端末にもダウンロード
