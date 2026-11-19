@@ -30,6 +30,7 @@ SRC_KOSA = "気象庁 Japan Meteorological Agency"
 SRC_SORA = "環境省 そらまめ君（速報値）／作図 国立環境研究所 環境展望台 CC BY 4.0"
 SRC_VENUS = "国立環境研究所 大気汚染予測システム VENUS（https://venus.nies.go.jp/）CC BY-NC 4.0"
 PART_FILE = "dust_parts.json"
+CACHE_V = 2
 
 
 def _stamp_utc(s):
@@ -173,6 +174,8 @@ def collect(F, errors):
     res = {}
     for name, fn in jobs.items():
         c = cache.get(name)
+        if c and c.get("v") != CACHE_V:
+            c = None   # 旧形式（v1.9.8 の全コマ版）の保存分は使わない
         have = c and c.get("part") and _ok_blobs(F, c["part"])
         if have and not schedule.is_due(name):
             res[name] = c["part"]
@@ -188,7 +191,7 @@ def collect(F, errors):
             ok = _stamp_jst(newest).astimezone(JST).date() >= (now.astimezone(JST) + dt.timedelta(days=3)).date()
         schedule.record(name, ok)
         if part:
-            cache[name] = {"part": part, "at": C.iso(now)}
+            cache[name] = {"part": part, "at": C.iso(now), "v": CACHE_V}
             res[name] = part
         elif have:
             res[name] = c["part"]   # 取れなかった時は前回分

@@ -183,6 +183,8 @@ label.block{margin-top:14px}
 .chart-stage .hint{padding:34px 14px;text-align:center}
 .chart-stage .zoom-hint{position:absolute;right:8px;bottom:8px;background:rgba(10,17,29,.7);color:#e6edf7;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;pointer-events:none}
 .fr img{display:block;user-select:none;-webkit-user-select:none}
+/* 透過PNG（三十分大気解析・レーダー系の重ね図など）はダークの下地で線が埋もれるので、図は不透明の白地にする（画像は反転しない）。重ね図の上のレイヤーは透過のまま */
+.fr img:not(.layer),.fr-layers{background:#fff}
 .fr-inline img{width:100%;height:auto}
 .fr-row{display:flex;gap:4px;align-items:flex-start}
 .fr-inline.fr-row img{width:calc(50% - 2px)}
