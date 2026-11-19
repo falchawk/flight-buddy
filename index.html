@@ -23,7 +23,7 @@
 <body>
 <div id="app">
   <header class="app-header">
-    <div class="brand"><span class="brand-name">Flight Buddy</span><img class="brand-emb" src="icons/brand-fb-72.png" alt="Flight Buddy" width="26" height="26" draggable="false"></div>
+    <div class="brand"><span class="brand-name">Flight Buddy</span><img class="brand-emb" src="icons/brand-fb-96.png" alt="Flight Buddy" width="32" height="32" draggable="false"></div>
     <div class="header-status">
       <span id="clock" class="pill clock">--</span>
       <span id="net-pill" class="pill">--</span>
@@ -155,7 +155,6 @@
       <ul id="ap-selected" class="airport-list selected"></ul>
       <div id="ap-sync"></div>
       <p class="hint">ボットはパックの全空港（METAR/TAF のある国内空港すべて＋日本の航空会社が過去・現在に使った海外空港。国別一覧から選べます）を取得しています（国内：METAR/TAF・ATIS・図は15分ごと、NOTAM は6時間ごと＝00/06/12/18時、空港情報と時刻表は1日1回＝4時台。海外：METAR/TAF は1時間ごと、空港情報は週1回＝月曜4時台）。この端末はここで選んだ空港の分だけダウンロード・表示します（端末内の設定。選択を増やした空港はオンライン時に自動で取得。オフラインでは保存済みの空港だけ表示）。下の国別一覧からも追加できます。</p>
-      <div id="ap-browse"></div>
       <h3>SWIM（ATIS・NOTAM・空港情報）</h3>
       <p class="hint">SWIM は box 上で国内の全空港を取得：ATIS と空港プロファイル（METAR/TAF 本文を含む）は15分ごと、NOTAM は6時間ごと（00/06/12/18時 JST）、AIP（AD 2・Lost Comm）は1日1回（4時台 JST。AIRAC の版が変わった空港だけ PDF を取り直し）。取りこぼした時は次の回で追いつきます。ID・パスワードは box の環境変数だけにあり、この端末とパックには入りません。下は最新パックの取得状況です。</p>
       <div id="swim-status" class="hint"></div>
@@ -168,6 +167,7 @@
       <h3>ABOUT</h3>
       <p class="hint">データ更新は Grok Bot が地上で行い、このアプリは静的ファイル（GitHub Pages）として動きます。一度オンラインで開くと、最新パック（画像含む）が端末に保存され、機内モードでも表示できます。ID・パスワードはこのアプリには保存しません。</p>
       <p class="hint" id="app-version"></p>
+      <div id="ap-browse"></div>
     </section>
   </main>
 
