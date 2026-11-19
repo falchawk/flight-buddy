@@ -517,6 +517,8 @@ def merge_prev_products(new, prev):
                 if old and old.get("variants"):
                     it["product"] = dict(old, carriedOver=True)
                     n += 1
+            elif p.get("type") == "series" and it["id"] in ("kosa", "pm25"):
+                continue   # 黄砂・PM2.5 は dust.py が自前で前回分を持つ。廃止したバリアント（例: 旧 PM2.5 の統合列）を復活させない
             elif p.get("type") == "series":  # 種類の中で欠けた variant（地域・高度等）も引き継ぐ
                 old = pm.get((c["id"], it["id"])) or {}
                 have = {v["id"] for v in p["variants"]}
