@@ -1,14 +1,14 @@
-"""黄砂・PM2.5 の図（WX > 衛星画像 の「黄砂」「PM2.5」）。軽く・速く：どちらも「いまに一番近い1枚＋その先2枚」の計3枚だけ取る。
+"""黄砂・PM2.5 の図（WX > 衛星画像 の「黄砂」「PM2.5」）。軽く・速く：黄砂は予測5枚＋観測1枚、PM2.5 は実況1枚＋予測2枚の必要な分だけ取る。
 
   黄砂   気象庁 https://www.data.jma.go.jp/env/kosa/
-           予測 日本域 … 黄砂解析予測図（地表付近の黄砂濃度）。1日1回 6時頃（JST）更新、3時間ごと。「いまに一番近い時刻」＋次の2コマ
-           観測実況（視程） … 黄砂観測実況図は「1日1枚」（その日の分を毎時10・40分頃に更新）で3時間ごとの図は無い → 当日・前日・前々日の最新3枚
+           予測 日本域 … 黄砂解析予測図（地表付近の黄砂濃度）。1日1回 6時頃（JST）更新、3時間ごと。「いまに一番近い時刻」＋その先3時間ごとの4コマ（計5コマ）
+           観測実況（視程） … 黄砂観測実況図は「1日1枚」（その日の分を毎時10・40分頃に更新）で3時間ごとの図は無い → 当日の1枚だけ（無ければ取れる一番新しい1枚）
   PM2.5  1つのタブ。実況（環境省そらまめ君の1時間値、作図 国立環境研究所 環境展望台、CC BY 4.0）の最新1枚＋
          予測（国立環境研究所 VENUS 日本周辺、CC BY-NC 4.0。1日1回計算、3時間ごと）の次の2コマ。
          予測の最初のコマが実況よりも「いま」に近い時は、実況＋予測の +3h・+6h（予測の最初のコマは実況の代わりなので出さない）。
 
 取得の頻度は各ソースの更新周期に合わせ、scripts/schedule.py の予定（kosa_* / pm25_*）に従う。リスト／ヘッダだけ（軽い）を予定の回に取り、
-画像は必要な3枚だけ取る（同じ「版」＋時刻の画像は端末に持った分をそのまま使う）。同じ URL で中身が入れ替わる配信（黄砂解析予測図・VENUS）は
+画像は必要な枚数だけ取る（同じ「版」＋時刻の画像は端末に持った分をそのまま使う）。同じ URL で中身が入れ替わる配信（黄砂解析予測図・VENUS）は
 リスト／ヘッダから作った「版」をキーに blob を持つので、更新された時だけ取り直す。気象庁の PNG は画素が変わらない可逆 WebP にして小さくする。
 """
 import datetime as dt
@@ -30,7 +30,7 @@ SRC_KOSA = "気象庁 Japan Meteorological Agency"
 SRC_SORA = "環境省 そらまめ君（速報値）／作図 国立環境研究所 環境展望台 CC BY 4.0"
 SRC_VENUS = "国立環境研究所 大気汚染予測システム VENUS（https://venus.nies.go.jp/）CC BY-NC 4.0"
 PART_FILE = "dust_parts.json"
-CACHE_V = 2
+CACHE_V = 3
 
 
 def _stamp_utc(s):
@@ -91,7 +91,7 @@ def _fr(label, rel, t, kind=None):
 
 # ----------------------------------------------------------------------------- 各部品。戻り値は {variant_id: {...}}
 def kosa_forecast(F, errors, now):
-    """黄砂解析予測図 日本域の「時刻リスト」だけ（画像は products() で必要な3枚だけ取る）。"""
+    """黄砂解析予測図 日本域の「時刻リスト」だけ（画像は products() で必要な5枚だけ取る）。"""
     txt = F.text(f"{KOSA}/fcst/list_js/s_jpjp_list.js")
     if not txt:
         errors.append("黄砂解析予測図(日本域): リスト取得失敗")
@@ -107,19 +107,17 @@ def kosa_forecast(F, errors, now):
 
 
 def kosa_obs(F, errors, now):
-    """黄砂観測実況図（1日1枚）。当日・前日・前々日の最新3枚。"""
+    """黄砂観測実況図（1日1枚）。当日の1枚だけ。早朝などで当日分がまだ無い時は、取れる一番新しい1枚（前日・前々日）にして、何日の分かをラベルに書く。"""
     j = now.astimezone(JST)
-    frames = []
-    for back, tag in ((2, "前々日"), (1, "前日"), (0, "当日")):
+    for back, tag in ((0, "当日"), (1, "前日"), (2, "前々日")):
         d = j - dt.timedelta(days=back)
         rel, lm = F.image_cond(f"{KOSA}/obs/img/jp/{d:%Y%m%d}_kosaobs_jp_jp.png")
         if rel:
             t = lm or now
-            frames.append(C.frame(f"{tag}分 {d:%d日}（更新 {t.astimezone(JST):%H:%M} JST）", [rel], t if back == 0 else None))
-    if not frames:
-        errors.append("黄砂観測実況図: 取得失敗")
-        return {}
-    return {"obs": {"label": "観測実況（視程）", "frames": frames}}
+            lab = f"{tag}分 {d:%m/%d}（更新 {t.astimezone(JST):%H:%M} JST）" if back else f"{tag} {d:%m/%d}（更新 {t.astimezone(JST):%H:%M} JST）"
+            return {"obs": {"label": "観測実況（視程）", "frames": [C.frame(lab, [rel], t)]}}
+    errors.append("黄砂観測実況図: 取得失敗")
+    return {}
 
 
 def pm25_obs(F, errors, now):
@@ -207,14 +205,19 @@ def collect(F, errors):
     return res
 
 
-def pick_forecast(items, now, n=3):
-    """items=[(stamp,kind)] を時刻順に。いまに一番近いコマ＋次の2コマ（足りなければ最後の3コマ）。"""
+def pick_forecast(items, now, n=5, step_h=3):
+    """items=[(stamp,kind)] を時刻順に。いまに一番近いコマ＋その先 step_h（3）時間ごとの n-1 コマ（計 n=5 コマ）。
+    リストの終わりに届かず揃わない時は、5コマ揃う一番遅い開始に前へずらす（それも無ければ最後の n コマ）。"""
     if not items:
         return []
     ts = [_stamp_jst(s) for s, _ in items]
     i = min(range(len(items)), key=lambda k: abs((ts[k] - now).total_seconds()))
-    i = max(0, min(i, len(items) - n))
-    return items[i:i + n]
+    at = {t: k for k, t in enumerate(ts)}
+    for st in range(i, -1, -1):
+        idx = [at.get(ts[st] + dt.timedelta(hours=step_h * m)) for m in range(n)]
+        if None not in idx:
+            return [items[k] for k in idx]
+    return items[-n:]
 
 
 def pm25_steps(t_obs, now, step_h=3):
@@ -231,7 +234,7 @@ def pm25_steps(t_obs, now, step_h=3):
 
 
 def products(F, errors):
-    """衛星画像カテゴリに足す2項目 [(id, label, product)]。必要な画像（黄砂予測3＋観測3＋PM2.5 実況1＋予測2）だけ取る。"""
+    """衛星画像カテゴリに足す2項目 [(id, label, product)]。必要な画像（黄砂予測5＋観測1＋PM2.5 実況1＋予測2）だけ取る。"""
     p = collect(F, errors)
     now = schedule.now_utc()
 
@@ -255,8 +258,8 @@ def products(F, errors):
     if ov and ov["frames"]:
         kd.append(C.variant("obs", ov["label"], sorted(ov["frames"], key=lambda f: f.get("time") or ""), None))
     dust = C.product("黄砂（解析予測図・観測実況）", SRC_KOSA, kd, kd[0]["id"] if kd else None,
-                     note="予測：地表付近（地表〜上空約1km）の黄砂濃度（日本域）。いまに一番近い時刻とその先2コマ（3時間ごと）。1日1回 6時頃（JST）に更新。"
-                          "観測実況：全国の官署の黄砂の有無と視程（km）。1日1枚の図（当日分は毎時10・40分頃に更新）なので、当日・前日・前々日の3枚。時刻は JST（Z併記）。")
+                     note="予測：地表付近（地表〜上空約1km）の黄砂濃度（日本域）。いまに一番近い時刻とその先4コマ（3時間ごと、計5コマ）。1日1回 6時頃（JST）に更新。"
+                          "観測実況：全国の官署の黄砂の有無と視程（km）。1日1枚の図（当日分は毎時10・40分頃に更新）なので当日の1枚だけ（早朝で当日分がまだ無い時は取れる一番新しい1枚で、何日の分かを表示）。時刻は JST（Z併記）。")
 
     # ---- PM2.5（実況1＋予測2）
     pm = []
