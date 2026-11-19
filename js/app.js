@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.20';
+  const APP_VERSION = '1.9.21';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { areaHide: 'fb.areaHide', notamMode: 'fb.notamMode', airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
@@ -342,14 +342,33 @@
     }
     const inGroup = variants.filter((x) => !groups.length || x.group === v.group);
     const pick = (id) => { chartSel.variant[key] = id; if (v.group) chartSel.group[`${key}:${v.group}`] = id; saveSel(); renderCharts(); };
+    // 三十分大気解析：平面図（高度）と断面図（航空路）は、選択部（セレクト／チップ）の左右に「隣へ移動」ボタン（端では押せない）
+    const stepWrap = (mid) => {
+      if (!(v.group === '平面図' || v.group === '断面図（航空路）')) return mid;
+      const plan = v.group === '平面図';
+      const flNum = (x) => parseInt(String(x.label).replace(/[^0-9]/g, ''), 10) || 0;
+      // 平面図：◀＝1つ低い高度、▶＝1つ高い高度（高度の数値順）。航空路：◀＝リストの1つ前、▶＝1つ後
+      const ordered = plan ? inGroup.slice().sort((a, b) => flNum(a) - flNum(b)) : inGroup.slice();
+      const i = ordered.indexOf(v);
+      const prev = i > 0 ? ordered[i - 1] : null, next = i >= 0 && i < ordered.length - 1 ? ordered[i + 1] : null;
+      const wrap = document.createElement('div'); wrap.className = 'sel-step';
+      const mk = (txt, target, label) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn sel-step-btn'; b.textContent = txt; b.setAttribute('aria-label', label + (target ? `：${target.label}` : '')); b.title = b.getAttribute('aria-label'); b.disabled = !target; if (target) b.onclick = () => pick(target.id); return b; };
+      wrap.appendChild(mk('◀', prev, plan ? '1つ低い高度へ' : '前の断面へ'));
+      wrap.appendChild(mid);
+      wrap.appendChild(mk('▶', next, plan ? '1つ高い高度へ' : '次の断面へ'));
+      return wrap;
+    };
     if (inGroup.length > 10) {
       const s = document.createElement('select');
       s.innerHTML = inGroup.map((x) => `<option value="${esc(x.id)}"${x === v ? ' selected' : ''}>${esc(x.label)}${x.carriedOver ? '（前回分）' : ''}</option>`).join('');
-      s.onchange = () => pick(s.value); vbox.appendChild(s);
+      s.onchange = () => pick(s.value);
+      vbox.appendChild(stepWrap(s));
     } else if (inGroup.length > 1) {
       const w = document.createElement('div'); w.className = 'vchips';
-      inGroup.forEach((x) => w.appendChild(chip(x.label, x === v, () => pick(x.id), x.carriedOver ? ' stale' : '')));
-      vbox.appendChild(w);
+      // 三十分大気解析の断面図（経度）：左右の並びを逆にして西（122.5E）→東（145E）の順に表示する
+      const shown = v.group === '断面図（経度）' ? inGroup.slice().reverse() : inGroup;
+      shown.forEach((x) => w.appendChild(chip(x.label, x === v, () => pick(x.id), x.carriedOver ? ' stale' : '')));
+      vbox.appendChild(stepWrap(w));
     }
     // PM2.5 予測：パック作成時点で「いま以降で一番早い時刻」から5コマ。開いた後に過去になっても作成時のまま全コマ表示する
     const frames = v.frames || [];
@@ -434,6 +453,26 @@
   const fl = { carrier: lsGet('fb.flCarrier', 'ALL'), date: null };
   const apShort = (code) => { const p = state.pack?.airports?.airports?.[code]; const a = airportInfo(code); const nm = a?.name || state.pack?.flights?.airportNames?.[code] || p?.name || ''; const iata = a?.iata || p?.iata || (code.length === 3 ? code : ''); return { iata: iata || code, name: nm }; };
   const SRC_JA = { odpt: 'ODPT', 'ana-pdf': 'ANA公式PDF', 'official-pdf': '公式PDF', live: '公式サイト', official: '公式', toki: 'トキエア公式', board: '空港の発着案内', rararakt: 'rararakt' };
+  // MAP の判定基準：初期は非表示。凡例（VFR/MVFR/IFR/LIFR）を押すとそのカテゴリの基準を表示（もう一度押すと閉じる）。航空法（国内）と FAA基準（海外）を分けて書く
+  const CAT_CRITERIA = {
+    VFR: ['国内（航空法）：IFR・MVFR のどちらにも当たらない（視程 5SM 超 かつ 雲高 3000ft 超）', 'FAA基準（海外・RJ/RO 以外）：視程 5SM 超 かつ 雲高 3000ft 超'],
+    MVFR: ['国内（航空法）：視程 5000m〜5SM または 雲高 1000〜3000ft', 'FAA基準（海外・RJ/RO 以外）：視程 3〜5SM または 雲高 1000〜3000ft'],
+    IFR: ['国内（航空法施行規則§5）：視程 5000m 未満 または 雲高 1000ft 未満。告示空港（8km/450m）は 視程 8000m 未満 または 1500ft 未満（現在 指定 0 件）', 'FAA基準（海外・RJ/RO 以外）：視程 1SM 以上 3SM 未満 または 雲高 500ft 以上 1000ft 未満'],
+    LIFR: ['国内・海外とも FAA 基準：視程 1SM 未満 または 雲高 500ft 未満'],
+  };
+  function setupMapLegend() {
+    const box = $('map-thresh'); const legend = document.querySelector('.map-legend');
+    if (!box || !legend) return;
+    let cur = null;
+    legend.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-cat]'); if (!b) return;
+      const c = b.dataset.cat; cur = cur === c ? null : c;
+      legend.querySelectorAll('[data-cat]').forEach((x) => x.setAttribute('aria-expanded', String(x.dataset.cat === cur)));
+      if (!cur) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+      box.innerHTML = `<b>${esc(cur)}</b><br>` + CAT_CRITERIA[cur].map((t) => esc(t)).join('<br>');
+      box.classList.remove('hidden');
+    });
+  }
   function setupFlights() {
     fl.date = todayJst();
     $('fl-date').value = fl.date;
@@ -446,7 +485,7 @@
     const have = (d.carriers || []).filter((c) => c.count > 0);
     cbar.innerHTML = '';
     { const a = chip('ALL', fl.carrier === 'ALL', () => { fl.carrier = 'ALL'; lsSet('fb.flCarrier', 'ALL'); renderFlights(); }); a.classList.add('al-all'); cbar.appendChild(a); }
-    have.forEach((c) => { const b = chip(c.code, fl.carrier === c.iata2, () => { fl.carrier = c.iata2; lsSet('fb.flCarrier', c.iata2); renderFlights(); }); b.dataset.c = c.code; b.innerHTML = `<span class="al-t">${esc(c.code)}</span>`; b.setAttribute('aria-label', c.name || c.code); cbar.appendChild(b); });
+    have.forEach((c) => { const b = chip(c.code, fl.carrier === c.iata2, () => { fl.carrier = c.iata2; lsSet('fb.flCarrier', c.iata2); renderFlights(); }); b.dataset.c = c.code; b.innerHTML = `<span class="al-t">${[...c.code].map((ch) => `<i>${esc(ch)}</i>`).join('')}</span>`; b.setAttribute('aria-label', c.name || c.code); cbar.appendChild(b); });
     if (fl.carrier !== 'ALL' && !have.some((c) => c.iata2 === fl.carrier)) fl.carrier = 'ALL';
     const q = $('fl-search').value;
     // 収録状況
@@ -893,7 +932,7 @@
   }
   async function start() {
     $('app-version').textContent = `App v${APP_VERSION}`;
-    setupTheme(); setupTabs(); setupTas(); setupDuty(); setupFlights(); setupAirportPicker(); try { localStorage.removeItem('fb.feedback'); } catch (e) { /* 旧 FEEDBACK 欄の保存分を片付け */ }
+    setupTheme(); setupTabs(); setupTas(); setupDuty(); setupFlights(); setupMapLegend(); setupAirportPicker(); try { localStorage.removeItem('fb.feedback'); } catch (e) { /* 旧 FEEDBACK 欄の保存分を片付け */ }
     window.FBViewer.setup();
     $('airport-date').value = state.duty.date || todayJst();
     $('airport-date').onchange = renderAirport;

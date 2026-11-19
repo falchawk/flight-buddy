@@ -50,8 +50,8 @@
     <section id="tab-map" class="tab-panel map-panel">
       <div id="map-box" class="map-box"></div>
       <div class="map-overlay">
-        <div class="map-legend"><span class="badge VFR">VFR</span><span class="badge MVFR">MVFR</span><span class="badge IFR">IFR</span><span class="badge LIFR">LIFR</span></div>
-        <div class="map-thresh">IFR：視程 &lt;5000m または 雲高 &lt;1000ft（航空法施行規則§5）。告示空港（8km/450m）は 視程 &lt;8000m または &lt;1500ft（現在 指定 0 件）<br>MVFR：5000m〜5SM または 1000〜3000ft ／ LIFR：&lt;1SM または &lt;500ft（FAA）<br>海外空港（RJ/RO 以外）は FAA 基準：IFR 1〜&lt;3SM または 500〜&lt;1000ft ／ MVFR 3〜5SM または 1000〜3000ft ／ VFR &gt;5SM かつ &gt;3000ft</div>
+        <div class="map-legend" role="group" aria-label="気象カテゴリ（押すと基準を表示）"><button type="button" class="badge VFR" data-cat="VFR" aria-expanded="false">VFR</button><button type="button" class="badge MVFR" data-cat="MVFR" aria-expanded="false">MVFR</button><button type="button" class="badge IFR" data-cat="IFR" aria-expanded="false">IFR</button><button type="button" class="badge LIFR" data-cat="LIFR" aria-expanded="false">LIFR</button></div>
+        <div id="map-thresh" class="map-thresh hidden" role="status"></div>
         <div id="map-meta" class="map-meta"></div>
       </div>
     </section>
