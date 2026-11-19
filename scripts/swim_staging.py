@@ -118,6 +118,21 @@ def profiles(swim):
 
 
 # ---------------------------------------------------------------- METAR/TAF の優先順位（lib/metarPriority.js）
+def _trim_3h(ms):
+    """ms は新しい順で ms[0] が最新。最新の obsTime から 3 時間より古い報は落とす（obsTime 不明は残さない）。最大 12 件。"""
+    import datetime as _dt
+    def p(x):
+        try:
+            return _dt.datetime.fromisoformat(str(x).replace("Z", "+00:00"))
+        except Exception:  # noqa: BLE001
+            return None
+    t0 = p((ms[0] or {}).get("obsTime")) if ms else None
+    if not t0:
+        return ms[:1]
+    out = [m for m in ms if (p(m.get("obsTime")) or _dt.datetime.min.replace(tzinfo=_dt.timezone.utc)) >= t0 - _dt.timedelta(hours=3)]
+    return out[:12] or ms[:1]
+
+
 def _metar_obs_iso(text, ref):
     m = re.search(r"\b(\d{2})(\d{2})(\d{2})Z\b", text or "")
     if not m:
@@ -180,6 +195,7 @@ def apply_priority(wx, swim, targets, ogimet_fn=None, fetched=None):
                 e["metar"] = [{"raw": sm, "obsTime": obs, "source": "SWIM", "fltCat": classify_metar(sm, icao)}] + [
                     m for m in (e.get("metar") or []) if not obs or (m.get("obsTime") or "") < obs]
                 e["metarSource"] = "SWIM"
+                e["metar"] = _trim_3h(e["metar"])   # 最新（SWIM）の観測時刻から 3 時間以内に揃える
                 e["ok"] = True
                 if e.get("carriedOver"):   # 今回 SWIM から新しい報が取れたので「前回の値」ではない
                     e.pop("carriedOver", None)
