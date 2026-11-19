@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.19';
+  const APP_VERSION = '1.9.20';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { areaHide: 'fb.areaHide', notamMode: 'fb.notamMode', airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
@@ -445,8 +445,8 @@
     if (!d || !d.rows) { res.innerHTML = '<p class="hint">パックに時刻表がありません（次回の自動更新で入ります）。</p>'; cbar.innerHTML = ''; $('fl-status').innerHTML = ''; return; }
     const have = (d.carriers || []).filter((c) => c.count > 0);
     cbar.innerHTML = '';
-    cbar.appendChild(chip('ALL', fl.carrier === 'ALL', () => { fl.carrier = 'ALL'; lsSet('fb.flCarrier', 'ALL'); renderFlights(); }));
-    have.forEach((c) => cbar.appendChild(chip(c.code, fl.carrier === c.iata2, () => { fl.carrier = c.iata2; lsSet('fb.flCarrier', c.iata2); renderFlights(); })));
+    { const a = chip('ALL', fl.carrier === 'ALL', () => { fl.carrier = 'ALL'; lsSet('fb.flCarrier', 'ALL'); renderFlights(); }); a.classList.add('al-all'); cbar.appendChild(a); }
+    have.forEach((c) => { const b = chip(c.code, fl.carrier === c.iata2, () => { fl.carrier = c.iata2; lsSet('fb.flCarrier', c.iata2); renderFlights(); }); b.dataset.c = c.code; b.innerHTML = `<span class="al-t">${esc(c.code)}</span>`; b.setAttribute('aria-label', c.name || c.code); cbar.appendChild(b); });
     if (fl.carrier !== 'ALL' && !have.some((c) => c.iata2 === fl.carrier)) fl.carrier = 'ALL';
     const q = $('fl-search').value;
     // 収録状況

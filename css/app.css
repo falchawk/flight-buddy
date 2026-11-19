@@ -442,3 +442,35 @@ label.block{margin-top:14px}
 .area-pop .ap-t{margin-top:4px;word-break:break-word}
 .leaflet-tooltip.area-lbl{background:rgba(255,255,255,.88);color:#111;border:none;box-shadow:0 0 2px rgba(0,0,0,.4);font-size:10.5px;font-weight:700;padding:0 5px;line-height:1.5}
 .leaflet-tooltip.area-lbl:before{display:none}
+
+/* ---------- FLIGHTS 会社フィルタ：全ボタン同じ大きさ（ALL だけ大きく）、文字は各社のメインカラー（ライト/ダークで濃さを切替） */
+#fl-carriers.chips-sub{display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:6px;background:none;padding:0;border-radius:0;margin:10px 0}
+#fl-carriers .chip{flex:none;min-width:0;height:36px;padding:0 4px;display:flex;align-items:center;justify-content:center;font-size:13.5px;font-weight:800;letter-spacing:.02em;line-height:1;
+  color:var(--text);background:var(--bg-card);border:1px solid var(--line-strong);border-radius:10px;box-shadow:none}
+#fl-carriers .chip.al-all{grid-column:1/-1;height:46px;font-size:16px;font-weight:800;letter-spacing:.06em}
+#fl-carriers .chip.active{background:var(--accent-soft);box-shadow:inset 0 0 0 2px var(--accent);border-color:transparent;color:var(--text)}
+#fl-carriers .chip.al-all.active{background:var(--accent);color:var(--on-accent);box-shadow:none}
+#fl-carriers .al-t{display:inline-block}
+@supports (color:light-dark(#000,#fff)){
+  #fl-carriers .chip[data-c] .al-t{background-image:var(--g);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+  #fl-carriers .chip[data-c="JAL"]{--g:linear-gradient(90deg,light-dark(#C8102E,#FF5C6C) 42%,light-dark(#4A4A4A,#C9CED6) 58%)}
+  #fl-carriers .chip[data-c="JTA"]{--g:linear-gradient(90deg,light-dark(#0A5FB4,#5AA9FF) 42%,light-dark(#D4491A,#FF8A4C) 58%)}
+  #fl-carriers .chip[data-c="RAC"]{--g:linear-gradient(90deg,light-dark(#C25E00,#FFA033) 42%,light-dark(#9A7200,#FFD24D) 58%)}
+  #fl-carriers .chip[data-c="ANA"]{--g:linear-gradient(90deg,light-dark(#00338D,#6C9BFF) 42%,light-dark(#1E7FCB,#5CC8FF) 58%)}
+  #fl-carriers .chip[data-c="AJX"]{--g:linear-gradient(90deg,light-dark(#1F3A8A,#7C97FF) 42%,light-dark(#C84A18,#FF9A66) 58%)}
+  #fl-carriers .chip[data-c="ADO"]{--g:linear-gradient(90deg,light-dark(#0063B0,#4DA3FF) 42%,light-dark(#0888C0,#5CD0FF) 58%)}
+  #fl-carriers .chip[data-c="SNJ"]{--g:linear-gradient(90deg,light-dark(#4F8000,#A7D36A) 42%,light-dark(#2E7D32,#7ED58A) 58%)}
+  #fl-carriers .chip[data-c="SFJ"]{--g:linear-gradient(90deg,light-dark(#111111,#F4F4F4) 42%,light-dark(#5F6672,#A3ACBA) 58%)}
+  #fl-carriers .chip[data-c="IBX"]{--g:linear-gradient(90deg,light-dark(#0B4FA0,#5C9DFF) 42%,light-dark(#2570CC,#8CC0FF) 58%)}
+  #fl-carriers .chip[data-c="ORC"]{--g:linear-gradient(90deg,light-dark(#0B5FA0,#56B4F0) 42%,light-dark(#C25E00,#FFA63D) 58%)}
+  #fl-carriers .chip[data-c="AMX"]{--g:linear-gradient(90deg,light-dark(#1B2F6B,#7C97FF) 28%,light-dark(#1B78C4,#5CC8FF) 40% 60%,light-dark(#C8261E,#FF6B5E) 72%)}
+  #fl-carriers .chip[data-c="TOK"]{--g:linear-gradient(90deg,light-dark(#14275F,#7C97FF) 42%,light-dark(#C8261E,#FF6B5E) 58%)}
+  #fl-carriers .chip[data-c="SKY"]{--g:linear-gradient(90deg,light-dark(#0B4FA8,#5C9DFF) 42%,light-dark(#8F6A00,#FFD43B) 58%)}
+  #fl-carriers .chip[data-c="FDA"]{--g:linear-gradient(90deg,light-dark(#C8031A,#FF5A6A) 42%,light-dark(#8A6D00,#FFE14D) 58%)}
+  #fl-carriers .chip[data-c="APJ"]{--g:linear-gradient(90deg,light-dark(#C72D63,#FF7FA6) 42%,light-dark(#D6457A,#FFB0C8) 58%)}
+  #fl-carriers .chip[data-c="JJP"]{--g:linear-gradient(90deg,light-dark(#D04300,#FF7A33) 42%,light-dark(#B06A00,#FFB347) 58%)}
+  #fl-carriers .chip[data-c="TZP"]{--g:linear-gradient(90deg,light-dark(#1A8A33,#4ED36B) 42%,light-dark(#5B6670,#B4BCC8) 58%)}
+  #fl-carriers .chip[data-c="SJO"]{--g:linear-gradient(90deg,light-dark(#1A8A33,#4ED36B) 42%,light-dark(#C93A72,#FF8FB5) 58%)}
+  #fl-carriers .chip[data-c="NCA"]{--g:linear-gradient(90deg,light-dark(#1D3A8A,#7C97FF) 42%,light-dark(#C8261E,#FF6B5E) 58%)}
+  #fl-carriers .chip[data-c="CUK"]{--g:linear-gradient(90deg,light-dark(#29397F,#9DB0FF) 42%,light-dark(#1A1A1A,#E3E8FF) 58%)}
+}
