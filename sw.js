@@ -5,7 +5,7 @@
 // - 外部（Windy等）は一切キャッシュしない（オンライン専用）
 // - data/latest/*, data/index.json は network-first（オフライン時はキャッシュ）
 // v1.9.19 rev2: PM2.5 予測のクライアント側の過去コマ非表示を廃止（同一版のまま再配布するためこの行でバイト列を変える）
-const VERSION = 'v1.9.22';
+const VERSION = 'v1.9.23';
 const SHELL_CACHE = `fb-shell-${VERSION}`;
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',

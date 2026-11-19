@@ -847,7 +847,7 @@ def upper_charts(F, errors):
             spec = importlib.util.spec_from_file_location("aupq_mark", os.path.join(os.path.dirname(os.path.abspath(__file__)), "aupq_mark.py"))
             m = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(m)
-            mark_h = os.environ.get("FB_AUPQ_MARK_H", "") == "1"  # 高気圧 H の青マークは既定 off
+            mark_h = os.environ.get("FB_AUPQ_MARK_H", "1") != "0"  # 高気圧 H の青マークは既定 on（FB_AUPQ_MARK_H=0 で off）
             return (m.MARK_VER + ("h" if mark_h else ""), lambda src, dst: m.mark_pdf(src, dst, mark_h=mark_h))
         except Exception as e:  # noqa: BLE001
             log(f"AUPQ 目印モジュールを読めない→原図: {type(e).__name__}: {e}")

@@ -466,13 +466,13 @@ label.block{margin-top:14px}
   #fl-carriers .chip[data-c] .al-t i{color:var(--text)}
   #fl-carriers .chip[data-c="JAL"] .al-t i:nth-child(1){color:light-dark(#C8102E,#FF5C6C)}
   #fl-carriers .chip[data-c="JAL"] .al-t i:nth-child(2){color:light-dark(#C8102E,#FF5C6C)}
-  #fl-carriers .chip[data-c="JAL"] .al-t i:nth-child(3){color:light-dark(#3B3B3B,#C9CED6)}
+  #fl-carriers .chip[data-c="JAL"] .al-t i:nth-child(3){color:#fff;paint-order:stroke fill;-webkit-text-stroke:1.3px light-dark(#5b6472,transparent)}
   #fl-carriers .chip[data-c="JTA"] .al-t i:nth-child(1){color:light-dark(#C8102E,#FF5C6C)}
   #fl-carriers .chip[data-c="JTA"] .al-t i:nth-child(2){color:light-dark(#C8102E,#FF5C6C)}
-  #fl-carriers .chip[data-c="JTA"] .al-t i:nth-child(3){color:light-dark(#3B3B3B,#C9CED6)}
+  #fl-carriers .chip[data-c="JTA"] .al-t i:nth-child(3){color:#fff;paint-order:stroke fill;-webkit-text-stroke:1.3px light-dark(#5b6472,transparent)}
   #fl-carriers .chip[data-c="RAC"] .al-t i:nth-child(1){color:light-dark(#C8102E,#FF5C6C)}
   #fl-carriers .chip[data-c="RAC"] .al-t i:nth-child(2){color:light-dark(#C8102E,#FF5C6C)}
-  #fl-carriers .chip[data-c="RAC"] .al-t i:nth-child(3){color:light-dark(#3B3B3B,#C9CED6)}
+  #fl-carriers .chip[data-c="RAC"] .al-t i:nth-child(3){color:#fff;paint-order:stroke fill;-webkit-text-stroke:1.3px light-dark(#5b6472,transparent)}
   #fl-carriers .chip[data-c="ANA"] .al-t i:nth-child(1){color:light-dark(#00338D,#6C9BFF)}
   #fl-carriers .chip[data-c="ANA"] .al-t i:nth-child(2){color:light-dark(#00338D,#6C9BFF)}
   #fl-carriers .chip[data-c="ANA"] .al-t i:nth-child(3){color:light-dark(#1E7FCB,#5CC8FF)}
@@ -505,7 +505,7 @@ label.block{margin-top:14px}
   #fl-carriers .chip[data-c="SKY"] .al-t i:nth-child(3){color:light-dark(#FFC400,#FFD400);-webkit-text-stroke:.7px light-dark(#8a6a00,transparent)}
   #fl-carriers .chip[data-c="FDA"] .al-t i:nth-child(1){color:light-dark(#D4041C,#FF5A6A)}
   #fl-carriers .chip[data-c="FDA"] .al-t i:nth-child(2){color:light-dark(#D4041C,#FF5A6A)}
-  #fl-carriers .chip[data-c="FDA"] .al-t i:nth-child(3){color:light-dark(#FFC800,#FFE14D);-webkit-text-stroke:.7px light-dark(#8a6a00,transparent)}
+  #fl-carriers .chip[data-c="FDA"] .al-t i:nth-child(3){color:light-dark(#D4041C,#FF5A6A)}
   #fl-carriers .chip[data-c="APJ"] .al-t i:nth-child(1){color:light-dark(#C72D63,#FF7FA6)}
   #fl-carriers .chip[data-c="APJ"] .al-t i:nth-child(2){color:light-dark(#C72D63,#FF7FA6)}
   #fl-carriers .chip[data-c="APJ"] .al-t i:nth-child(3){color:light-dark(#D6457A,#FFB0C8)}

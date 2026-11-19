@@ -132,6 +132,16 @@ def is_real_report(raw):
     return bool(raw) and not NIL_RE.search(raw.strip())
 
 
+def metar_last_3h(ms):
+    """ms は obsTime の新しい順。最新の観測時刻から 3 時間以内の METAR/SPECI を全部（最大 12 件）。obsTime が無いものは最新 1 件だけ。"""
+    if not ms:
+        return []
+    t0 = ms[0].get("obsTime")
+    if not t0:
+        return ms[:1]
+    return [m for m in ms if m.get("obsTime") and m["obsTime"] >= t0 - 3 * 3600][:12]
+
+
 def fetch_wx(airports, prev_wx, foreign=frozenset()):
     """METAR/TAF（AWC）。国内は毎回（15分ごと）。海外空港は1時間に1回だけ（schedule の wx_foreign。新規追加の空港は直ちに）。
     海外で今回取らない空港は、前回パックの値をそのまま（取得時刻 fetchedAt も前回のまま）引き継ぐ。
@@ -173,7 +183,7 @@ def fetch_wx(airports, prev_wx, foreign=frozenset()):
             "metar": [
                 {"raw": m.get("rawOb"), "obsTime": iso(dt.datetime.fromtimestamp(m["obsTime"], dt.timezone.utc)) if m.get("obsTime") else None,
                  "fltCat": classify_metar(m.get("rawOb"), icao) or m.get("fltCat"), "type": m.get("metarType")}
-                for m in ms[:4]
+                for m in metar_last_3h(ms)
             ],
             "taf": ({"raw": ts[0].get("rawTAF"), "issueTime": ts[0].get("issueTime"),
                      "validFrom": iso(dt.datetime.fromtimestamp(ts[0]["validTimeFrom"], dt.timezone.utc)) if ts[0].get("validTimeFrom") else None,

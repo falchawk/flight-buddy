@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.22';
+  const APP_VERSION = '1.9.23';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { areaHide: 'fb.areaHide', notamMode: 'fb.notamMode', airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
@@ -240,7 +240,7 @@
           <div class="sub-label">METAR ${latest ? `${esc(fmtUtc(latest.obsTime))}（${esc(fmtJst(latest.obsTime, false))}）` : ''} ${cat ? `<span class="badge ${cat}">${cat}</span>` : ''} <span class="vmc-basis${window.FBWx.limitsFor(icao).strict ? ' strict' : ''}" title="${window.FBWx.limitsFor(icao).faa ? '飛行状態の判定基準（FAA：IFR は 3SM 未満または 1,000ft 未満）' : '飛行状態の IFR 境界（航空法施行規則第5条第4号）'}">${esc(window.FBWx.limitsFor(icao).text)}</span> <span class="doc-status ${latest ? 'ok' : 'fail'}">${esc(e.metarSource || 'NONE')}</span></div>
           ${latest ? `<div class="raw">${window.FBWx.highlight(latest.raw, icao)}</div>` : naBox('METAR 未取得')}
           ${srcNotes(e, 'metar')}
-          ${e.metar?.length > 1 ? `<details><summary>過去のMETAR（${e.metar.length - 1}件）</summary>${e.metar.slice(1).map((x) => `<div class="raw" style="margin-top:4px">${window.FBWx.highlight(x.raw, icao)}</div>`).join('')}</details>` : ''}
+          ${e.metar?.length > 1 ? `<details><summary>過去のMETAR（直近3時間・${e.metar.length - 1}件）</summary>${e.metar.slice(1).map((x) => `<div class="raw" style="margin-top:4px">${window.FBWx.highlight(x.raw, icao)}</div>`).join('')}</details>` : ''}
           <div class="sub-label">TAF ${e.taf && e.taf.issueTime ? `発表 ${esc(fmtUtc(e.taf.issueTime))} ／ 有効 ${esc(fmtUtc(e.taf.validFrom))}〜${esc(fmtUtc(e.taf.validTo))}` : ''} <span class="doc-status ${e.taf ? 'ok' : 'fail'}">${esc(e.tafSource || 'NONE')}</span></div>
           ${e.taf ? `<div class="raw">${window.FBWx.tafLines(e.taf.raw, icao)}</div>` : naBox('TAF 未取得')}
           ${srcNotes(e, 'taf')}`;
