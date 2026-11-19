@@ -262,7 +262,6 @@ label.block{margin-top:14px}
 .viewer-stage{flex:1;overflow:hidden;position:relative;touch-action:none}
 #v-content{position:absolute;inset:0}
 
-@media (max-width:410px){.brand{display:none}}
 @media (max-width:440px){.brand-name{display:none}.brand-emb{margin-left:0}}
 
 /* ---------- MAP（Leaflet＋同梱基図） */
@@ -387,6 +386,8 @@ label.block{margin-top:14px}
 #refresh-btn svg{width:18px;height:18px;margin-top:-9px}
 #refresh-btn .th-sync{position:absolute;left:0;right:0;bottom:3px;text-align:center;font-size:8px;line-height:1;font-weight:800;letter-spacing:.02em;color:var(--accent);pointer-events:none}
 @media (max-width:440px){#refresh-btn{min-width:34px;width:34px}.app-header #refresh-btn svg{width:18px;height:18px}}
+/* 320px 級の極小幅：ロゴ(32px)・テーマ・SYNC は常に表示し、ステータスのピルを詰めて収める */
+@media (max-width:340px){.app-header{padding-left:6px}.app-header .brand-emb{margin-left:0}.header-status{gap:2px}.pill{padding:4px 5px;font-size:10.5px}.app-header #theme-btn,.app-header #refresh-btn{min-width:32px;width:32px}}
 
 .duty-src{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;vertical-align:middle;margin-left:6px;letter-spacing:0}
 .duty-src:empty{display:none}
