@@ -1006,7 +1006,7 @@ def build_charts(data_dir, airports, workers=16):
             {"id": "a30", "label": "三十分大気解析", "product": parts.get("a30") or product("三十分大気解析", SRC_METAIR, [])},
         ]},
         {"id": "fxfe", "label": "高層天気図", "defaultItem": 1, "items": [
-            {"id": "aupq", "label": "AUPQ", "product": single("AUPQ35 / AUPQ78", "気象庁 数値予報天気図（PDF）／取得失敗時は n-kishou.com", up.get("aupq"), note="オレンジ線＝日本の海岸線、赤い L＝低気圧中心（PDF のベクターから自動で重ね描き。付けられなかった時は原図のまま）")},
+            {"id": "aupq", "label": "AUPQ", "product": single("AUPQ35 / AUPQ78", "気象庁 数値予報天気図（PDF）／取得失敗時は n-kishou.com", up.get("aupq"), note="オレンジ線＝日本の海岸線、赤い L＝低気圧中心、青い H＝高気圧中心（PDF のベクターから自動で重ね描き。付けられなかった時は原図のまま）")},
             {"id": "fbjp", "label": "FBJP", "product": single("FBJP 国内悪天予想図", SRC_JMA, up.get("fbjp"))},
             {"id": "fircmnt", "label": "福岡FIR解説報", "product": single(
                 "全国航空気象解説報（福岡FIR）", "気象庁 航空気象情報", up.get("fircmnt"),
