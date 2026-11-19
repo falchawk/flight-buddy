@@ -13,8 +13,12 @@
   record manual|auto       作成時刻を記録（brief_state.json）。
   publish --kind K         /workspace/fb-staging/brief.md を kind(auto/manual)・作成時刻つきでパックに入れて公開
                            （auto_update.py をロック待ちで実行）。成功したら record も行う。
+                           本文の表（Markdown 表）と画像に対応。画像は /workspace/fb-staging/brief-img/NAME.png|jpg に置き、
+                           本文に `![説明](brief-img/NAME.png)` と書く（NAME は英数字・. _ - だけ、PNG/JPG）。
+                           本文が参照する画像だけがパックに入る（内容アドレス blob。オフライン可）。参照されない古い画像は publish のたびに削除。
+                           参照先が無ければ公開せず終了コード 7。画像の合計が 1.5MB を超える／1枚 300KB 超は警告（公開は続ける）。
 
-終了コード: 0=OK  2=暗証番号が違う  3=ロック中  4=リクエストが多すぎる  5=暗証番号が未設定  6=リクエストの形が不正/古い  10=SKIP
+終了コード: 0=OK  2=暗証番号が違う  3=ロック中  4=リクエストが多すぎる  5=暗証番号が未設定  6=リクエストの形が不正/古い  7=本文が参照する画像が無い  10=SKIP
 状態: /workspace/fb-staging/brief_state.json（時刻は JST）。暗証番号そのものは一切書かない。
 テスト用: FB_NOW=2026-11-18T23:30:00Z / FB_BRIEF_STATE=/tmp/x.json
 """
@@ -234,10 +238,49 @@ def cmd_record(a):
     return 0
 
 
+IMG_DIR = os.environ.get("FB_BRIEF_IMG", "/workspace/fb-staging/brief-img")
+IMG_REF = re.compile(r"!\[[^\]]*\]\(\s*brief-img/([^)\s]*)\s*\)")
+IMG_OK = re.compile(r"[A-Za-z0-9._-]+\.(png|jpe?g)$", re.I)
+IMG_TOTAL_WARN, IMG_EACH_WARN = 1_500_000, 300_000
+
+
+def prepare_images():
+    """本文が参照する画像の確認・不要な画像の削除・サイズの警告。問題があれば終了コード（7）を返す。"""
+    text = open(BRIEF, encoding="utf-8").read()
+    refs = list(dict.fromkeys(IMG_REF.findall(text)))
+    bad = [r for r in refs if not IMG_OK.match(r)]
+    if bad:
+        print("PUBLISH FAILED: 画像の参照が不正です（英数字・. _ - だけの PNG/JPG 名に）: " + ", ".join(bad))
+        return 7
+    missing = [r for r in refs if not os.path.isfile(os.path.join(IMG_DIR, r))]
+    if missing:
+        print(f"PUBLISH FAILED: 本文が参照する画像が {IMG_DIR}/ にありません: " + ", ".join(missing))
+        return 7
+    removed = 0
+    if os.path.isdir(IMG_DIR):
+        for n in os.listdir(IMG_DIR):
+            p = os.path.join(IMG_DIR, n)
+            if n not in refs and os.path.isfile(p):
+                os.remove(p)
+                removed += 1
+    sizes = {r: os.path.getsize(os.path.join(IMG_DIR, r)) for r in refs}
+    total = sum(sizes.values())
+    print(f"IMAGES {len(refs)} 枚 合計 {total / 1e6:.2f}MB（参照されない古い画像 {removed} 枚を削除）")
+    for r, n in sizes.items():
+        if n > IMG_EACH_WARN:
+            print(f"WARN {r} は {n / 1e3:.0f}KB（1枚 300KB 以下が目安）")
+    if total > IMG_TOTAL_WARN:
+        print(f"WARN 画像の合計が {total / 1e6:.2f}MB（1.5MB 以下にしてください。公開は続けます）")
+    return 0
+
+
 def cmd_publish(a):
     if not os.path.exists(BRIEF) or not open(BRIEF, encoding="utf-8").read().strip():
         print("PUBLISH FAILED: /workspace/fb-staging/brief.md がありません（先に本文を書いてください）")
         return 1
+    rc = prepare_images()
+    if rc:
+        return rc
     t = now()
     meta = {"kind": a.kind, "writtenAt": t.strftime("%Y-%m-%dT%H:%M:%SZ"), "slot": None}
     with open(BRIEF + ".meta.json", "w", encoding="utf-8") as f:

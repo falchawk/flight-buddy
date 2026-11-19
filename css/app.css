@@ -399,3 +399,17 @@ label.block{margin-top:14px}
 .duty-src:empty{display:none}
 .duty-src.auto{background:var(--accent-soft);color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 .duty-src.manual{background:var(--bg-elev);color:var(--text)}
+
+/* BRIEF の表・画像 */
+.brief-text .md-table{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:8px -4px;border:.5px solid var(--line);border-radius:10px}
+.brief-text table{border-collapse:collapse;font-size:12.5px;line-height:1.45;min-width:100%;width:max-content;max-width:none}
+.brief-text th,.brief-text td{padding:6px 9px;border-bottom:.5px solid var(--line);border-right:.5px solid var(--line);vertical-align:top;text-align:left;white-space:normal;min-width:4.5em}
+.brief-text th:last-child,.brief-text td:last-child{border-right:none}
+.brief-text tbody tr:last-child td{border-bottom:none}
+.brief-text th{background:var(--bg-elev);color:var(--text);font-weight:700;white-space:nowrap}
+.brief-text tbody tr:nth-child(even) td{background:var(--bg-inset)}
+.brief-text hr{border:none;border-top:.5px solid var(--line);margin:12px 0}
+.brief-fig{position:relative;margin:10px 0;cursor:zoom-in;text-align:center}
+.brief-fig img{display:block;width:100%;height:auto;border-radius:10px;background:#fff;border:.5px solid var(--line)}
+.brief-fig figcaption{font-size:12px;color:var(--text-dim);margin-top:4px}
+.brief-fig .zoom-hint{position:absolute;right:8px;top:8px;background:rgba(10,17,29,.7);color:#e6edf7;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;pointer-events:none}

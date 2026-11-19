@@ -572,6 +572,32 @@ def split_pack(pack_dir, charts):
     return ap_blobs
 
 
+BRIEF_IMG_RE = re.compile(r"!\[[^\]]*\]\(\s*brief-img/([A-Za-z0-9._-]+\.(?:png|jpe?g))\s*\)", re.I)
+
+
+def brief_images(text, img_dir):
+    """本文が参照する brief-img/NAME.png|jpg を blob にして {NAME: {file, bytes}} を返す（無いものは入れない＝アプリは「画像がありません」と出す）。"""
+    out = {}
+    os.makedirs(os.path.join(DATA, "blobs"), exist_ok=True)
+    for name in dict.fromkeys(BRIEF_IMG_RE.findall(text or "")):
+        p = os.path.join(img_dir, name)
+        if not os.path.isfile(p):
+            log(f"BRIEF 画像なし: {name}")
+            continue
+        body = open(p, "rb").read()
+        ext = "png" if body[:4] == b"\x89PNG" else "jpg" if body[:2] == b"\xff\xd8" else None
+        if not ext or not body:
+            log(f"BRIEF 画像が PNG/JPG ではない: {name}")
+            continue
+        rel = f"data/blobs/{hashlib.sha256(body).hexdigest()}.{ext}"
+        dst = os.path.join(ROOT, rel)
+        if not os.path.exists(dst):
+            with open(dst, "wb") as f:
+                f.write(body)
+        out[name] = {"file": rel, "bytes": len(body)}
+    return out
+
+
 def join_pack(pack_dir):
     """空港別ファイルを元の形（wx/notam/atis/airports/charts の airports 付き）に戻す（前回分の引き継ぎ用）。旧形式はそのまま。"""
     out = {k: read_json(os.path.join(pack_dir, f"{k}.json")) for k in ("wx", "notam", "atis", "airports", "charts", "flights", "brief", "duty_default")}
@@ -661,16 +687,22 @@ def build(args):
             # scripts/brief_request.py publish が <brief>.meta.json に kind（auto/manual）と作成時刻を書く
             meta = read_json(args.brief + ".meta.json", {}) or {}
             mtime = meta.get("writtenAt") or iso(dt.datetime.fromtimestamp(os.path.getmtime(args.brief), dt.timezone.utc))
-            if not args.brief_if_newer or not prev_brief or not prev_brief.get("writtenAt") or mtime > prev_brief["writtenAt"] \
+            if not args.brief_if_newer or os.environ.get("FB_BRIEF_FORCE") or not prev_brief or not prev_brief.get("writtenAt") or mtime > prev_brief["writtenAt"] \
                     or not prev_brief.get("ok"):
                 with open(args.brief, encoding="utf-8") as f:
                     brief = {"ok": True, "text": f.read(), "author": "Grok Bot", "writtenAt": mtime, "carriedOver": False,
                              "kind": meta.get("kind") or "unknown", "slot": meta.get("slot")}
         # 前回の本文を引き継ぐのは kind が付いたもの（＝BRIEF 運用開始後に scripts/brief_request.py で公開したもの）だけ。
         # kind が無い古い本文（初回テストパックの「福岡⇔羽田」）は現在のブリーフとして出さない
+        # BRIEF の画像（本文の ![説明](brief-img/NAME.png)）：<brief>の隣の brief-img/ にある PNG/JPG のうち本文が参照するものだけ、
+        # 図と同じ内容アドレス方式（data/blobs/<sha256>.<ext>）でパックに入れる（オフラインで見られる）。
+        if brief is not None:
+            brief["images"] = brief_images(brief.get("text") or "", os.path.join(os.path.dirname(os.path.abspath(args.brief)), "brief-img"))
         if brief is None and prev_brief and prev_brief.get("ok") and prev_brief.get("kind"):
             brief = dict(prev_brief)
             brief["carriedOver"] = True
+            brief["images"] = {k: v for k, v in (prev_brief.get("images") or {}).items()
+                               if isinstance(v, dict) and os.path.exists(os.path.join(ROOT, v.get("file", "")))}
         if brief is None:
             brief = {"ok": False, "text": None, "author": None, "writtenAt": None, "kind": None}
         write_json(os.path.join(pack_dir, "brief.json"), brief)
@@ -780,7 +812,7 @@ def build(args):
         return {"file": b, "bytes": os.path.getsize(p)} if os.path.exists(p) else None
 
     files = [fentry(os.path.join(pack_dir, n)) for n in sorted(os.listdir(pack_dir)) if n != "manifest.json" and os.path.isfile(os.path.join(pack_dir, n))]
-    blobs = [x for x in (bentry(b) for b in sorted(chartlib.referenced_blobs(charts))) if x]
+    blobs = [x for x in (bentry(b) for b in sorted(chartlib.referenced_blobs(charts) | {v["file"] for v in (brief.get("images") or {}).values()})) if x]
     airport_files = {}
     for n in sorted(os.listdir(os.path.join(pack_dir, AP_DIR))):
         icao = n[:-5]
@@ -794,7 +826,7 @@ def build(args):
         "base": f"data/packs/{pack_id}/",
         "airports": airports,
         "airportNames": {i: (stations.get(i) or {}).get("site") for i in airports if stations.get(i)},
-        "sample": not brief["ok"],
+        "sample": False,   # サンプルデータは入れていない（ヘッダの「SAMPLE含む」は出さない）
         "duty": duty,
         "sections": {"wx": "wx.json", "notam": "notam.json", "airports": "airports.json", "index": "index.json",
                      "brief": "brief.json", "charts": "charts.json", "atis": "atis.json", "flights": "flights.json",
