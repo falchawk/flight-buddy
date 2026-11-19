@@ -677,11 +677,12 @@ MERIDIANS = [("250", "50", "145E"), ("251", "51", "142.5E"), ("252", "52", "140E
              ("255", "55", "132.5E"), ("256", "56", "130E"), ("257", "57", "127.5E"), ("258", "58", "125E"), ("259", "59", "122.5E")]
 PLAN_LEVELS = ["41"] + [f"{z:02d}" for z in range(39, 10, -2)] + ["09"]  # FL410, FL390..FL110, FL090（ソースはFL奇数のみ。FL400・FL100は存在しない）
 FCST_MAX_H = 6
+ANALYSIS_KEEP = 6   # ANALYSIS は直近6時刻だけ（以前は24時刻。平面図・断面図とも）。FORECAST（MetAir）は従来どおり
 
 
 def analysis30(F, errors):
     txt = F.text(f"{JMA_AIR}/conf/list_maiji.js") or ""
-    times = sorted({parse14(m) for m in re.findall(r'ImageInfo\(\s*"(\d{14})"', txt)})
+    times = sorted({parse14(m) for m in re.findall(r'ImageInfo\(\s*"(\d{14})"', txt)})[-ANALYSIS_KEEP:]
     if not times:
         errors.append("三十分大気解析: list_maiji.js 取得失敗")
     T = times[-1] if times else None
@@ -748,7 +749,7 @@ def analysis30(F, errors):
         di = max([i for i, fr in enumerate(frames) if fr["kind"] == "ANALYSIS"] or [0])
         vid = f"plan{code}" if kind == "plan" else f"cs{code}"
         variants.append(variant(vid, name, frames, di, group))
-    note = (f"ANALYSIS＝気象庁 airinfo（毎時、直近{len(times)}時刻）、FORECAST＝MetAir（初期 {init:%d日%H}Z、解析最新時刻から+{FCST_MAX_H}hまで）。"
+    note = (f"ANALYSIS＝気象庁 airinfo（毎時、直近6時刻）、FORECAST＝MetAir（初期 {init:%d日%H}Z、解析最新時刻から+{FCST_MAX_H}hまで）。"
             "平面図は FL410・FL390〜FL110・FL090（ソースに FL400・FL100 は無い。奇数 FL のみ）。" if init else "")
     p = product("三十分大気解析", f"{SRC_JMA} / MetAir", variants, "cs205", note)
     p["groupDefaults"] = {"平面図": "plan39", "断面図（航空路）": "cs205", "断面図（経度）": "cs250"}  # 平面図の既定は FL390
