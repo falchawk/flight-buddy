@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.21';
+  const APP_VERSION = '1.9.22';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { areaHide: 'fb.areaHide', notamMode: 'fb.notamMode', airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
@@ -358,7 +358,7 @@
       wrap.appendChild(mk('▶', next, plan ? '1つ高い高度へ' : '次の断面へ'));
       return wrap;
     };
-    if (inGroup.length > 10) {
+    if (inGroup.length > 10 || (inGroup.length > 1 && (v.group === '平面図' || v.group === '断面図（航空路）'))) {
       const s = document.createElement('select');
       s.innerHTML = inGroup.map((x) => `<option value="${esc(x.id)}"${x === v ? ' selected' : ''}>${esc(x.label)}${x.carriedOver ? '（前回分）' : ''}</option>`).join('');
       s.onchange = () => pick(s.value);
