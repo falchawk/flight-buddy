@@ -1,11 +1,12 @@
-"""黄砂・PM2.5 の図（WX > 衛星画像 の「黄砂」「PM2.5」）。軽く・速く：黄砂は予測5枚＋観測1枚、PM2.5 は実況1枚＋予測2枚の必要な分だけ取る。
+"""黄砂・PM2.5 の図（WX > 衛星画像 の「黄砂」「PM2.5」）。軽く・速く：黄砂は予測5枚＋観測1枚、PM2.5 は実況1枚＋予測3枚の必要な分だけ取る。
 
   黄砂   気象庁 https://www.data.jma.go.jp/env/kosa/
            予測 日本域 … 黄砂解析予測図（地表付近の黄砂濃度）。1日1回 6時頃（JST）更新、3時間ごと。「いまに一番近い時刻」＋その先3時間ごとの4コマ（計5コマ）
            観測実況（視程） … 黄砂観測実況図は「1日1枚」（その日の分を毎時10・40分頃に更新）で3時間ごとの図は無い → 当日の1枚だけ（無ければ取れる一番新しい1枚）
-  PM2.5  1つのタブ。実況（環境省そらまめ君の1時間値、作図 国立環境研究所 環境展望台、CC BY 4.0）の最新1枚＋
-         予測（国立環境研究所 VENUS 日本周辺、CC BY-NC 4.0。1日1回計算、3時間ごと）の次の2コマ。
-         予測の最初のコマが実況よりも「いま」に近い時は、実況＋予測の +3h・+6h（予測の最初のコマは実況の代わりなので出さない）。
+  PM2.5  1つの「PM2.5」タブに2つのサブタブ（バリアント）。2つは別々のコマ列で、混ぜない。
+           実況 … 環境省そらまめ君の1時間値（作図 国立環境研究所 環境展望台、CC BY 4.0）の最新1枚
+           予測 … 国立環境研究所 VENUS 日本周辺（CC BY-NC 4.0。1日1回計算、3時間ごと）。「いまに一番近い時刻」＋ +3h ＋ +6h の3コマ
+           東アジアは取らない。
 
 取得の頻度は各ソースの更新周期に合わせ、scripts/schedule.py の予定（kosa_* / pm25_*）に従う。リスト／ヘッダだけ（軽い）を予定の回に取り、
 画像は必要な枚数だけ取る（同じ「版」＋時刻の画像は端末に持った分をそのまま使う）。同じ URL で中身が入れ替わる配信（黄砂解析予測図・VENUS）は
@@ -220,21 +221,16 @@ def pick_forecast(items, now, n=5, step_h=3):
     return items[-n:]
 
 
-def pm25_steps(t_obs, now, step_h=3):
-    """PM2.5 予測の2コマ（JST で step_h の倍数の時刻）。実況 t_obs・いま now。
-    予測の「いまに一番近い時刻」が実況より近い時は、その次と次の次（＝ +3h・+6h）。そうでなければ「いま」より先の2コマ。"""
+def pm25_steps(now, step_h=3, n=3):
+    """PM2.5 予測（VENUS）の n コマ。JST で step_h の倍数の時刻のうち「いま」に一番近い時刻、その +3h、+6h。"""
     j = now.astimezone(JST).replace(minute=0, second=0, microsecond=0)
-    grid = [j + dt.timedelta(hours=k) for k in range(-step_h, 24 * 3) if (j + dt.timedelta(hours=k)).hour % step_h == 0]
+    grid = [j + dt.timedelta(hours=k) for k in range(-step_h, step_h + 1) if (j + dt.timedelta(hours=k)).hour % step_h == 0]
     near = min(grid, key=lambda g: abs((g - now).total_seconds()))
-    d_obs = abs((t_obs - now).total_seconds()) if t_obs else float("inf")
-    if abs((near - now).total_seconds()) < d_obs:
-        return [near + dt.timedelta(hours=step_h), near + dt.timedelta(hours=2 * step_h)]
-    fut = [g for g in grid if g > now]
-    return fut[:2]
+    return [near + dt.timedelta(hours=step_h * m) for m in range(n)]
 
 
 def products(F, errors):
-    """衛星画像カテゴリに足す2項目 [(id, label, product)]。必要な画像（黄砂予測5＋観測1＋PM2.5 実況1＋予測2）だけ取る。"""
+    """衛星画像カテゴリに足す2項目 [(id, label, product)]。必要な画像（黄砂予測5＋観測1＋PM2.5 実況1＋予測3）だけ取る。"""
     p = collect(F, errors)
     now = schedule.now_utc()
 
@@ -261,16 +257,15 @@ def products(F, errors):
                      note="予測：地表付近（地表〜上空約1km）の黄砂濃度（日本域）。いまに一番近い時刻とその先4コマ（3時間ごと、計5コマ）。1日1回 6時頃（JST）に更新。"
                           "観測実況：全国の官署の黄砂の有無と視程（km）。1日1枚の図（当日分は毎時10・40分頃に更新）なので当日の1枚だけ（早朝で当日分がまだ無い時は取れる一番新しい1枚で、何日の分かを表示）。時刻は JST（Z併記）。")
 
-    # ---- PM2.5（実況1＋予測2）
-    pm = []
+    # ---- PM2.5（実況1・予測3 の2つのサブタブ）
+    pm_obs, pm_fc = [], []
     obs = (p.get("pm25_obs") or {}).get("obs")
     obs_fr = (obs or {}).get("frames") or []
-    t_obs = dt.datetime.strptime(obs_fr[-1]["time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC) if obs_fr and obs_fr[-1].get("time") else None
-    pm.extend(obs_fr[-1:])
+    pm_obs.extend(obs_fr[-1:])
     vv = (p.get("pm25_venus") or {}).get("jp")
     run_txt = ""
     if vv:
-        steps = pm25_steps(t_obs, now)
+        steps = pm25_steps(now)
         def get(t):
             return keyed_image(F, f"{VENUS}/JPN/PM25/{t:%Y/%m}/JPN_PM25_{t:%Y%m%d%H}.jpg", f"venus:{vv['ver']}:JPN:{t:%Y%m%d%H}")
         rels = F.many(get, steps)
@@ -279,7 +274,7 @@ def products(F, errors):
             tu = t.astimezone(UTC)
             fr = _fr(f"予測 {C.lbl(tu)}", rel, tu)
             if fr:
-                pm.append(fr); got += 1
+                pm_fc.append(fr); got += 1
         if not got:
             errors.append("PM2.5 予測（VENUS 日本周辺）: 画像なし")
         if vv.get("run"):
@@ -290,8 +285,13 @@ def products(F, errors):
                 pass
     if not obs_fr:
         errors.append("PM2.5 実況（そらまめ君）: 画像なし")
-    pm_p = C.product("PM2.5（実況＋予測）", f"{SRC_SORA}（実況）／ {SRC_VENUS}（予測）",
-                     [C.variant("pm", "PM2.5", pm, 0)] if pm else [], "pm",
-                     note="1枚目＝実況（環境省そらまめ君の全国の PM2.5 1時間値 µg/m³、速報値）、2・3枚目＝予測（VENUS 日本周辺、PM2.5 濃度と地上風の矢印、3時間ごと）。"
+    pv = []
+    if pm_obs:
+        pv.append(C.variant("pm_obs", "実況", pm_obs, None))
+    if pm_fc:
+        pv.append(C.variant("pm_fc", "予測", pm_fc, 0))
+    pm_p = C.product("PM2.5（実況・予測）", f"{SRC_SORA}（実況）／ {SRC_VENUS}（予測）", pv, pv[0]["id"] if pv else None,
+                     note="実況：環境省そらまめ君の全国の PM2.5 1時間値 µg/m³（速報値）の最新1枚。"
+                          "予測：VENUS 日本周辺（PM2.5 濃度と地上風の矢印）の、いまに一番近い時刻とその +3h・+6h の3コマ。"
                           + run_txt + "時刻は JST（Z併記）。")
     return [("kosa", "黄砂", dust), ("pm25", "PM2.5", pm_p)]
