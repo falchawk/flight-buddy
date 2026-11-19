@@ -351,17 +351,16 @@
       inGroup.forEach((x) => w.appendChild(chip(x.label, x === v, () => pick(x.id), x.carriedOver ? ' stale' : '')));
       vbox.appendChild(w);
     }
-    // hidePast（PM2.5 予測）：開いた時点で過去になったコマは隠す（アプリは開いた時にしか更新しないため）
-    const nowMs = Date.now();
-    const frames = v.hidePast ? (v.frames || []).filter((f) => !f.time || new Date(f.time).getTime() >= nowMs) : (v.frames || []);
-    if (!frames.length) { panel.innerHTML = head() + '<div class="chart-stage"><p class="hint">表示できる予測コマがありません（すべて過去になりました）。更新（SYNC）で最新の予測を取り込んでください。</p></div>'; body.appendChild(panel); return; }
+    // PM2.5 予測：パック作成時点で「いま以降で一番早い時刻」から5コマ。開いた後に過去になっても作成時のまま全コマ表示する
+    const frames = v.frames || [];
+    if (!frames.length) { panel.innerHTML = head() + '<div class="chart-stage"><p class="hint">表示できるコマがありません。</p></div>'; body.appendChild(panel); return; }
     const fkey = `${key}/${v.id}`;
     if (frameIdx[fkey] == null || frameIdx[fkey] >= frames.length) frameIdx[fkey] = Math.min(v.defaultFrame ?? frames.length - 1, frames.length - 1);
     const carried = p.carriedOver || v.carriedOver;
     panel.innerHTML = head(carried ? ' <span class="badge carried">前回分</span>' : '')
       + '<div class="chart-stage"><p class="hint">読み込み中…</p></div>'
       + (frames.length > 1 ? `<div class="frame-bar"><button class="btn f-prev">◀</button><span class="lbl"></span><button class="btn f-next">▶</button></div><input class="frame-slider" type="range" min="0" max="${frames.length - 1}" step="1" />` : '<div class="frame-bar"><span class="lbl"></span></div>')
-      + (p.note ? `<div class="chart-note hint">${esc(p.note)}</div>` : '');
+      + (p.note ? `<div class="chart-note hint">${esc(p.note.replace('アプリを開いた時に過去になったコマは自動で隠す。', ''))}</div>` : '');
     body.appendChild(panel);
     const stage = panel.querySelector('.chart-stage'), lbl = panel.querySelector('.lbl'), slider = panel.querySelector('.frame-slider');
     let tok = 0;

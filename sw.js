@@ -4,6 +4,7 @@
 // - data/blobs/* は内容アドレスの画像。fb-blobs から返す（cache-first・パック間で共有）
 // - 外部（Windy等）は一切キャッシュしない（オンライン専用）
 // - data/latest/*, data/index.json は network-first（オフライン時はキャッシュ）
+// v1.9.19 rev2: PM2.5 予測のクライアント側の過去コマ非表示を廃止（同一版のまま再配布するためこの行でバイト列を変える）
 const VERSION = 'v1.9.19';
 const SHELL_CACHE = `fb-shell-${VERSION}`;
 const SHELL = [

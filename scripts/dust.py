@@ -292,10 +292,9 @@ def products(F, errors):
         pv.append(C.variant("pm_obs", "実況", pm_obs, None))
     if pm_fc:
         fcv_ = C.variant("pm_fc", "予測", pm_fc, 0)
-        fcv_["hidePast"] = True   # クライアントが、開いた時点で過去になったコマを隠す（js/app.js）
         pv.append(fcv_)
     pm_p = C.product("PM2.5", f"{SRC_SORA}（実況）／ {SRC_VENUS}（予測）", pv, pv[0]["id"] if pv else None,
                      note="実況：環境省そらまめ君の全国の PM2.5 1時間値 µg/m³（速報値）の最新1枚。"
-                          "予測：VENUS 日本周辺（PM2.5 濃度と地上風の矢印）の、いま以降で一番早い時刻から3時間ごとの5コマ（12時間先まで、過去のコマは無し）。アプリを開いた時に過去になったコマは自動で隠す。"
+                          "予測：VENUS 日本周辺（PM2.5 濃度と地上風の矢印）の、いま以降で一番早い時刻から3時間ごとの5コマ（12時間先まで）。パック作成時点では過去のコマは無く、作成後に時刻が過ぎたコマもそのまま表示します。"
                           + run_txt + "時刻は JST（Z併記）。")
     return [("kosa", "黄砂", dust), ("pm25", "PM2.5", pm_p)]
