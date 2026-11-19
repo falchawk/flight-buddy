@@ -187,12 +187,13 @@ class Fetcher:
                 self.urlmap[key] = {"f": rel, "t": time.time(), "sig": sig}
         return rel, lm
 
-    def pdf_cond_image(self, url, long_px=3000, max_kb=1500):
+    def pdf_cond_image(self, url, long_px=3000, max_kb=1500, mark=None):
         """ベクター PDF（1ページ）を、ETag/Last-Modified が変わった時だけ取得して pdftoppm で長辺 long_px の WebP（可逆）にする。
         1.5MB を超える時は PNG8 → 非可逆 WebP の順に落とす。戻り値 (blobパス or None, Last-Modified(UTC) or None)。"""
         import io
         from PIL import Image
-        key = f"pdf:{long_px}:{url}"
+        key = f"pdf:{long_px}:{url}" + (f":{mark[0]}" if mark else "")
+        okey = f"pdf:{long_px}:{url}"            # 原図（マーク無し）のキャッシュ。マーク付けに失敗した時はこちらを使う
         h = {}
         st, _, _ = self._raw(url, retries=1, hdrs=h, method="HEAD")
         if st != 200:
@@ -221,6 +222,34 @@ class Fetcher:
             subprocess.run(["pdftoppm", "-png", "-r", str(dpi), "-f", "1", "-l", "1", "-singlefile", pdf, os.path.join(td, "out")],
                            check=True, timeout=120, capture_output=True)
             im = Image.open(os.path.join(td, "out.png")).convert("RGB")
+            im.load()
+            if mark:
+                # 目印（海岸線・L）付き。失敗しても例外は外に出さず、原図をそのまま使う（原図の画像も別キーでキャッシュ）
+                try:
+                    orig_rel = self._pdf_im_store(im, max_kb)
+                    with self.lock:
+                        self.urlmap[okey] = {"f": orig_rel, "t": time.time(), "sig": sig}
+                    mpdf = os.path.join(td, "marked.pdf")
+                    ms = mark[1](pdf, mpdf)
+                    subprocess.run(["pdftoppm", "-png", "-r", str(dpi), "-f", "1", "-l", "1", "-singlefile", mpdf, os.path.join(td, "mout")],
+                                   check=True, timeout=120, capture_output=True)
+                    im = Image.open(os.path.join(td, "mout.png")).convert("RGB")
+                    im.load()
+                    log(f"目印付き {os.path.basename(url)}: {ms}")
+                except Exception as e:  # noqa: BLE001
+                    log(f"目印付けに失敗→原図を使う {os.path.basename(url)}: {type(e).__name__}: {e}")
+                    with self.lock:
+                        self.urlmap[key] = {"f": orig_rel, "t": time.time(), "sig": sig}
+                    return orig_rel, lm
+        rel = self._pdf_im_store(im, max_kb)
+        with self.lock:
+            self.stats["hits"] += 1
+            self.urlmap[key] = {"f": rel, "t": time.time(), "sig": sig}
+        return rel, lm
+
+    def _pdf_im_store(self, im, max_kb):
+        import io
+        from PIL import Image
         buf = io.BytesIO()
         im.save(buf, "WEBP", lossless=True, method=6)
         out, ext = buf.getvalue(), "webp"
@@ -236,11 +265,7 @@ class Fetcher:
                     out, ext = b3.getvalue(), "webp"
                     if len(out) <= max_kb * 1024:
                         break
-        rel = self.store(out, ext)
-        with self.lock:
-            self.stats["hits"] += 1
-            self.urlmap[key] = {"f": rel, "t": time.time(), "sig": sig}
-        return rel, lm
+        return self.store(out, ext)
 
     def pdf_page1_png(self, url):
         st, body, ct = self._raw(url, timeout=40)
@@ -813,10 +838,25 @@ def upper_charts(F, errors):
             errors.append(f"{name}: 取得できず")
     # 気象庁 bosai numericmap のベクター PDF（00/12UTC 初期）。日付の無い URL なので Last-Modified の新しい方を採り、変わった時だけ取り直す。
     # n-kishou.com の画像（590px 幅）より桁違いに鮮明。PDF が取れなかった時だけ従来の n-kishou 画像にフォールバック。
+    def aupq_mark_spec(key):
+        """AUPQ35/78 だけ、日本の海岸線（オレンジ）と L（赤）を重ねた PDF から画像を作る。読み込みに失敗したら None（＝原図）。"""
+        if not key.startswith("aupq"):
+            return None
+        try:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("aupq_mark", os.path.join(os.path.dirname(os.path.abspath(__file__)), "aupq_mark.py"))
+            m = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(m)
+            mark_h = os.environ.get("FB_AUPQ_MARK_H", "") == "1"  # 高気圧 H の青マークは既定 off
+            return (m.MARK_VER + ("h" if mark_h else ""), lambda src, dst: m.mark_pdf(src, dst, mark_h=mark_h))
+        except Exception as e:  # noqa: BLE001
+            log(f"AUPQ 目印モジュールを読めない→原図: {type(e).__name__}: {e}")
+            return None
+
     def nwp_pdf(key):
         for lm, hh, init in newest_run(lambda hh: f"{NWP}/{key}_{hh}.pdf"):
             try:
-                got, _ = F.pdf_cond_image(f"{NWP}/{key}_{hh}.pdf")
+                got, _ = F.pdf_cond_image(f"{NWP}/{key}_{hh}.pdf", mark=aupq_mark_spec(key))
             except Exception as e:  # noqa: BLE001
                 errors.append(f"{key}: PDF変換失敗 {type(e).__name__}: {e}")
                 got = None
@@ -966,7 +1006,7 @@ def build_charts(data_dir, airports, workers=16):
             {"id": "a30", "label": "三十分大気解析", "product": parts.get("a30") or product("三十分大気解析", SRC_METAIR, [])},
         ]},
         {"id": "fxfe", "label": "高層天気図", "defaultItem": 1, "items": [
-            {"id": "aupq", "label": "AUPQ", "product": single("AUPQ35 / AUPQ78", "気象庁 数値予報天気図（PDF）／取得失敗時は n-kishou.com", up.get("aupq"))},
+            {"id": "aupq", "label": "AUPQ", "product": single("AUPQ35 / AUPQ78", "気象庁 数値予報天気図（PDF）／取得失敗時は n-kishou.com", up.get("aupq"), note="オレンジ線＝日本の海岸線、赤い L＝低気圧中心（PDF のベクターから自動で重ね描き。付けられなかった時は原図のまま）")},
             {"id": "fbjp", "label": "FBJP", "product": single("FBJP 国内悪天予想図", SRC_JMA, up.get("fbjp"))},
             {"id": "fircmnt", "label": "福岡FIR解説報", "product": single(
                 "全国航空気象解説報（福岡FIR）", "気象庁 航空気象情報", up.get("fircmnt"),

@@ -41,6 +41,7 @@ python3 /workspace/flight-buddy/scripts/auto_update.py
   - 高層天気図 › 福岡FIR解説報（FBJP の右隣）: 気象庁 航空気象情報「全国航空気象解説報（福岡FIR）」`https://www.data.jma.go.jp/airinfo/data/pict/ajpn_cmnt/qyya83.png`（ページ: `awfo_ajpn_cmnt_fukuokafir.html`、ログイン不要の公開画像）。1日2回（16時台・4時台 JST）。URL に日付が無いので 15分ごとに HEAD で ETag/Last-Modified を見て、変わった時だけ本文を取得。掲載時刻はファイルの Last-Modified、ISSUED/VALID は画像内。
   - 下層悪天予想図: 東日本（fbtk）を上、西日本（fbos）を下に積んで表示。
   - 地上天気図 ASAS/FSAS24/FSAS48 と AUPQ35/78・FXJP854・FXFE502/5782 は、気象庁のベクター PDF（`yoho/data/wxchart/quick/{ASAS_COLOR,FSAS24_COLOR_ASIA,FSAS48_COLOR_ASIA}.pdf`、`bosai/numericmap/data/nwpmap/*_{00,12}.pdf`）を pdftoppm で長辺3000px の可逆 WebP（各 0.3〜1.1MB）にして使用。ETag/Last-Modified が変わった時だけ取得（15分ごとは HEAD のみ）。基準時刻は bosai 一覧の発表時刻つきファイル名と PDF の Last-Modified を突き合わせて決定。PDF が取れない／bosai の方が新しい時だけ従来の PNG（600×512）にフォールバック。ビューアはピンチ・ホイールで原寸の12倍まで拡大可。
+  - AUPQ35/78 は `scripts/aupq_mark.py`（PyMuPDF。`pip install --target ~/.local/share/fb-pylib pymupdf`）で PDF に日本の海岸線（オレンジ・半透明・細線。`scripts/aupq_japan_coast.json`＝Natural Earth 10m）と低気圧 L（赤。PDF 内では太さ1.13の折れ線 (0,0)→(0,8)→(4.5,8)）を重ねてから画像にする。投影（140E 中心の極ステレオ）は実 PDF の経緯線と海岸線で較正済みで、毎回、図の海岸線との一致率を検査（0.6 未満なら描かない）。失敗時・PyMuPDF 無しは原図（原図の画像も別キーでキャッシュ）。高気圧 H の青は環境変数 `FB_AUPQ_MARK_H=1` の時だけ（既定 off）。
   - 降水ナウキャスト/雷/今後の雨は気象庁 rain.html と同じ `bosai/rain/data/*/time.json`（5分/10分毎）の最新を使用（約5分遅れ）。ナウキャスト/雷/今後の雨: 全国＋19地域（地図・境界線を重ね表示）。
 - SWIM: `/workspace/fb-staging/notam/<ICAO>.json`（USV001 応答）、`atis.json`（LGV062 応答）、`profile/<ICAO>.json`（LGV220 応答）を
   そのまま置けば整形して取り込みます（`{"fetchedAt":"…Z","response":<応答>}` 形式も可）。6時間（ATIS は1.5時間）より古いものは使いません。
