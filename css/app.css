@@ -377,25 +377,15 @@ label.block{margin-top:14px}
 .app-header{gap:4px}
 @media (max-width:440px){.app-header{padding-right:4px;padding-left:10px;gap:2px}.header-status{gap:4px;margin-right:2px}.pill{padding:4px 8px;font-size:11.5px}.app-header .btn-icon{min-width:34px;width:34px}.app-header .btn-icon svg{width:21px;height:21px}#wx-btn svg{width:22px;height:22px}}
 
-/* WX だけ更新ボタン（雲＋円形矢印。全体更新とは別アイコン）。回転は矢印だけ */
-#wx-btn{min-width:36px;width:36px;padding:0}
-#wx-btn svg{width:23px;height:23px}
-#wx-btn .wx-arrow{transform-box:fill-box;transform-origin:center}
-#wx-btn.spinning svg{animation:none}
-/* WX の円弧矢印は時計回り（矢じりが円弧の始点側＝sweep=0 の逆向き）なので、回転も時計回りに合わせる */
-#wx-btn.spinning .wx-arrow{animation:spin-cw .9s linear infinite}
-@keyframes spin-cw{to{transform:rotate(360deg)}}
-#wx-btn:disabled,#refresh-btn:disabled{opacity:.45}
 .toast{position:fixed;left:50%;top:calc(var(--header-h) + env(safe-area-inset-top) + 8px);transform:translate(-50%,-6px);z-index:3000;max-width:min(92vw,420px);padding:9px 14px;border-radius:12px;background:var(--bg-card);color:var(--text);box-shadow:var(--shadow);border:1px solid var(--line-strong);font-size:12.5px;line-height:1.45;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .toast.bad{color:var(--bad-fg);background:var(--bad-bg)}
 
-/* 全体更新ボタンの小さな「ALL」（AUTO と同じ書式）。回転するのはアイコンだけでラベルは動かない */
+/* 全体更新ボタンの小さな「SYNC」（AUTO と同じ書式）。回転するのはアイコンだけでラベルは動かない */
 #refresh-btn{position:relative;min-width:36px;width:36px;padding:0}
 #refresh-btn svg{width:18px;height:18px;margin-top:-9px}
-#refresh-btn .th-all{position:absolute;left:0;right:0;bottom:3px;text-align:center;font-size:8px;line-height:1;font-weight:800;letter-spacing:.02em;color:var(--accent);pointer-events:none}
+#refresh-btn .th-sync{position:absolute;left:0;right:0;bottom:3px;text-align:center;font-size:8px;line-height:1;font-weight:800;letter-spacing:.02em;color:var(--accent);pointer-events:none}
 @media (max-width:440px){#refresh-btn{min-width:34px;width:34px}.app-header #refresh-btn svg{width:18px;height:18px}}
-#wx-btn .wx-sun{transform-box:fill-box}
 
 .duty-src{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;vertical-align:middle;margin-left:6px;letter-spacing:0}
 .duty-src:empty{display:none}

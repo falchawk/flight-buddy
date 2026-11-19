@@ -28,9 +28,6 @@
       <span id="net-pill" class="pill">--</span>
       <span id="pack-pill" class="pill">PACK --</span>
     </div>
-    <button id="wx-btn" class="btn-icon" type="button" title="WXだけ更新（METAR/TAF/ATISとWXの図のみ）" aria-label="WXだけ更新">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><defs><mask id="wx-sun-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M7 13.6h7.2a3 3 0 0 0 .3-5.98A4.3 4.3 0 0 0 6.2 8.5 2.6 2.6 0 0 0 7 13.6z" fill="#000" stroke="#000" stroke-width="3.6"/></mask></defs><g class="wx-sun" mask="url(#wx-sun-mask)" stroke="#f5a524" stroke-width="1.6"><circle cx="17.4" cy="5.8" r="2.5" fill="#f5a524"/><path d="M17.4 .9v1.1M22.3 5.8h-1.1M17.4 10.7v-1.1M12.5 5.8h1.1M20.9 2.3l-.8.8M20.9 9.3l-.8-.8M13.9 2.3l.8.8"/></g><path d="M7 13.6h7.2a3 3 0 0 0 .3-5.98A4.3 4.3 0 0 0 6.2 8.5 2.6 2.6 0 0 0 7 13.6z"/><g class="wx-arrow"><path d="M20.4 15.4a3.7 3.7 0 1 0 .3 3.4"/><path d="M20.6 12.9v2.7h-2.7"/></g></svg>
-    </button>
     <button id="theme-btn" class="btn-icon" type="button" data-mode="auto" title="表示：自動（端末設定）" aria-label="表示：自動（端末設定）。押すとライトに切り替え">
       <svg class="ic-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 3.8v16.4" /><path d="M12 3.8a8.2 8.2 0 0 1 0 16.4z" fill="currentColor" stroke="none"/></svg>
       <svg class="ic-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.8v2.2M12 19v2.2M2.8 12H5M19 12h2.2M5.5 5.5l1.6 1.6M16.9 16.9l1.6 1.6M18.5 5.5l-1.6 1.6M7.1 16.9l-1.6 1.6"/></svg>
@@ -39,7 +36,7 @@
     </button>
     <button id="refresh-btn" class="btn-icon" title="全体更新（新しいパックを確認）" aria-label="全体更新">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M5.5 15a8 8 0 0 0 13.9 3M18.5 9A8 8 0 0 0 4.6 6"/></svg>
-      <span class="th-all" aria-hidden="true">ALL</span>
+      <span class="th-sync" aria-hidden="true">SYNC</span>
     </button>
   </header>
   <div id="status-bar" class="status-bar">

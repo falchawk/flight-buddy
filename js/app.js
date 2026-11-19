@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.15';
+  const APP_VERSION = '1.9.16';
   const REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
@@ -112,7 +112,6 @@
     else src = online ? `保存済みパックを表示中${state.remoteError ? '（最新確認に失敗）' : ''}` : 'オフライン：保存済みパックを表示中';
     if (state.downloading) src += ` ／ 新しいパック保存中 ${state.downloading}`;
     if (m.sample) src += ' ／ SAMPLE含む';
-    { const w = state.pack?.wxOverlay, wl = wxLastText(); if (w) src += ` ／ 気象はパック ${hhmmJ(w.generatedAt)} 分に更新済み`; if (wl) src += ` ／ ${wl}`; }
     $('status-text').textContent = `パック ${fmtJst(m.generatedAt)}（${fmtUtc(m.generatedAt)}）・ ${src}`;
     if (ageH > 3) {
       banner.textContent = ageH > 12 ? `⚠ パックが ${ageText(m.generatedAt)} のものです。` : `パックは ${ageText(m.generatedAt)} に作成されました。`;
@@ -848,34 +847,6 @@
     t.textContent = text; t.className = `toast show${bad ? ' bad' : ''}`;
     clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.className = 'toast'; }, ms);
   }
-  const hhmmJ = (iso) => fmtJst(iso, false).replace(' JST', 'J');
-  function wxLastText() {
-    const l = window.FBPack.wxLast();
-    return l ? `WX更新 ${hhmmJ(l.at)}（${l.status === 'updated' ? '気象のみ最新化' : '最新でした'}）` : '';
-  }
-  async function wxRefresh() {
-    if (refreshing) return;
-    const btn = $('wx-btn');
-    if (!navigator.onLine) { toast('オフラインです。WXの更新はオンラインで行えます（保存済みの気象を表示中）', true); return; }
-    if (!state.pack?.manifest) { toast('先に右上の「更新」でパックを保存してください', true); return; }
-    refreshing = true; btn.classList.add('spinning'); $('refresh-btn').disabled = true; btn.disabled = true;
-    try {
-      const baseId = state.pack.manifest.packId;
-      const r = await window.FBPack.wxRefresh(wantedAirports(), (t) => { state.downloading = t; renderStatus(); }, async () => { await showPack(baseId); });
-      state.downloading = null;
-      await showPack(baseId);
-      const mb = r.bytes > 1048576 ? `${(r.bytes / 1048576).toFixed(1)}MB` : `${Math.round(r.bytes / 1024)}KB`;
-      toast(r.status === 'same'
-        ? `WX：すでに最新です（パック ${hhmmJ(r.generatedAt)} 作成。新しいデータはボットが約15分ごとに公開）`
-        : `WX 更新 ${hhmmJ(new Date().toISOString())}：${r.airports}空港の METAR/TAF/ATIS＋WXの図（新しい画像 ${r.blobsNew}枚・${mb}）。パック ${hhmmJ(r.generatedAt)} 作成分`);
-    } catch (e) {
-      state.downloading = null;
-      toast(`WXの更新に失敗：${navigator.onLine ? (e.name === 'AbortError' ? 'タイムアウト' : e.message) : 'オフライン'}（保存済みの気象を表示中）`, true);
-    } finally {
-      refreshing = false; btn.classList.remove('spinning'); btn.disabled = false; $('refresh-btn').disabled = false; renderStatus();
-    }
-  }
-
   // ---------------------------------------------------------------- THEME（auto / light / dark）
   const darkMq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
   function applyTheme() {
@@ -934,7 +905,6 @@
     document.querySelectorAll('#notam-mode .chip').forEach((b) => { b.onclick = () => { state.notamMode = b.dataset.mode; lsSet(LS.notamMode, state.notamMode); applyNotamMode(); }; });
     document.querySelectorAll('#notam-period .chip').forEach((b) => { b.onclick = () => { state.notamHours = Number(b.dataset.hours); lsSet(LS.notamH, state.notamHours); renderNotam(); }; });
     $('refresh-btn').onclick = () => refresh(false);
-    $('wx-btn').onclick = wxRefresh;
     $('pack-redownload').onclick = () => refresh(true);
     $('pack-clear').onclick = async () => { if (!confirm('保存済みパックを消去しますか？（オフラインで見られなくなります）')) return; await window.FBPack.clearAll(); state.pack = null; renderAll(); };
     window.addEventListener('online', () => { renderStatus(); renderCharts(); refresh(false); });
