@@ -14,7 +14,8 @@
 <meta name="apple-mobile-web-app-title" content="Flight Buddy" />
 <title>Flight Buddy</title>
 <link rel="manifest" href="manifest.webmanifest" />
-<link rel="icon" href="icons/icon-192.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
 <link rel="apple-touch-icon" href="icons/icon-180.png" />
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
 <link rel="stylesheet" href="css/app.css" />
@@ -22,7 +23,7 @@
 <body>
 <div id="app">
   <header class="app-header">
-    <div class="brand"><span class="brand-name">Flight Buddy</span><img class="brand-emb" src="icons/antlers-emblem-66.png" alt="Kashima Antlers" width="21" height="22" draggable="false"></div>
+    <div class="brand"><span class="brand-name">Flight Buddy</span><img class="brand-emb" src="icons/brand-fb-72.png" alt="Flight Buddy" width="26" height="26" draggable="false"></div>
     <div class="header-status">
       <span id="clock" class="pill clock">--</span>
       <span id="net-pill" class="pill">--</span>
@@ -155,10 +156,6 @@
       <div id="ap-sync"></div>
       <p class="hint">ボットはパックの全空港（METAR/TAF のある国内空港すべて＋日本の航空会社が過去・現在に使った海外空港。国別一覧から選べます）を取得しています（国内：METAR/TAF・ATIS・図は15分ごと、NOTAM は6時間ごと＝00/06/12/18時、空港情報と時刻表は1日1回＝4時台。海外：METAR/TAF は1時間ごと、空港情報は週1回＝月曜4時台）。この端末はここで選んだ空港の分だけダウンロード・表示します（端末内の設定。選択を増やした空港はオンライン時に自動で取得。オフラインでは保存済みの空港だけ表示）。下の国別一覧からも追加できます。</p>
       <div id="ap-browse"></div>
-      <h3>FEEDBACK</h3>
-      <p class="hint">文章で自由に書いてください。端末に保存され、「Botに送る」で GitHub issue としてボットに渡せます（ボットはブリーフ作成時に参照。オンライン時のみ）。</p>
-      <textarea id="feedback-text" rows="6" placeholder="自由に書いてください"></textarea>
-      <div class="row"><button id="feedback-save" class="btn">SAVE</button><a id="feedback-send" class="btn" target="_blank" rel="noopener">Botに送る</a><span id="feedback-saved-msg" class="hint hidden">保存しました</span></div>
       <h3>SWIM（ATIS・NOTAM・空港情報）</h3>
       <p class="hint">SWIM は box 上で国内の全空港を取得：ATIS と空港プロファイル（METAR/TAF 本文を含む）は15分ごと、NOTAM は6時間ごと（00/06/12/18時 JST）、AIP（AD 2・Lost Comm）は1日1回（4時台 JST。AIRAC の版が変わった空港だけ PDF を取り直し）。取りこぼした時は次の回で追いつきます。ID・パスワードは box の環境変数だけにあり、この端末とパックには入りません。下は最新パックの取得状況です。</p>
       <div id="swim-status" class="hint"></div>

@@ -1,7 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.17';
-  const REPO = 'falchawk/flight-buddy';
+  const APP_VERSION = '1.9.18';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { areaHide: 'fb.areaHide', notamMode: 'fb.notamMode', airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
@@ -352,7 +351,10 @@
       inGroup.forEach((x) => w.appendChild(chip(x.label, x === v, () => pick(x.id), x.carriedOver ? ' stale' : '')));
       vbox.appendChild(w);
     }
-    const frames = v.frames || [];
+    // hidePast（PM2.5 予測）：開いた時点で過去になったコマは隠す（アプリは開いた時にしか更新しないため）
+    const nowMs = Date.now();
+    const frames = v.hidePast ? (v.frames || []).filter((f) => !f.time || new Date(f.time).getTime() >= nowMs) : (v.frames || []);
+    if (!frames.length) { panel.innerHTML = head() + '<div class="chart-stage"><p class="hint">表示できる予測コマがありません（すべて過去になりました）。更新（SYNC）で最新の予測を取り込んでください。</p></div>'; body.appendChild(panel); return; }
     const fkey = `${key}/${v.id}`;
     if (frameIdx[fkey] == null || frameIdx[fkey] >= frames.length) frameIdx[fkey] = Math.min(v.defaultFrame ?? frames.length - 1, frames.length - 1);
     const carried = p.carriedOver || v.carriedOver;
@@ -873,12 +875,6 @@
     applyTheme();
   }
 
-  function setupFeedback() {
-    const ta = $('feedback-text'); ta.value = lsGet('fb.feedback', '');
-    const link = () => { $('feedback-send').href = `https://github.com/${REPO}/issues/new?labels=feedback&title=${encodeURIComponent('feedback: ' + (ta.value.split('\n')[0] || '').slice(0, 40))}&body=${encodeURIComponent(ta.value + '\n\n（Flight Buddy SETTINGS から送信）')}`; };
-    ta.oninput = link; link();
-    $('feedback-save').onclick = () => { lsSet('fb.feedback', ta.value); $('feedback-saved-msg').classList.remove('hidden'); setTimeout(() => $('feedback-saved-msg').classList.add('hidden'), 1500); };
-  }
   function renderSwimStatus() {
     const el = $('swim-status'); if (!el) return;
     const p = state.pack; if (!p) { el.textContent = 'パックがありません。'; return; }
@@ -898,7 +894,7 @@
   }
   async function start() {
     $('app-version').textContent = `App v${APP_VERSION}`;
-    setupTheme(); setupTabs(); setupTas(); setupDuty(); setupFlights(); setupAirportPicker(); setupFeedback();
+    setupTheme(); setupTabs(); setupTas(); setupDuty(); setupFlights(); setupAirportPicker(); try { localStorage.removeItem('fb.feedback'); } catch (e) { /* 旧 FEEDBACK 欄の保存分を片付け */ }
     window.FBViewer.setup();
     $('airport-date').value = state.duty.date || todayJst();
     $('airport-date').onchange = renderAirport;
