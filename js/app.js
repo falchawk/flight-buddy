@@ -1,10 +1,10 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.12';
+  const APP_VERSION = '1.9.13';
   const REPO = 'falchawk/flight-buddy';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
-  const LS = { airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
+  const LS = { areaHide: 'fb.areaHide', notamMode: 'fb.notamMode', airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
   const lsSet = (k, v) => localStorage.setItem(k, JSON.stringify(v));
   const AIRLINES = ['SFJ', 'ANA', 'JAL', 'SNJ', 'ADO', 'SKY', 'APJ', 'JJP', 'FDA', 'IBX', 'JTA', 'RAC', 'ORC', 'AMX', 'TOK', 'AJX', 'TZP', 'SJO', 'NCA'];
@@ -32,6 +32,7 @@
     airports: resolveInitialAirports(),
     duty: lsGet(LS.duty, { date: todayJst(), buffer: 2, airline: 'SFJ', flights: [], note: '', source: null, manualOn: null }),
     notamHours: lsGet(LS.notamH, 24),
+    notamMode: lsGet(LS.notamMode, 'ap'),
   };
 
   function todayJst() { return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10); }
@@ -126,6 +127,7 @@
       btns.forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
       document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('active', p.id === `tab-${tab}`));
       lsSet(LS.tab, tab);
+      if (tab === 'notam') setTimeout(() => { try { applyNotamMode(); } catch (e) { console.warn(e); } }, 0);
       if (tab === 'map') setTimeout(() => { try { renderMap(); } catch (e) { console.warn(e); } }, 0);
     };
     btns.forEach((b) => b.addEventListener('click', () => go(b.dataset.tab)));
@@ -474,7 +476,70 @@
   }
 
   // ---------------------------------------------------------------- NOTAM
+  // ---- NOTAM > 空域（FIR のエンルート／警報＋ILS・航法援助の停波。地図・種別ごとの色・短いラベル・高度帯・JST の期間。パックの notam_area.json から。オフライン可）
+  const areaOverlap = (it, now) => new Date(it.from).getTime() <= now + 24 * 3600000 && (!it.to || new Date(it.to).getTime() >= now);
+  function areaAlt(it) { return `${it.lower || 'SFC'}〜${it.upper || 'UNL'}`; }
+  function areaWhen(it) {
+    const f = fmtJst(it.from), t = it.to ? fmtJst(it.to) : (it.perm ? '恒久' : '終了未定');
+    return `${f} → ${t}`;
+  }
+  function areaState(it, now) {
+    const f = new Date(it.from).getTime();
+    if (f <= now) return { cls: 'on', text: '発効中' };
+    const h = Math.round((f - now) / 3600000);
+    return { cls: 'soon', text: h < 1 ? 'まもなく' : `${h}時間後から` };
+  }
+  function areaPopup(it) {
+    const e = (x) => esc(x ?? '');
+    return `<div class="area-pop"><div class="ap-h"><span class="area-badge" style="background:${esc(state.pack?.notamArea?.cats?.[it.cat]?.color || '#888')}">${e(it.label)}</span> <b>${e(it.name || '')}</b> <span class="hint">${e(it.loc)} ・ ${e(it.id)}</span></div>
+      <div>高度 <b>${e(areaAlt(it))}</b></div><div>${e(areaWhen(it))}</div>${it.sched ? `<div class="hint">時間帯 ${e(it.sched)}</div>` : ''}
+      <div class="ap-t">${e(it.text)}</div><details><summary>原文</summary><pre class="raw">${e(it.raw)}</pre></details></div>`;
+  }
+  function renderNotamArea() {
+    const na = state.pack?.notamArea, meta = $('area-meta'), catsNav = $('area-cats'), list = $('area-list'), legend = $('area-legend'), mapEl = $('area-map');
+    catsNav.innerHTML = ''; list.innerHTML = ''; legend.innerHTML = '';
+    if (!state.pack) { meta.textContent = 'パックがありません。'; return; }
+    if (!na) { meta.innerHTML = '<span class="hint">このパックに空域NOTAMがありません。次の更新（6時間ごと）をお待ちください。</span>'; return; }
+    const now = Date.now();
+    const defHide = Object.entries(na.cats).filter(([, v]) => !v.default).map(([k]) => k);
+    const hide = new Set(lsGet(LS.areaHide, defHide));
+    const all = na.items.filter((it) => areaOverlap(it, now)).map((it, i) => ({ ...it, key: `${it.id}|${it.loc}|${i}` }));
+    const count = {}; all.forEach((it) => { count[it.cat] = (count[it.cat] || 0) + 1; });
+    const shown = all.filter((it) => !hide.has(it.cat));
+    meta.innerHTML = `取得 ${esc(fmtJst(na.fetchedAt))}（${esc(ageText(na.fetchedAt))}）・ 出所：${esc(na.source)} ・ 表示 <b>${shown.length}</b> / ${all.length}件（いまから24時間以内に有効になる・なっているもの）${na.carriedOver || na.note ? ` <span class="badge stale">${esc(na.note || '前回分')}</span>` : ''}`;
+    for (const [k, v] of Object.entries(na.cats)) {
+      if (!count[k]) continue;
+      const b = document.createElement('button'); b.className = `chip area-chip${hide.has(k) ? ' off' : ''}`;
+      b.innerHTML = `<i style="background:${esc(v.color)}"></i>${esc(v.label)} <span class="n">${count[k]}</span>`;
+      b.onclick = () => { if (hide.has(k)) hide.delete(k); else hide.add(k); lsSet(LS.areaHide, [...hide]); renderNotamArea(); };
+      catsNav.appendChild(b);
+    }
+    const geo = shown.filter((it) => it.geom), nogeo = shown.filter((it) => !it.geom);
+    legend.innerHTML = `<span class="lg"><i class="lg-poly"></i>空域（多角形）</span><span class="lg"><i class="lg-circle"></i>円・半径</span><span class="lg"><i class="lg-dot"></i>小さな区域（花火など）</span><span class="lg"><i class="lg-pt">⚠</i>航法援助・ILS（位置は概略）</span>${nogeo.length ? `<span class="lg hint">図にできない ${nogeo.length}件は下の一覧のみ</span>` : ''}`;
+    if (window.FBAreaMap && window.L) window.FBAreaMap.render(mapEl, geo, na.cats, areaPopup, geo.length <= 40);
+    const card = (it) => {
+      const st = areaState(it, now), c = na.cats[it.cat];
+      const d = document.createElement('div'); d.className = 'area-item'; d.style.borderLeftColor = c.color;
+      d.innerHTML = `<div class="ai-h"><span class="area-badge" style="background:${esc(c.color)}">${esc(it.label)}</span>${it.name ? ` <b>${esc(it.name)}</b>` : ''} <span class="hint">${esc(it.loc)}</span><span class="ai-st ${st.cls}">${esc(st.text)}</span></div>
+        <div class="ai-m"><span>高度 <b>${esc(areaAlt(it))}</b></span><span>${esc(areaWhen(it))}</span></div>
+        <div class="ai-t">${esc(it.text.slice(0, 150))}${it.text.length > 150 ? '…' : ''}</div>
+        <details><summary>原文</summary><pre class="raw">${esc(it.raw)}</pre></details>`;
+      if (it.geom) { d.classList.add('click'); d.querySelector('.ai-h').onclick = () => { mapEl.scrollIntoView({ block: 'center', behavior: 'smooth' }); setTimeout(() => window.FBAreaMap.focus(it.key), 250); }; }
+      return d;
+    };
+    const sorted = shown.slice().sort((a, b) => (areaState(a, now).cls === 'on' ? 0 : 1) - (areaState(b, now).cls === 'on' ? 0 : 1) || a.from.localeCompare(b.from));
+    const head = document.createElement('h3'); head.className = 'area-h'; head.textContent = `一覧（${sorted.length}件）`; list.appendChild(head);
+    if (!sorted.length) list.insertAdjacentHTML('beforeend', '<p class="hint">該当なし（種別の絞り込みを確認してください）。</p>');
+    sorted.forEach((it) => list.appendChild(card(it)));
+  }
+  function applyNotamMode() {
+    const area = state.notamMode === 'area';
+    document.querySelectorAll('#notam-mode .chip').forEach((b) => b.classList.toggle('active', b.dataset.mode === state.notamMode));
+    $('notam-ap').hidden = area; $('notam-area').hidden = !area;
+    if (area && $('tab-notam').classList.contains('active')) { renderNotamArea(); window.FBAreaMap && window.FBAreaMap.invalidate(); }
+  }
   function renderNotam() {
+    applyNotamMode();
     document.querySelectorAll('#notam-period .chip').forEach((b) => b.classList.toggle('active', Number(b.dataset.hours) === state.notamHours));
     const n = state.pack?.notam, list = $('notam-list'); list.innerHTML = '';
     const ref = state.pack ? new Date(state.pack.manifest.generatedAt).getTime() : Date.now();
@@ -815,6 +880,7 @@
     const eff = t === 'auto' ? (darkMq && !darkMq.matches ? 'light' : 'dark') : t;
     const meta = document.querySelector('meta[name="theme-color"]');
     window.FBMap && window.FBMap.refreshTheme();
+    window.FBAreaMap && window.FBAreaMap.refreshTheme();
     if (meta) meta.setAttribute('content', getComputedStyle(root).getPropertyValue('--bg-panel-solid').trim() || (eff === 'light' ? '#ffffff' : '#10151d'));
     // ヘッダーのテーマボタン：現在のモードのアイコン＋title/aria-label（押すと 自動→ライト→ダーク→自動）
     const tb = $('theme-btn');
@@ -860,6 +926,7 @@
     window.FBViewer.setup();
     $('airport-date').value = state.duty.date || todayJst();
     $('airport-date').onchange = renderAirport;
+    document.querySelectorAll('#notam-mode .chip').forEach((b) => { b.onclick = () => { state.notamMode = b.dataset.mode; lsSet(LS.notamMode, state.notamMode); applyNotamMode(); }; });
     document.querySelectorAll('#notam-period .chip').forEach((b) => { b.onclick = () => { state.notamHours = Number(b.dataset.hours); lsSet(LS.notamH, state.notamHours); renderNotam(); }; });
     $('refresh-btn').onclick = () => refresh(false);
     $('wx-btn').onclick = wxRefresh;

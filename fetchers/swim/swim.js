@@ -101,23 +101,25 @@ const ATIS_REQUEST_URL = 'https://web.swim.mlit.go.jp/f2atrq/web/FLV402/LGV062';
 // 推測で別URLを増やさない）。
 const NOTAM_REQUEST_URL = 'https://web.swim.mlit.go.jp/f2dnrq/web/FUV201/USV001';
 
-function buildNotamRequestBody(icao) {
+function buildNotamRequestBody(icao, scope) {
+  // scope: undefined＝飛行場のみ（従来）／'enroute'・'warning'＝FIR（RJJJ）単位のエンルート・警報（空域タブ用。複数のスコープを同時に選ぶと 0 件になるので別々に呼ぶ）
+  const area = scope === 'enroute' || scope === 'warning';
   return {
     msgHeader: { jnlInfo: { jnlRegistFlag: 0 }, tsusuInfo: {} },
     ctrlInfo: {},
     ctrlHeader: {},
     nof: '',
-    fir: '',
-    location: icao,
+    fir: area ? 'RJJJ' : '',
+    location: area ? '' : icao,
     notamCode: '',
     series: '',
     notamNr: '',
     uuid: '',
     // 実地確認済み：0=選択（含める）、1=除外。今回のご指示「範囲の初期は
     // 飛行場。エンルートは今は必須でない」により、飛行場のみ選択する。
-    scopeAerodrome: '0',
-    scopeEnroute: '1',
-    scopeWarning: '1',
+    scopeAerodrome: area ? '1' : '0',
+    scopeEnroute: scope === 'enroute' ? '0' : '1',
+    scopeWarning: scope === 'warning' ? '0' : '1',
     lower: '',
     upper: '',
     keyword: '',
@@ -158,11 +160,11 @@ function extractIssuedEpoch(digitalNotamXml) {
 
 // 空港（ICAO）ごとに1回POSTする（上のコメントのとおり、複数ICAOをlocationへ
 // まとめて渡すと実地確認して正しく絞り込まれないことが分かったため、まとめない）。
-async function fetchNotamForIcao(icao) {
+async function fetchNotamForIcao(icao, scope) {
   const res = await swimFetch(NOTAM_REQUEST_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(buildNotamRequestBody(icao)),
+    body: JSON.stringify(buildNotamRequestBody(icao, scope)),
   });
   if (!res.ok) {
     const err = new Error(`HTTP ${res.status}`);
@@ -197,6 +199,28 @@ async function fetchNotamForIcao(icao) {
     issuedEpoch: extractIssuedEpoch(n.digitalNotam),
     scopes: n.scopes || null,
   }));
+}
+
+// FIR（RJJJ）単位のエンルート NOTAM と警報（制限・危険・訓練空域、無人機、花火、航空ショー等）。空域タブ用。
+// 2026-11-19 実地確認：fir='RJJJ' ＋ スコープを1つだけ選ぶ（enroute 595件 / warning 683件）。続けて呼ぶと fetch failed になることがあるので間隔を空けて1回だけ再試行する。
+async function fetchNotamArea() {
+  const items = []; const notes = [];
+  for (const scope of ['enroute', 'warning']) {
+    let ok = false;
+    for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+      try {
+        await new Promise((r) => setTimeout(r, attempt ? 4000 : 1500));
+        const list = await fetchNotamForIcao('RJJJ', scope);
+        items.push(...list.map((n) => ({ ...n, areaScope: scope })));
+        ok = true;
+        console.log(`[SWIM] 空域NOTAM取得成功 ${scope}: ${list.length}件`);
+      } catch (err) {
+        console.error(`[SWIM] 空域NOTAM取得失敗 ${scope}:`, err && err.httpStatus ? `HTTP ${err.httpStatus}` : '', err && err.message);
+        if (attempt) notes.push(`${scope}: ${err && err.message}`);
+      }
+    }
+  }
+  return { ok: notes.length === 0 && items.length > 0, items, note: notes.length ? `SWIM 空域NOTAM：${notes.join(' / ')}` : null };
 }
 
 // 失敗理由を空港ごとに割り当てるための道具（atisByIcao側の
@@ -725,4 +749,4 @@ function buildSwimFallback(label) {
 }
 
 // Flight Buddy: 部品ごとに取得間隔を変えるため（fetchers/swim/run.js）、内部関数も公開する（中身は wx-brief main のまま）。
-module.exports = { fetchSwimDocuments, fetchSwimAtisAndProfile, buildSwimFallback, fetchNotamFromSwim, fetchAirportProfilesFromSwim, fetchSwimAtisPart, ATIS_SUPPORTED_ICAO };
+module.exports = { fetchSwimDocuments, fetchSwimAtisAndProfile, buildSwimFallback, fetchNotamFromSwim, fetchNotamArea, fetchAirportProfilesFromSwim, fetchSwimAtisPart, ATIS_SUPPORTED_ICAO };

@@ -71,6 +71,10 @@ const now = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
         } else if (part === 'notam') {
           const r = await swim.fetchNotamFromSwim(AIRPORTS);
           res.notam = { fetchedAt: at, airports: AIRPORTS, ok: r.ok, note: r.note || null, notesByIcao: r.notesByIcao || {}, items: r.items || [] };
+          // 空域タブ用：FIR（RJJJ）のエンルート・警報 NOTAM（取れなければ前回分を残す）
+          const a = await swim.fetchNotamArea().catch((e) => ({ ok: false, items: [], note: String(e && e.message) }));
+          const pa = prev.notam && prev.notam.area;
+          res.notam.area = a.ok || !pa ? { fetchedAt: at, ok: a.ok, note: a.note || null, items: a.items } : { ...pa, note: `${a.note || '取得失敗'}（前回分 ${pa.fetchedAt}）`, carriedOver: true };
         } else if (part === 'aip') {
           const prevAip = (prev.aip && prev.aip.byIcao) || {};
           const pf = prev.aip && prev.aip.fetchedAt;

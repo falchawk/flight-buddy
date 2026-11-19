@@ -51,6 +51,7 @@ import swim_staging
 from flightcat import classify_metar  # noqa: E402
 import schedule  # noqa: E402
 import flights_pack  # noqa: E402
+import notam_area  # noqa: E402
 
 
 def log(*a):
@@ -493,7 +494,7 @@ def pack_signature(pack_dir):
         for m in e.get("metar") or []:
             h.update((m.get("raw") or "").encode())
         h.update(((e.get("taf") or {}).get("raw") or "").encode())
-    for name in ("notam.json", "brief.json", "atis.json", "airports.json", "flights.json", "duty_default.json"):
+    for name in ("notam.json", "brief.json", "atis.json", "airports.json", "flights.json", "duty_default.json", "notam_area.json"):
         d = read_json(os.path.join(pack_dir, name), {}) or {}
         d.pop("fetchedAt", None)
         h.update(json.dumps(d, sort_keys=True, ensure_ascii=False).encode())
@@ -600,7 +601,7 @@ def brief_images(text, img_dir):
 
 def join_pack(pack_dir):
     """空港別ファイルを元の形（wx/notam/atis/airports/charts の airports 付き）に戻す（前回分の引き継ぎ用）。旧形式はそのまま。"""
-    out = {k: read_json(os.path.join(pack_dir, f"{k}.json")) for k in ("wx", "notam", "atis", "airports", "charts", "flights", "brief", "duty_default")}
+    out = {k: read_json(os.path.join(pack_dir, f"{k}.json")) for k in ("wx", "notam", "atis", "airports", "charts", "flights", "brief", "duty_default", "notam_area")}
     apd = os.path.join(pack_dir, AP_DIR)
     if not os.path.isdir(apd):
         return out
@@ -679,6 +680,17 @@ def build(args):
             write_json(os.path.join(pack_dir, "notam.json"), load_notams(notam_file, airports))
         else:
             write_json(os.path.join(pack_dir, "notam.json"), swim_staging.notam_json(swim, targets))
+
+        # ---- 空域 NOTAM（NOTAM タブの「空域」）：FIR のエンルート／警報＋ILS・航法援助の停波（出所：SWIM）。取れなければ前回分
+        try:
+            na = notam_area.build(swim)
+        except Exception as e:  # noqa: BLE001
+            log("空域NOTAM 作成失敗:", type(e).__name__, e)
+            na = None
+        if (not na or not na.get("rawCount")) and prev.get("notam_area"):
+            na = dict(prev["notam_area"], carriedOver=True)
+        if na:
+            write_json(os.path.join(pack_dir, "notam_area.json"), na)
 
         # ---- brief
         prev_brief = prev.get("brief")
@@ -830,7 +842,8 @@ def build(args):
         "duty": duty,
         "sections": {"wx": "wx.json", "notam": "notam.json", "airports": "airports.json", "index": "index.json",
                      "brief": "brief.json", "charts": "charts.json", "atis": "atis.json", "flights": "flights.json",
-                     **({"dutyDefault": "duty_default.json"} if os.path.exists(os.path.join(pack_dir, "duty_default.json")) else {})},
+                     **({"dutyDefault": "duty_default.json"} if os.path.exists(os.path.join(pack_dir, "duty_default.json")) else {}),
+                     **({"notamArea": "notam_area.json"} if os.path.exists(os.path.join(pack_dir, "notam_area.json")) else {})},
         "files": files,          # 共有ファイル（全端末がダウンロード）
         "blobs": blobs,          # 共有の図（全端末がダウンロード）
         "airportFiles": airport_files,  # 空港別（端末は SETTINGS で選んだ空港だけダウンロード）

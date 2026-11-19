@@ -415,3 +415,38 @@ label.block{margin-top:14px}
 .brief-fig img{display:block;width:100%;height:auto;border-radius:10px;background:#fff;border:.5px solid var(--line)}
 .brief-fig figcaption{font-size:12px;color:var(--text-dim);margin-top:4px}
 .brief-fig .zoom-hint{position:absolute;right:8px;top:8px;background:rgba(10,17,29,.7);color:#e6edf7;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;pointer-events:none}
+
+/* NOTAM > 空域 */
+#notam-mode{margin:6px 0 10px}
+.area-map{position:relative;height:340px;border-radius:var(--radius);overflow:hidden;border:.5px solid var(--line);background:var(--map-sea);margin:8px 0}
+.area-cats{margin:8px 0 4px}
+.area-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;font-size:12.5px}
+.area-chip i{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none}
+.area-chip .n{font-weight:700;opacity:.75}
+.area-chip.off{opacity:.45;background:transparent;box-shadow:inset 0 0 0 1px var(--line-strong)}
+.area-legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--text-dim);margin:2px 2px 10px}
+.area-legend .lg{display:inline-flex;align-items:center;gap:5px}
+.area-legend i{display:inline-block;width:14px;height:10px;border:1.5px solid var(--text-dim);border-radius:2px}
+.area-legend i.lg-circle{border-radius:50%;height:12px;width:12px}
+.area-legend i.lg-dot{width:8px;height:8px;border-radius:50%;background:var(--text-dim);border:1.5px solid #fff}
+.area-legend i.lg-pt{width:15px;height:15px;border:none;border-radius:50%;background:var(--text-dim);color:#fff;font-size:10px;font-style:normal;line-height:15px;text-align:center}
+.area-badge{display:inline-block;color:#fff;font-weight:700;font-size:12px;padding:2px 8px;border-radius:999px;line-height:1.5}
+.area-item{background:var(--bg-card);border:.5px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:9px 11px;margin:8px 0;font-size:13px;line-height:1.5}
+.area-item .ai-h{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.area-item.click .ai-h{cursor:pointer}
+.area-item .ai-st{margin-left:auto;font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:999px}
+.area-item .ai-st.on{background:rgba(224,49,49,.14);color:#e03131}
+.area-item .ai-st.soon{background:var(--bg-elev);color:var(--text-dim)}
+.area-item .ai-m{display:flex;flex-wrap:wrap;gap:2px 14px;color:var(--text-dim);font-size:12.5px}
+.area-item .ai-m b{color:var(--text)}
+.area-item .ai-t{margin-top:3px;font-size:12.5px;color:var(--text);word-break:break-word}
+.area-item details{margin-top:4px;font-size:12px}
+.area-item summary{cursor:pointer;color:var(--accent)}
+.area-item pre.raw,.area-pop pre.raw{white-space:pre-wrap;word-break:break-all;font-size:11px;margin:4px 0 0;max-height:220px;overflow:auto}
+.area-h{font-size:14px;margin:14px 0 4px}
+.area-pt span{display:flex;width:22px;height:22px;border-radius:50%;align-items:center;justify-content:center;color:#fff;font-size:13px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.area-pop{font-size:12.5px;line-height:1.5}
+.area-pop .ap-h{margin-bottom:3px}
+.area-pop .ap-t{margin-top:4px;word-break:break-word}
+.leaflet-tooltip.area-lbl{background:rgba(255,255,255,.88);color:#111;border:none;box-shadow:0 0 2px rgba(0,0,0,.4);font-size:10.5px;font-weight:700;padding:0 5px;line-height:1.5}
+.leaflet-tooltip.area-lbl:before{display:none}

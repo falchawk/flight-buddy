@@ -140,5 +140,5 @@
   }
   function refreshTheme() { if (tiles) { map.removeLayer(tiles); tiles = null; syncTiles(); } }
   function invalidate() { if (map) setTimeout(() => map.invalidateSize(), 30); }
-  window.FBMap = { render, invalidate, refreshTheme, get map() { return map; } };
+  window.FBMap = { render, invalidate, refreshTheme, get map() { return map; }, baseLayer, tileLayer, isLight, tilesOn: () => tilesWanted };
 })();

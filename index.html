@@ -87,14 +87,27 @@
 
     <section id="tab-notam" class="tab-panel">
       <h2>NOTAM</h2>
-      <p class="hint">選んだ空港のNOTAMのみ（経路上・代替空港は対象外）。ボタンで「直近増えた分」（発行がその期間内）を強調します。</p>
-      <nav id="notam-period" class="chips">
-        <button class="chip" data-hours="3">3H</button>
-        <button class="chip active" data-hours="24">1D</button>
-        <button class="chip" data-hours="168">1W</button>
-        <button class="chip" data-hours="0">ALL</button>
+      <nav id="notam-mode" class="chips chips-sub">
+        <button class="chip active" data-mode="ap">空港別</button>
+        <button class="chip" data-mode="area">空域</button>
       </nav>
-      <div id="notam-list"></div>
+      <div id="notam-ap">
+        <p class="hint">選んだ空港のNOTAMのみ（経路上・代替空港は対象外）。ボタンで「直近増えた分」（発行がその期間内）を強調します。</p>
+        <nav id="notam-period" class="chips">
+          <button class="chip" data-hours="3">3H</button>
+          <button class="chip active" data-hours="24">1D</button>
+          <button class="chip" data-hours="168">1W</button>
+          <button class="chip" data-hours="0">ALL</button>
+        </nav>
+        <div id="notam-list"></div>
+      </div>
+      <div id="notam-area" hidden>
+        <div id="area-meta" class="hint"></div>
+        <nav id="area-cats" class="chips area-cats"></nav>
+        <div id="area-map" class="area-map"></div>
+        <div id="area-legend" class="area-legend"></div>
+        <div id="area-list"></div>
+      </div>
     </section>
 
     <section id="tab-airport" class="tab-panel">
@@ -199,6 +212,7 @@
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="vendor/basemap.js"></script>
 <script src="js/map.js"></script>
+<script src="js/areamap.js"></script>
 <script src="js/sun.js"></script>
 <script src="js/tas.js"></script>
 <script src="js/vmc-designated.js"></script>
