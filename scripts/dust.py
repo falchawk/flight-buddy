@@ -141,6 +141,10 @@ def pm25_venus(F, errors, now, prev_sig=None):
     if st != 200:
         errors.append("PM2.5 予測（VENUS）: 取得失敗")
         return {}
+    if "table.html" not in (h.get("x-final-url") or "table.html"):
+        # メンテナンス中などでトップへ転送された（200 の別ページ）。版（ver）を作らず失敗扱い＝前回分を使う
+        errors.append("PM2.5 予測（VENUS）: サーバー停止中（トップへ転送）")
+        return {}
     ver = hashlib.sha1(f"{h.get('etag', '')}|{h.get('last-modified', '')}".encode()).hexdigest()[:10]
     run = F.parse_lm(h)
     return {"jp": {"label": "日本周辺", "frames": [], "ver": ver, "run": C.iso(run) if run else None}}
@@ -162,6 +166,25 @@ def _load(F):
 def _ok_blobs(F, part):
     return all(os.path.exists(os.path.join(F.blob_dir, os.path.basename(im["file"])))
                for v in part.values() for fr in v["frames"] for im in fr["images"])
+
+
+def _load_last_fc(F):
+    """最後に取れた PM2.5 予測のコマ（画像が端末に残っているものだけ）。"""
+    fr = (_load(F).get("pm25_fc_last") or {}).get("frames") or []
+    ok = [f for f in fr if f.get("images") and all(os.path.exists(os.path.join(F.blob_dir, os.path.basename(im["file"]))) for im in f["images"])]
+    return ok if len(ok) == len(fr) else []
+
+
+def _save_last_fc(F, frames):
+    c = _load(F)
+    c["pm25_fc_last"] = {"frames": frames, "at": C.iso(schedule.now_utc())}
+    try:
+        tmp = _cache_path(F) + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(c, f, ensure_ascii=False)
+        os.replace(tmp, _cache_path(F))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def collect(F, errors):
@@ -277,8 +300,16 @@ def products(F, errors):
             fr = _fr(f"予測 {C.lbl(tu)}", rel, tu)
             if fr:
                 pm_fc.append(fr); got += 1
-        if not got:
-            errors.append("PM2.5 予測（VENUS 日本周辺）: 画像なし")
+        if got:
+            _save_last_fc(F, pm_fc)
+        else:
+            # 取れたコマが0（VENUS 停止中・計算の切替え直後など）：タブを空にしない。前回パックの予測コマを（過去になっていても）そのまま出す
+            last = _load_last_fc(F)
+            if last:
+                pm_fc.extend(last)
+                errors.append("PM2.5 予測（VENUS 日本周辺）: 新しい画像が取れず前回分を表示")
+            else:
+                errors.append("PM2.5 予測（VENUS 日本周辺）: 画像なし")
         if vv.get("run"):
             try:
                 r = dt.datetime.strptime(vv["run"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)

@@ -86,6 +86,7 @@ class Fetcher:
                 with urllib.request.urlopen(req, timeout=timeout) as r:
                     if hdrs is not None:
                         hdrs.update({k.lower(): v for k, v in r.headers.items()})
+                        hdrs["x-final-url"] = r.geturl()   # リダイレクト後の URL（メンテナンス画面への転送の検出用）
                     return r.status, r.read(), (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
             except urllib.error.HTTPError as e:
                 if e.code in (403, 404, 410):
