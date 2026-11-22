@@ -1,44 +1,93 @@
-// WIND（Wind Limitation）。滑走路ごとに「どの風向から何ktまで」を1つの包絡線で表示（背風・横風を分けない）。完全オフライン。
-// 数値は SFJ 規程類（AOM REV30 / OM REV144 / OEN 050 REV1 / OEN 104 ISSUE 04/DEC/2025）で確認済みのものだけ。推測値は入れない。
+// WIND（Wind Limitation）。滑走路ごとに「どの風向から何ktまで」を1つの範囲で表示（背風・横風を分けない）。完全オフライン。
+// 主たる出典は Applicable Performance Table / Wind Component Table REV6（値と印は表のとおり）。AOM と食い違えば AOM が優先。
+// ほかの数値も SFJ 規程類（AOM REV30 / OM REV144 / OEN 050 REV1 / OEN 104 ISSUE 04/DEC/2025）で確認済みのものだけ。推測値は入れない。
 (function () {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const REV = { aom: 'AOM REV30', om: 'OM REV144', oen050: 'OEN 050 REV1', oen104: 'OEN 104 ISSUE 04/DEC/2025' };
 
-  // ---------------------------------------------------------------- 制限値（数値・短いラベル・出典のみ）
-  // kind: 'company' = 会社の最大値（離陸滑走開始後・着陸決定後の一時的な超過は可） / 'afm' = AFM LIMITATION（超過不可） / 'om' = OM の運用制限
-  const LIMITS = {
-    // 最大横風（gust 含む）。離陸・着陸同値。AOM LIM-AG-OPS RCAM
-    rcam: {
-      6: { xw: 38, label: '6 DRY' },
-      5: { xw: 29, label: '5 GOOD（WET 3mm以下 等）' },
-      4: { xw: 29, label: '4 GOOD TO MEDIUM' },
-      3: { xw: 25, label: '3 MEDIUM' },
-      2: { xw: 20, label: '2 MEDIUM TO POOR' },
-      1: { xw: 15, label: '1 POOR' },
-      0: { xw: null, label: '0 LESS THAN POOR（離着陸不可）' },
-    },
-    rcamRef: `${REV.aom} LIM-AG-OPS RCAM`,
-    // 型式別の demonstrated crosswind（DRY）。neo 離陸は 38kt（AOM REV29 の 35kt から変更）
-    demo: {
-      ceo: { TO: { xw: 38, ref: `${REV.aom} LIM-AG-OPS` }, LDG: { xw: 38, ref: `${REV.aom} LIM-AG-OPS` } },
-      neo: { TO: { xw: 38, ref: REV.oen050 }, LDG: { xw: 38, ref: `${REV.aom} LIM-AG-OPS` } },
-    },
-    // 最大背風（両型式共通）
-    tailwind: { TO: 15, LDG: 15, kind: 'afm', ref: `${REV.aom} LIM-AG-OPS` },
-    // 自動進入・着陸・ロールアウト（Tower 通報の Surface Wind 基準）
-    autoland: { tw: 10, hw: 30, xw: 20, xwRolloutJA20_27: 15, kind: 'afm', ref: `${REV.aom} LIM-AFS` },
-    // 右席の副操縦士が離着陸を操縦する場合（機長が誰であっても）
-    fo: { xwFactor: 0.5, tw: 10, rwycc: [6, 5], ref: `${REV.om} 8-11-1(3)②` },
-    // CAT I（RVR/CMV 1200m 未満）・CAT II
-    cat1low: { xw: 10, ref: `${REV.om} 6-4` },
-    cat2: { xw: 10, ref: `${REV.om} 6-5` },
-    // neo 離陸のエンジン制限（横風＋背風の組合せ）。Wind Component Table（E）/ Flysmart の値。未入手のため null
-    // 入手したら { points: [[背風kt, 最大横風kt], ...] } の形で入れる（それまで斜め後方は常に「要確認」）
-    neoToEngine: null,
-    neoToEngineRef: 'Applicable Performance Table / Wind Component Table（E）・Flysmart Takeoff',
-    // 副操縦士操縦時の着陸重量（有効滑走路長・幅45m以上）
-    foLdgWeight: { ref: `${REV.om} 8-11-1(3)②`, minWidthM: 45 },
+  const WCT = {
+    ref: 'Applicable Performance Table / Wind Component Table REV6（10/SEP/2026）',
+    // 行＝機首からの風の角度 0〜180°（10°ごと・左右同じ）。値は許容風速 kt（gust 含む）。印は表のとおり
+    // 列：RWYCC 6 DRY / 5 GOOD / 4 GOOD-MED / 3 MED / 2 MED-POOR / 1 POOR（着陸はさらに CAT I(1) RVR/CMV<1200m・CAT II/Autoland）
+    TO_NEO: [
+      ['*80', '*80', '*80', '*80', '*80', '*80'],  // 0°
+      ['*80', '*80', '*80', '*80', '*80', '*80'],  // 10°
+      ['*80', '*80', '*80', '73', '58', '43'],  // 20°
+      ['76', '58', '58', '50', '40', '30'],  // 30°
+      ['59', '45', '45', '38', '31', '23'],  // 40°
+      ['49', '37', '37', '32', '26', '19'],  // 50°
+      ['43', '33', '33', '28', '23', '17'],  // 60°
+      ['40', '30', '30', '26', '21', '15'],  // 70°
+      ['38', '29', '29', '25', '20', '15'],  // 80°
+      ['38', '29', '29', '25', '20', '15'],  // 90°
+      ['E31', '29', '29', '25', '20', '15'],  // 100°
+      ['E28', 'E28', 'E28', '26', '21', '15'],  // 110°
+      ['E25', 'E25', 'E25', 'E25', '23', '17'],  // 120°
+      ['T23', 'T23', 'T23', 'T23', 'T23', '19'],  // 130°
+      ['T19', 'T19', 'T19', 'T19', 'T19', 'T19'],  // 140°
+      ['T17', 'T17', 'T17', 'T17', 'T17', 'T17'],  // 150°
+      ['T15', 'T15', 'T15', 'T15', 'T15', 'T15'],  // 160°
+      ['T15', 'T15', 'T15', 'T15', 'T15', 'T15'],  // 170°
+      ['T15', 'T15', 'T15', 'T15', 'T15', 'T15'],  // 180°
+    ],
+    TO_CEO: [
+      ['*80', '*80', '*80', '*80', '*80', '*80'],  // 0°
+      ['*80', '*80', '*80', '*80', '*80', '*80'],  // 10°
+      ['*80', '*80', '*80', '73', '58', '43'],  // 20°
+      ['76', '58', '58', '50', '40', '30'],  // 30°
+      ['59', '45', '45', '38', '31', '23'],  // 40°
+      ['49', '37', '37', '32', '26', '19'],  // 50°
+      ['43', '33', '33', '28', '23', '17'],  // 60°
+      ['40', '30', '30', '26', '21', '15'],  // 70°
+      ['38', '29', '29', '25', '20', '15'],  // 80°
+      ['38', '29', '29', '25', '20', '15'],  // 90°
+      ['38', '29', '29', '25', '20', '15'],  // 100°
+      ['40', '30', '30', '26', '21', '15'],  // 110°
+      ['T30', 'T30', 'T30', '28', '23', '17'],  // 120°
+      ['T23', 'T23', 'T23', 'T23', 'T23', '19'],  // 130°
+      ['T19', 'T19', 'T19', 'T19', 'T19', 'T19'],  // 140°
+      ['T17', 'T17', 'T17', 'T17', 'T17', 'T17'],  // 150°
+      ['T15', 'T15', 'T15', 'T15', 'T15', 'T15'],  // 160°
+      ['T15', 'T15', 'T15', 'T15', 'T15', 'T15'],  // 170°
+      ['T15', 'T15', 'T15', 'T15', 'T15', 'T15'],  // 180°
+    ],
+    LDG: [
+      ['*80', '*80', '*80', '*80', '*80', '*80', '*80', 'H30'],  // 0°
+      ['*80', '*80', '*80', '*80', '*80', '*80', '57', 'H30'],  // 10°
+      ['*80', '*80', '*80', '73', '58', '43', '29', '29'],  // 20°
+      ['76', '58', '58', '50', '40', '30', '20', '20'],  // 30°
+      ['59', '45', '45', '38', '31', '23', '15', '15'],  // 40°
+      ['49', '37', '37', '32', '26', '19', '13', '13'],  // 50°
+      ['43', '33', '33', '28', '23', '17', '11', '11'],  // 60°
+      ['40', '30', '30', '26', '21', '15', '10', '10'],  // 70°
+      ['38', '29', '29', '25', '20', '15', '10', '10'],  // 80°
+      ['38', '29', '29', '25', '20', '15', '10', '10'],  // 90°
+      ['38', '29', '29', '25', '20', '15', '10', '10'],  // 100°
+      ['40', '30', '30', '26', '21', '15', '10', '10'],  // 110°
+      ['T30', 'T30', 'T30', '28', '23', '17', '11', '11'],  // 120°
+      ['T23', 'T23', 'T23', 'T23', 'T23', '19', '13', '13'],  // 130°
+      ['T19', 'T19', 'T19', 'T19', 'T19', 'T19', '15', 'T13'],  // 140°
+      ['T17', 'T17', 'T17', 'T17', 'T17', 'T17', 'T17', 'T11'],  // 150°
+      ['T15', 'T15', 'T15', 'T15', 'T15', 'T15', 'T15', 'T10'],  // 160°
+      ['T15', 'T15', 'T15', 'T15', 'T15', 'T15', 'T15', 'T10'],  // 170°
+      ['T15', 'T15', 'T15', 'T15', 'T15', 'T15', 'T15', 'T10'],  // 180°
+    ],
   };
+  // 印：* 制限なし（80 と表示）／ T 背風制限（15kt、CAT II/Autoland は 10kt）／ E エンジン制限 ／ H 向かい風 30kt 制限
+  const MARKS = {
+    '*': { label: '制限なし（80 と表示）', kind: 'none' },
+    T: { label: '背風制限（15kt・CAT II/Autoland は 10kt）', kind: 'afm' },
+    E: { label: 'エンジン制限', kind: 'eng' },
+    H: { label: '向かい風 30kt 制限', kind: 'afm' },
+    F: { label: '副操縦士操縦の条件からアプリで計算', kind: 'app' },
+    '': { label: '横風制限（RCAM・会社の最大値）', kind: 'company' },
+  };
+  const COLS = { 6: 0, 5: 1, 4: 2, 3: 3, 2: 4, 1: 5, cat1: 6, cat2al: 7 };
+  const COL_LABEL = { 6: 'RWYCC 6 DRY', 5: 'RWYCC 5 GOOD', 4: 'RWYCC 4 GOOD-MED', 3: 'RWYCC 3 MED', 2: 'RWYCC 2 MED-POOR', 1: 'RWYCC 1 POOR', cat1: 'CAT I(1) RVR/CMV<1200m', cat2al: 'CAT II/Autoland' };
+  const RWYCC = { 6: '6 DRY', 5: '5 GOOD（WET 3mm以下 等）', 4: '4 GOOD TO MEDIUM', 3: '3 MEDIUM', 2: '2 MEDIUM TO POOR', 1: '1 POOR', 0: '0 LESS THAN POOR（離着陸不可）' };
+  // 副操縦士（右席）が離着陸を操縦する場合（機長が誰であっても）。表には含まれないのでアプリで計算
+  const FO = { xwFactor: 0.5, tw: 10, rwycc: [6, 5], ref: `${REV.om} 8-11-1(3)②` };
+  const REFS = { rcam: `${REV.aom} LIM-AG-OPS RCAM`, tw: `${REV.aom} LIM-AG-OPS`, afs: `${REV.aom} LIM-AFS`, cat1: `${REV.om} 6-4`, cat2: `${REV.om} 6-5`, neoTo: REV.oen050 };
 
   const PILOTS = [
     { id: 'cap', label: '機長操縦' },
@@ -46,49 +95,47 @@
     { id: 'aom', label: '査察・教官操縦', sub: '右席／左席習熟中' },
   ];
   const TYPES = [{ id: 'ceo', label: 'A320ceo', sub: 'JA07MC–JA27MC' }, { id: 'neo', label: 'A320neo', sub: 'JA28MC〜' }];
+  const parseCell = (s) => { const m = String(s).match(/^([*TEH]?)(\d+)$/); return { mark: m[1], v: Number(m[2]), text: String(s), noLimit: m[1] === '*' }; };
+  const fold = (th) => { const a = Math.abs((((th % 360) + 540) % 360) - 180); return a; }; // 0〜180
+  function geom(xw, tw, a) { const t = (a * Math.PI) / 180, s = Math.abs(Math.sin(t)), c = Math.cos(t); let v = Infinity; if (s > 1e-9) v = Math.min(v, xw / s); if (c < -1e-9) v = Math.min(v, tw / -c); return v; }
 
-  // 選択から制限値を求める（OM の制限は同時適用・最も厳しい値）
+  // 選択 → 使う列と条件
   function compute(sel) {
-    const r = { permitted: true, reasons: [], xw: [], tw: [], hw: [], neoOblique: false, warn: [] };
-    const rc = LIMITS.rcam[sel.rwycc];
-    if (!rc || rc.xw == null) { r.permitted = false; r.reasons.push(`RWYCC ${sel.rwycc}：離着陸不可（${LIMITS.rcamRef}）`); }
-    if (sel.pilot === 'fo' && !LIMITS.fo.rwycc.includes(Number(sel.rwycc))) { r.permitted = false; r.reasons.push(`副操縦士操縦は DRY / WET のみ（${LIMITS.fo.ref}）`); }
+    const r = { permitted: true, reasons: [], cols: [], fo: null, notes: [] };
+    if (!RWYCC[sel.rwycc] || Number(sel.rwycc) === 0) { r.permitted = false; r.reasons.push(`RWYCC 0：離着陸不可（${REFS.rcam}）`); }
+    if (sel.pilot === 'fo' && !FO.rwycc.includes(Number(sel.rwycc))) { r.permitted = false; r.reasons.push(`副操縦士操縦は DRY / WET のみ（${FO.ref}）`); }
     if (!r.permitted) return r;
-    const demo = LIMITS.demo[sel.type][sel.phase];
-    r.xw.push({ v: Math.min(rc.xw, demo.xw), label: `RCAM RWYCC ${sel.rwycc}`, ref: sel.type === 'neo' && sel.phase === 'TO' ? `${LIMITS.rcamRef} / ${REV.oen050}` : LIMITS.rcamRef, kind: 'company' });
-    r.tw.push({ v: LIMITS.tailwind[sel.phase], label: `最大背風（${sel.phase === 'TO' ? '離陸' : '着陸'}）`, ref: LIMITS.tailwind.ref, kind: 'afm' });
-    if (sel.pilot === 'fo') {
-      r.xw.push({ v: Math.min(rc.xw, demo.xw) * LIMITS.fo.xwFactor, label: '副操縦士操縦（AOM値の1/2）', ref: LIMITS.fo.ref, kind: 'om' });
-      r.tw.push({ v: LIMITS.fo.tw, label: '副操縦士操縦', ref: LIMITS.fo.ref, kind: 'om' });
-    }
+    r.table = sel.phase === 'LDG' ? WCT.LDG : sel.type === 'neo' ? WCT.TO_NEO : WCT.TO_CEO;
+    r.tableName = sel.phase === 'LDG' ? 'Landing（ceo・neo 共通）' : sel.type === 'neo' ? 'Takeoff NEO（JA28MC〜）' : 'Takeoff CEO';
+    r.cols.push(String(sel.rwycc));
     if (sel.phase === 'LDG') {
-      if (sel.appr === 'cat1low') r.xw.push({ v: LIMITS.cat1low.xw, label: 'CAT I（RVR/CMV 1200m未満）', ref: LIMITS.cat1low.ref, kind: 'om' });
-      if (sel.appr === 'cat2') r.xw.push({ v: LIMITS.cat2.xw, label: 'CAT II', ref: LIMITS.cat2.ref, kind: 'om' });
-      if (sel.autoland) {
-        const al = LIMITS.autoland;
-        r.xw.push({ v: sel.rollout ? al.xwRolloutJA20_27 : al.xw, label: sel.rollout ? 'Autoland（JA20MC–JA27MC Automatic Rollout あり）' : 'Autoland', ref: al.ref, kind: 'afm' });
-        r.tw.push({ v: al.tw, label: 'Autoland', ref: al.ref, kind: 'afm' });
-        r.hw.push({ v: al.hw, label: 'Autoland', ref: al.ref, kind: 'afm' });
-      }
+      if (sel.appr === 'cat1low') r.cols.push('cat1');
+      if (sel.appr === 'cat2' || sel.autoland) r.cols.push('cat2al');
     }
-    if (sel.type === 'neo' && sel.phase === 'TO' && !LIMITS.neoToEngine) r.neoOblique = true;
-    const pick = (arr) => arr.reduce((a, b) => (a == null || b.v < a.v ? b : a), null);
-    r.XW = pick(r.xw); r.TW = pick(r.tw); r.HW = pick(r.hw);
+    if (sel.pilot === 'fo') {
+      const xw90 = parseCell(r.table[9][COLS[sel.rwycc]]).v;
+      r.fo = { xw: xw90 * FO.xwFactor, tw: FO.tw, xw90 };
+    }
     return r;
   }
-  // 滑走路に対する相対角 th（度、風の吹いてくる方向−滑走路方位）での最大風速
-  function vmax(lim, th) {
-    if (!lim.permitted) return 0;
-    const t = (th * Math.PI) / 180, s = Math.abs(Math.sin(t)), c = Math.cos(t);
-    let v = Infinity;
-    if (s > 1e-9) v = Math.min(v, lim.XW.v / s);
-    if (c < -1e-9) v = Math.min(v, lim.TW.v / -c);
-    if (c > 1e-9 && lim.HW) v = Math.min(v, lim.HW.v / c);
-    return v;
+  // 表の行（10°ごと）の値。複数の列・副操縦士条件のうち最も厳しいもの
+  function rowCell(lim, row) {
+    let best = null;
+    for (const c of lim.cols) { const cell = parseCell(lim.table[row][COLS[c]]); cell.col = c; if (!best || cell.v < best.v) best = cell; }
+    if (lim.fo) { const g = Math.floor(geom(lim.fo.xw, lim.fo.tw, row * 10) + 1e-9); if (g < best.v) best = { mark: 'F', v: g, text: `F${g}`, col: 'fo' }; }
+    return best;
   }
-  const isOblique = (th) => { const t = (th * Math.PI) / 180; return Math.cos(t) < -1e-9 && Math.abs(Math.sin(t)) > 1e-9; };
+  // 任意の角度：10°の行ならその値、行の間は両隣の厳しい方（アプリ独自・安全側）
+  function cellAt(lim, th) {
+    const a = fold(th), lo = Math.floor(a / 10 + 1e-9), hi = Math.ceil(a / 10 - 1e-9);
+    const c1 = rowCell(lim, lo), c2 = rowCell(lim, Math.min(hi, 18));
+    let c = c2.v < c1.v ? { ...c2 } : { ...c1 };
+    c.between = lo !== hi; c.rows = c.between ? [lo * 10, hi * 10] : [lo * 10];
+    if (lim.fo && c.between) { const g = Math.floor(geom(lim.fo.xw, lim.fo.tw, a) + 1e-9); if (g < c.v) c = { mark: 'F', v: g, text: `F${g}`, col: 'fo', between: true, rows: c.rows }; }
+    return c;
+  }
+  const vmax = (lim, th) => (lim.permitted ? cellAt(lim, th).v : 0);
   const norm = (d) => ((d % 360) + 360) % 360;
-  const fmtV = (v) => (v > 50 ? '50+' : String(Math.floor(v + 1e-9)));
   const d3 = (d) => String(Math.round(norm(d)) || 360).padStart(3, '0');
 
   // ---------------------------------------------------------------- 空港・滑走路データ（SWIM AIP AD 2.12 の真方位＋AD 2.2 の磁気偏差）
@@ -126,7 +173,7 @@
   // ---------------------------------------------------------------- 状態
   const LSK = 'fb.wind';
   const lsGet = () => { try { return JSON.parse(localStorage.getItem(LSK) || '{}'); } catch { return {}; } };
-  const st = Object.assign({ icao: null, rwy: null, pilot: 'cap', type: 'ceo', phase: 'LDG', rwycc: 6, appr: 'none', autoland: false, rollout: false, wind: null }, lsGet());
+  const st = Object.assign({ icao: null, rwy: null, pilot: 'cap', type: 'ceo', phase: 'LDG', rwycc: 6, appr: 'none', autoland: false, wind: null }, lsGet());
   const save = () => { try { localStorage.setItem(LSK, JSON.stringify(st)); } catch { /* ignore */ } };
   let ctxFn = () => ({ airports: [] });
 
@@ -138,26 +185,17 @@
     const res = { use, usedGust: use !== w.spd, magDir: w.dir === 'VRB' ? null : toMag(w.dir) };
     if (!lim.permitted) { res.state = 'ng'; res.msg = '離着陸不可の条件'; return res; }
     if (use === 0) { res.state = 'ok'; res.msg = '静穏'; return res; }
-    // 判定する相対角の範囲（VRB＝全周、dddVddd＝その範囲、通常＝1点）
     let ths;
-    if (w.dir === 'VRB') ths = Array.from({ length: 360 }, (_, i) => i);
-    else if (w.vfrom != null) { const a = toMag(w.vfrom), span = norm(w.vto - w.vfrom); ths = Array.from({ length: Math.floor(span) + 1 }, (_, i) => norm(a + i - rwy.mag)); ths.push(norm(toMag(w.vto) - rwy.mag)); }
+    if (w.dir === 'VRB') ths = Array.from({ length: 181 }, (_, i) => i);
+    else if (w.vfrom != null) { const a0 = toMag(w.vfrom), span = norm(w.vto - w.vfrom); ths = Array.from({ length: Math.floor(span) + 1 }, (_, i) => norm(a0 + i - rwy.mag)); ths.push(norm(toMag(w.vto) - rwy.mag)); }
     else ths = [norm(res.magDir - rwy.mag)];
     let worst = null;
-    for (const th of ths) { const v = vmax(lim, th); if (!worst || use / v > worst.ratio) worst = { th, v, ratio: use / v }; }
-    const th0 = w.dir === 'VRB' ? null : norm(res.magDir - rwy.mag);
-    if (th0 != null) { const t = (th0 * Math.PI) / 180; res.hw = use * Math.cos(t); res.xw = use * Math.abs(Math.sin(t)); res.xwSide = Math.sin(t) >= 0 ? 'R' : 'L'; }
+    for (const th of ths) { const c = cellAt(lim, th); const ratio = use / c.v; if (!worst || ratio > worst.ratio) worst = { th, a: fold(th), cell: c, ratio }; }
     res.worst = worst;
-    if (worst.ratio > 1 + 1e-9) {
-      res.state = 'ng';
-      const t = (worst.th * Math.PI) / 180, xw = use * Math.abs(Math.sin(t)), c = use * Math.cos(t);
-      const over = [];
-      if (xw > lim.XW.v + 1e-9) over.push(`横風 ${xw.toFixed(1)}kt ＞ ${lim.XW.v}kt`);
-      if (c < 0 && -c > lim.TW.v + 1e-9) over.push(`背風 ${(-c).toFixed(1)}kt ＞ ${lim.TW.v}kt`);
-      if (c > 0 && lim.HW && c > lim.HW.v + 1e-9) over.push(`向かい風 ${c.toFixed(1)}kt ＞ ${lim.HW.v}kt`);
-      res.msg = over.join(' ／ ');
-    } else res.state = 'ok';
-    if (lim.neoOblique && ths.some(isOblique) && res.state === 'ok') { res.state = 'chk'; res.msg = 'neo 離陸・斜め後方の風：エンジン制限を Wind Component Table（E）/ Flysmart で要確認'; }
+    if (res.magDir != null) { const t = (norm(res.magDir - rwy.mag) * Math.PI) / 180; res.hw = use * Math.cos(t); res.xw = use * Math.abs(Math.sin(t)); res.xwSide = Math.sin(t) >= 0 ? 'R' : 'L'; res.angle = fold(res.magDir - rwy.mag); }
+    const c = worst.cell;
+    res.state = use > c.v ? 'ng' : 'ok';
+    res.msg = `許容 ${c.text}kt（${w.dir === 'VRB' ? '全周で最も厳しい角度 ' : ''}${Number.isInteger(+worst.a.toFixed(1)) ? worst.a.toFixed(0) : worst.a.toFixed(1)}°${c.between ? `→表の ${c.rows.join('°/')}° の厳しい方` : ''}・${MARKS[c.mark]?.label || ''}${c.col && c.col !== 'fo' ? `・${COL_LABEL[c.col]}` : ''}）`;
     return res;
   }
 
@@ -166,33 +204,32 @@
     const C = 160, R = 124, MAX = 50, k = R / MAX;
     const pt = (dirMag, v) => { const a = (dirMag * Math.PI) / 180; const r = Math.min(v, MAX) * k; return [C + r * Math.sin(a), C - r * Math.cos(a)]; };
     const parts = [];
-    // 目盛り
     for (let v = 10; v <= MAX; v += 10) parts.push(`<circle cx="${C}" cy="${C}" r="${v * k}" class="wl-ring"/>`, `<text x="${C + 3}" y="${C - v * k + 11}" class="wl-ringlab">${v}</text>`);
     for (let d = 0; d < 360; d += 30) { const [x, y] = pt(d, MAX); parts.push(`<line x1="${C}" y1="${C}" x2="${x}" y2="${y}" class="wl-spoke"/>`); const [tx, ty] = pt(d, MAX + 7.5); parts.push(`<text x="${tx}" y="${ty + 4}" class="wl-dirlab">${d === 0 ? 'N' : d3(d)}</text>`); }
     if (lim.permitted) {
-      const poly = []; for (let i = 0; i < 360; i++) poly.push(pt(rwy.mag + i, vmax(lim, i)).map((n) => n.toFixed(1)).join(','));
+      const poly = []; for (let i = 0; i < 720; i++) { const th = i / 2; poly.push(pt(rwy.mag + th, vmax(lim, th)).map((n) => n.toFixed(1)).join(',')); }
       parts.push(`<polygon points="${poly.join(' ')}" class="wl-env"/>`);
-      if (lim.neoOblique) for (const [a, b] of [[91, 179], [181, 269]]) {
-        const p = [`${C},${C}`]; for (let i = a; i <= b; i++) p.push(pt(rwy.mag + i, vmax(lim, i)).map((n) => n.toFixed(1)).join(','));
-        parts.push(`<polygon points="${p.join(' ')}" class="wl-chk" fill="url(#wl-hatch)"/>`);
+      // エンジン制限（E）の範囲を強調
+      for (const sgn of [1, -1]) for (let row = 0; row <= 18; row++) {
+        const c = rowCell(lim, row); if (c.mark !== 'E') continue;
+        const p = [`${C},${C}`]; for (let a = row * 10 - 5; a <= row * 10 + 5; a += 0.5) p.push(pt(rwy.mag + sgn * a, vmax(lim, a)).map((n) => n.toFixed(1)).join(','));
+        parts.push(`<polygon points="${p.join(' ')}" class="wl-eng"/>`);
       }
     } else parts.push(`<text x="${C}" y="${C - 40}" class="wl-nolab">離着陸不可</text>`);
-    // 滑走路（中心を通る帯。着陸・離陸方向の矢印）
     const a = (rwy.mag * Math.PI) / 180, L = 62, W = 7, ux = Math.sin(a), uy = -Math.cos(a), px = -uy, py = ux;
     const c4 = [[-L, -W], [L, -W], [L, W], [-L, W]].map(([l, w2]) => `${(C + ux * l + px * w2).toFixed(1)},${(C + uy * l + py * w2).toFixed(1)}`).join(' ');
     parts.push(`<polygon points="${c4}" class="wl-rwy"/>`);
     parts.push(`<line x1="${C - ux * (L - 14)}" y1="${C - uy * (L - 14)}" x2="${C + ux * (L - 6)}" y2="${C + uy * (L - 6)}" class="wl-rwyc" marker-end="url(#wl-arr)"/>`);
     const [lx, ly] = [C - ux * (L + 13), C - uy * (L + 13)];
     parts.push(`<text x="${lx}" y="${ly + 4}" class="wl-rwylab">${esc(rwy.id)}</text>`);
-    // 現在の風
     if (ev && w && w.dir !== 'VRB' && ev.magDir != null) {
-      const cls = ev.state === 'ok' ? 'ok' : ev.state === 'chk' ? 'chk' : 'ng';
+      const cls = ev.state === 'ok' ? 'ok' : 'ng';
       if (w.vfrom != null) { const fa = (w.ref === 'true' ? norm(w.vfrom - mv.deg) : w.vfrom), span = norm(w.vto - w.vfrom); const arc = []; for (let i = 0; i <= span; i += 2) arc.push(pt(fa + i, ev.use).map((n) => n.toFixed(1)).join(',')); parts.push(`<polyline points="${arc.join(' ')}" class="wl-varc ${cls}"/>`); }
       if (ev.usedGust) { const [mx, my] = pt(ev.magDir, w.spd); parts.push(`<circle cx="${mx}" cy="${my}" r="3.5" class="wl-wmean ${cls}"/>`); }
       const [x, y] = pt(ev.magDir, ev.use); const [x2, y2] = pt(ev.magDir, Math.max(ev.use - 9, 0));
       parts.push(`<line x1="${x}" y1="${y}" x2="${x2}" y2="${y2}" class="wl-wline ${cls}" marker-end="url(#wl-arr2)"/>`, `<circle cx="${x}" cy="${y}" r="6" class="wl-wdot ${cls}"/>`);
     }
-    return `<svg viewBox="0 0 320 320" class="wl-svg" role="img" aria-label="風向別の最大風速"><defs><pattern id="wl-hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" class="wl-hbg"/><line x1="0" y1="0" x2="0" y2="7" class="wl-hline"/></pattern><marker id="wl-arr" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" class="wl-arrow"/></marker><marker id="wl-arr2" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0 0L10 5L0 10z" class="wl-arrow2"/></marker></defs>${parts.join('')}</svg>`;
+    return `<svg viewBox="0 0 320 320" class="wl-svg" role="img" aria-label="風向別の許容風速"><defs><marker id="wl-arr" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" class="wl-arrow"/></marker><marker id="wl-arr2" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0 0L10 5L0 10z" class="wl-arrow2"/></marker></defs>${parts.join('')}</svg>`;
   }
 
   // ---------------------------------------------------------------- 画面
@@ -216,46 +253,54 @@
 
     const optAp = aps.map((a) => `<option value="${esc(a.icao)}"${a.icao === st.icao ? ' selected' : ''}>${esc(a.label)}</option>`).join('');
     const optRw = rws.map((r) => `<option value="${esc(r.id)}"${r.id === st.rwy ? ' selected' : ''}>${esc(r.id)}・${d3(r.mag)}°M</option>`).join('');
-    const optCc = [6, 5, 4, 3, 2, 1, 0].map((n) => `<option value="${n}"${Number(st.rwycc) === n ? ' selected' : ''}>${esc(LIMITS.rcam[n].label)}</option>`).join('');
-    const kindTag = (x) => (x.kind === 'afm' ? '<span class="wl-tag afm">AFM LIMITATION・超過不可</span>' : x.kind === 'company' ? '<span class="wl-tag co">会社最大値・一時超過可</span>' : '<span class="wl-tag om">OM 運用制限</span>');
-    const limRow = (name, x, all) => `<div class="wl-lim"><span class="wl-lk">${name}</span><span class="wl-lv">${x.v % 1 ? x.v.toFixed(1) : x.v}<small>kt</small></span><span class="wl-ls">${esc(x.label)} ${kindTag(x)}<br><span class="wl-ref">${esc(x.ref)}${all.length > 1 ? `　他 ${all.filter((y) => y !== x).map((y) => `${y.v % 1 ? y.v.toFixed(1) : y.v}kt（${y.label}）`).map(esc).join('・')}` : ''}</span></span></div>`;
+    const optCc = [6, 5, 4, 3, 2, 1, 0].map((n) => `<option value="${n}"${Number(st.rwycc) === n ? ' selected' : ''}>${esc(RWYCC[n])}</option>`).join('');
+    const tag = (c) => { const k = c.mark === '' && (c.col === 'cat1' || c.col === 'cat2al') ? 'om' : MARKS[c.mark]?.kind; if (k === 'om') return '<span class="wl-tag om">OM 運用制限</span>'; return k === 'afm' ? '<span class="wl-tag afm">AFM LIMITATION・超過不可</span>' : k === 'company' ? '<span class="wl-tag co">会社最大値・一時超過可</span>' : k === 'eng' ? '<span class="wl-tag eng">エンジン制限</span>' : k === 'app' ? '<span class="wl-tag om">アプリ計算</span>' : ''; };
+    const markCls = (c) => ({ '*': 'nl', T: 't', E: 'e', H: 'h', F: 'f', '': 'x' }[c.mark]);
 
-    // 10°ごとの表
-    let table = '';
+    // 早見（真横 90°・真後ろ 180°）と、角度別の表（左右の磁方位つき）
+    let summary = '', table = '';
     if (lim.permitted) {
-      const cur = ev?.magDir != null ? Math.round(ev.magDir / 10) * 10 % 360 : null;
-      const cells = []; for (let d = 10; d <= 360; d += 10) { const th = norm(d - rwy.mag), v = vmax(lim, th); const ob = lim.neoOblique && isOblique(th); const rel = Math.cos((th * Math.PI) / 180) < -1e-9 ? 'tail' : 'head'; cells.push(`<div class="wl-cell ${rel}${ob ? ' chk' : ''}${cur === d % 360 ? ' cur' : ''}"><span>${d3(d)}°</span><b>${fmtV(v)}${ob ? '<i>※</i>' : ''}</b></div>`); }
-      table = `<div class="wl-grid">${cells.join('')}</div><p class="hint wl-small">磁方位（風の吹いてくる方向）ごとの最大風速 kt（gust 含む・小数切り捨て）。50+＝50kt 超（向かい風寄りで、横風成分だけが制限）。<span class="wl-key tail">■</span>背風成分あり${lim.neoOblique ? '　※＝エンジン制限要確認' : ''}</p>`;
+      const c90 = rowCell(lim, 9), c180 = rowCell(lim, 18), c0 = rowCell(lim, 0);
+      const box = (name, c) => `<div class="wl-sum"><span class="wl-lk">${name}</span><span class="wl-lv m-${markCls(c)}">${esc(c.text)}<small>kt</small></span>${tag(c)}</div>`;
+      summary = `<div class="wl-sums">${box('真横 90°', c90)}${box('真後ろ 180°', c180)}${box('正面 0°', c0)}</div>
+        <div class="hint wl-small">使用列：${esc(lim.tableName)} ／ ${lim.cols.map((c) => esc(COL_LABEL[c])).join(' と ')}${lim.cols.length > 1 ? '（厳しい方）' : ''}${lim.fo ? ` ／ 副操縦士操縦：横風 ${lim.fo.xw}kt（RWYCC 90° 値 ${lim.fo.xw90} の 1/2）・背風 ${lim.fo.tw}kt で計算（${esc(FO.ref)}）` : ''}</div>`;
+      const hiRows = ev?.worst ? ev.worst.cell.rows : (ev?.angle != null ? [Math.round(ev.angle / 10) * 10] : []);
+      const rows = []; for (let r = 0; r <= 18; r++) {
+        const c = rowCell(lim, r), a = r * 10;
+        const dirs = a === 0 ? d3(rwy.mag) : a === 180 ? d3(rwy.mag + 180) : `${d3(rwy.mag - a)} ／ ${d3(rwy.mag + a)}`;
+        rows.push(`<tr class="${hiRows.includes(a) ? 'cur' : ''}${a > 90 ? ' tail' : ''}"><td>${a}°</td><td class="m-${markCls(c)}">${esc(c.text)}</td><td>${dirs}</td></tr>`);
+      }
+      table = `<table class="wl-tbl"><thead><tr><th>機首から</th><th>許容 kt</th><th>風向（磁）左 ／ 右</th></tr></thead><tbody>${rows.join('')}</tbody></table>
+        <p class="hint wl-small">印：<b class="m-nl">*</b> 制限なし（80 と表示）・<b class="m-t">T</b> 背風制限（15kt、CAT II/Autoland は 10kt）・<b class="m-e">E</b> エンジン制限・<b class="m-h">H</b> 向かい風 30kt 制限・印なし＝横風制限（RCAM）${lim.fo ? '・<b class="m-f">F</b> 副操縦士操縦の条件（OM）からアプリで計算（小数切り捨て）' : ''}。許容風速は gust 含む。表にない角度は安全側（制限が厳しい方）で判定（アプリ独自）。</p>`;
     }
-    const evBox = ev ? `<div class="wl-result ${ev.state}"><div class="wl-rhead">${ev.state === 'ok' ? 'OK' : ev.state === 'chk' ? '要確認' : 'NG'}</div><div class="wl-rbody">${ev.msg ? `<div>${esc(ev.msg)}</div>` : ''}${ev.hw != null ? `<div>${ev.hw >= 0 ? '向かい風' : '背風'} ${Math.abs(ev.hw).toFixed(1)}kt ／ 横風 ${ev.xw.toFixed(1)}kt（${ev.xwSide === 'R' ? '右' : '左'}から）</div>` : ''}<div class="hint wl-small">${ev.magDir != null ? `風向 ${d3(ev.magDir)}°M・` : '風向 VRB（全周の最悪値で判定）・'}${ev.usedGust ? `最大風速 ${ev.use}kt で計算（${REV.om} 3-7-1(2)②）` : `${ev.use}kt で計算`}${w.vfrom != null ? '・変動範囲内の最悪値で判定' : ''}${ev.worst && ev.state !== 'ok' && w.dir !== 'VRB' ? '' : ''}${ev.worst ? `・この向きの上限 ${fmtV(ev.worst.v)}kt` : ''}</div></div></div>` : '<div class="wl-result none"><div class="wl-rbody hint">風を入力すると判定します</div></div>';
+    const evBox = ev ? `<div class="wl-result ${ev.state}"><div class="wl-rhead">${ev.state === 'ok' ? 'OK' : 'NG'}</div><div class="wl-rbody"><div>${esc(ev.msg)}</div>${ev.hw != null ? `<div>${ev.hw >= 0 ? '向かい風' : '背風'} ${Math.abs(ev.hw).toFixed(1)}kt ／ 横風 ${ev.xw.toFixed(1)}kt（${ev.xwSide === 'R' ? '右' : '左'}から）</div>` : ''}<div class="hint wl-small">${ev.magDir != null ? `風向 ${d3(ev.magDir)}°M（機首から ${ev.angle.toFixed(1)}°）・` : '風向 VRB（全周の最悪値で判定）・'}${ev.usedGust ? `最大風速 ${ev.use}kt で判定（${REV.om} 3-7-1(2)②）` : `${ev.use}kt で判定`}${w.vfrom != null ? '・変動範囲内の最悪値' : ''}</div></div></div>` : '<div class="wl-result none"><div class="wl-rbody hint">風を入力すると判定します</div></div>';
 
-    // 副操縦士操縦時の着陸重量
     let foW = '';
     if (st.pilot === 'fo' && st.phase === 'LDG' && lim.permitted) {
       const Lm = rwy.lengthM, Wm = rwy.widthM; let t;
-      if (Wm != null && Wm < LIMITS.foLdgWeight.minWidthM) t = `幅 ${Wm}m（45m 未満）：表の対象外・要確認`;
+      if (Wm != null && Wm < 45) t = `幅 ${Wm}m（45m 未満）：表の対象外・要確認`;
       else if (Lm == null) t = '滑走路長が不明';
       else if (Lm >= 2100) t = '2,100m 以上：DRY・WET とも最大着陸重量以下';
       else if (Lm >= 2000) t = '2,000〜2,100m：DRY 最大着陸重量以下 ／ WET 139,000 LBS 以下';
       else if (Lm >= 1800) t = '1,800〜2,000m：WET 127,000 LBS 以下（DRY の値は未収録・要確認）';
       else t = '1,800m 未満：表の範囲外・要確認';
-      foW = `<div class="card wl-card"><div class="wl-h">副操縦士操縦時の着陸重量 <span class="wl-ref">${esc(LIMITS.foLdgWeight.ref)}</span></div><div>${esc(t)}</div><div class="hint wl-small">判定に使った長さ：${esc(rwy.src)} の滑走路長 ${Lm ?? '--'}m × 幅 ${Wm ?? '--'}m。規程は「有効滑走路長」なので、短縮運用・LDA（AIP AD 2.13）は別途確認。</div></div>`;
+      foW = `<div class="card wl-card"><div class="wl-h">副操縦士操縦時の着陸重量 <span class="wl-ref">${esc(FO.ref)}</span></div><div>${esc(t)}</div><div class="hint wl-small">判定に使った長さ：${esc(rwy.src)} の滑走路長 ${Lm ?? '--'}m × 幅 ${Wm ?? '--'}m。規程は「有効滑走路長（幅45m以上）」なので、短縮運用・LDA（AIP AD 2.13）は別途確認。</div></div>`;
     }
 
     root.innerHTML = `
       <div class="wl-sel">
-        <div class="row wl-row2"><label>空港<select id="wl-ap">${optAp}</select></label><label>滑走路<select id="wl-rwy">${optRw}</select></label></div>
+        <div class="wl-row2"><label>空港<select id="wl-ap">${optAp}</select></label><label>滑走路<select id="wl-rwy">${optRw}</select></label></div>
         <div class="wl-row2 eq">${seg('phase', [{ id: 'TO', label: '離陸', sub: 'TO' }, { id: 'LDG', label: '着陸', sub: 'LDG' }], st.phase)}${seg('type', TYPES.map((t) => ({ ...t, label: t.label.replace('A320', '') })), st.type)}</div>
         ${seg('pilot', PILOTS, st.pilot)}
         <label>滑走路状態（RWYCC）<select id="wl-cc">${optCc}</select></label>
-        ${st.phase === 'LDG' ? `${seg('appr', [{ id: 'none', label: '通常', sub: 'CAT I 以外' }, { id: 'cat1low', label: 'CAT I', sub: 'RVR/CMV<1200m' }, { id: 'cat2', label: 'CAT II', sub: '　' }], st.appr)}
-        <div class="wl-checks"><label class="wl-ck"><input type="checkbox" id="wl-al"${st.autoland ? ' checked' : ''}> Autoland</label>${st.autoland ? `<label class="wl-ck"><input type="checkbox" id="wl-ro"${st.rollout ? ' checked' : ''}> JA20MC–JA27MC で Automatic Rollout あり</label>` : ''}</div>` : ''}
+        ${st.phase === 'LDG' ? `${seg('appr', [{ id: 'none', label: '通常', sub: 'CAT I 以外' }, { id: 'cat1low', label: 'CAT I', sub: 'RVR/CMV<1200m' }, { id: 'cat2', label: 'CAT II', sub: '\u3000' }], st.appr)}
+        <div class="wl-checks"><label class="wl-ck"><input type="checkbox" id="wl-al"${st.autoland ? ' checked' : ''}> Autoland（CAT II/Autoland 列）</label></div>` : ''}
       </div>
       <div class="card wl-card">
         <div class="wl-h">RWY ${esc(rwy.id)} <span class="hint">${d3(rwy.mag)}°M（真方位 ${rwy.trueBrg.toFixed(1)}°・偏差 ${esc(mv.text)}）</span></div>
-        ${lim.permitted ? `${limRow('横風', lim.XW, lim.xw)}${limRow('背風', lim.TW, lim.tw)}${lim.HW ? limRow('向かい風', lim.HW, lim.hw) : ''}` : `<div class="wl-result ng"><div class="wl-rhead">不可</div><div class="wl-rbody">${lim.reasons.map(esc).join('<br>')}</div></div>`}
-        ${lim.neoOblique ? `<div class="wl-warn">neo 離陸：斜め後方の風（背風＋横風）はエンジン制限あり。${esc(LIMITS.neoToEngineRef)} で要確認（この範囲は OK と表示しません）。Flysmart では突風値を平均風の欄に入力。</div>` : ''}
+        ${lim.permitted ? summary : `<div class="wl-result ng"><div class="wl-rhead">不可</div><div class="wl-rbody">${lim.reasons.map(esc).join('<br>')}</div></div>`}
         <div class="wl-fig">${diagram(lim, rwy, ev, w, mv)}</div>
+        <p class="hint wl-small wl-figkey">緑＝許容範囲（中心からの距離＝風速 kt・外周 50kt で打ち切り）。${lim.permitted && [...Array(19).keys()].some((r) => rowCell(lim, r).mark === 'E') ? '<span class="m-e">■</span>＝エンジン制限（E）の角度。' : ''}矢印は滑走路の進行方向。</p>
         <div class="wl-wind">
           <div class="wl-h2">風 ${w?.src === 'metar' ? `<span class="hint">METAR ${esc(w.raw || '')}${w.obs ? `（${esc(w.obs.slice(11, 16))}Z）` : ''}</span>` : '<span class="hint">手入力</span>'}</div>
           <div class="wl-inrow">
@@ -271,17 +316,19 @@
         ${table}
       </div>
       ${foW}
-      <details class="card wl-card wl-notes"><summary>注記</summary><ul>
+      <details class="card wl-card wl-notes"><summary>注記・出典</summary><ul>
+        <li>参考用の補助です。AOM が優先。使用にあたっては PF / PM で確認してください。</li>
         <li>OM の制限はすべて同時に適用。最も厳しい値を表示しています。</li>
-        <li>横風（RCAM）は会社の最大値。離陸滑走開始後・着陸決定後の一時的な超過は可（${REV.aom} LIM-AG-OPS）。背風 15kt・Autoland 10kt は AFM LIMITATION で超過不可。</li>
-        <li>滑走路状態が混在・3区分で異なる場合は最も悪い値（${REV.aom} LIM-AG-OPS）。PFC は Grooving と同じ扱い。</li>
-        <li>AIREP が SNOWTAM より悪いときは機長判断で RWYCC を下げてよい。上げるのは不可。</li>
+        <li>横風（RCAM）は会社の最大値で、離陸滑走開始後・着陸決定後の一時的な超過は可（${REV.aom} LIM-AG-OPS）。背風 15kt・Autoland 10kt は AFM LIMITATION で超過不可。</li>
+        <li>副操縦士（右席）の操縦は機長が誰であっても OM の制限（横風は AOM 値の 1/2・背風 10kt・DRY/WET のみ）。表には含まれないのでアプリで計算（${esc(FO.ref)}）。AOM の値になるのは右席の査察・教官が操縦する場合と、左席で機長業務を習熟中の副操縦士（OM 8-11-2(3)）。</li>
+        <li>滑走路状態が混在・3区分で異なる場合は最も悪い値（${REV.aom} LIM-AG-OPS）。AIREP が SNOWTAM より悪いときは機長判断で RWYCC を下げてよい。上げるのは不可。</li>
         <li>確認のタイミング：離陸＝Take-off Clearance 時の風、着陸＝Landing Clearance 時の風。超えていても 500ft AFE までに再確認して以内なら進入継続可（${REV.om} S3-7）。飛行場対空援助業務の飛行場は「Runway is clear」の時。</li>
-        <li>横風成分は平均風速、最大風速の通報があればその値（${REV.om} 3-7-1(2)②）。Autoland の風は Tower 通報の Surface Wind 基準（${REV.aom} LIM-AFS）。</li>
-        <li>背風 10kt を超える着陸は FLAPS FULL（${REV.aom} LIM-AG-OPS Tailwind Landing）。</li>
+        <li>横風成分は平均風速、最大風速の通報があればその値（${REV.om} 3-7-1(2)②）。Autoland の風は Tower 通報の Surface Wind 基準（${REV.aom} LIM-AFS）。Flysmart では突風値を平均風の欄に入力。</li>
         <li>離着陸できない深さ：Dry snow 100mm・Wet snow 30mm・Slush / Standing water 13mm（1区分でも超えれば不可）。</li>
+        <li>滑走路別の冊子（Wind Component Table_RWY別 REV1）もありますが、ここでは相対角の表と滑走路の磁方位（AIP の真方位−磁気偏差）から求めています。</li>
+        <li>表にない角度（10° の間）は両隣の行の厳しい方で判定（アプリ独自）。</li>
         <li>Route Manual の空港別の制限は未確認です。</li>
-      </ul><p class="wl-ref">出典：${REV.aom} ／ ${REV.om} ／ ${REV.oen050} ／ ${REV.oen104}（Attention All Crew）。改訂時は見直しが必要。</p></details>`;
+      </ul><p class="wl-ref">出典：${esc(WCT.ref)} ／ ${REV.aom} ／ ${REV.om} ／ ${REV.oen050} ／ ${REV.oen104}（Attention All Crew）。改訂時は見直しが必要。</p></details>`;
 
     const q = (id) => document.getElementById(id);
     q('wl-ap').onchange = (e) => { st.icao = e.target.value; st.rwy = null; if (st.wind?.src === 'metar') st.wind = null; render(); };
@@ -289,11 +336,10 @@
     q('wl-cc').onchange = (e) => { st.rwycc = Number(e.target.value); render(); };
     root.querySelectorAll('.wl-seg').forEach((g) => g.querySelectorAll('.chip').forEach((b) => { b.onclick = () => { st[g.dataset.k] = b.dataset.v; render(); }; }));
     if (q('wl-al')) q('wl-al').onchange = (e) => { st.autoland = e.target.checked; render(); };
-    if (q('wl-ro')) q('wl-ro').onchange = (e) => { st.rollout = e.target.checked; render(); };
     const readIn = () => {
       const dv = q('wl-wd').value.trim().toUpperCase(); const n = (x) => (x.trim() === '' ? null : Number(x));
-      st.wind = { dir: dv === '' ? null : dv === 'VRB' ? 'VRB' : norm(Number(dv)) || (Number(dv) === 360 || Number(dv) === 0 ? 360 : null), spd: n(q('wl-ws').value), gust: n(q('wl-wg').value), ref: q('wl-ref').value, src: 'manual', icao: st.icao };
-      if (st.wind.dir === 'VRB' || (typeof st.wind.dir === 'number' && Number.isFinite(st.wind.dir))) { /* ok */ } else st.wind.dir = null;
+      let dir = null; if (dv === 'VRB') dir = 'VRB'; else if (dv !== '' && Number.isFinite(Number(dv))) dir = norm(Number(dv)) || 360;
+      st.wind = { dir, spd: n(q('wl-ws').value), gust: n(q('wl-wg').value), ref: q('wl-ref').value, src: 'manual', icao: st.icao };
       render();
     };
     ['wl-wd', 'wl-ws', 'wl-wg'].forEach((id) => { q(id).onchange = readIn; });
@@ -302,5 +348,5 @@
     q('wl-clear').onclick = () => { st.wind = { dir: null, spd: null, gust: null, ref: 'mag', src: 'manual', icao: st.icao }; render(); };
   }
   function setup(fn) { ctxFn = fn; }
-  window.FBWind = { setup, render, compute, vmax, evaluate, runways, magVar, parseMetarWind, LIMITS };
+  window.FBWind = { setup, render, compute, rowCell, cellAt, vmax, evaluate, runways, magVar, parseMetarWind, WCT };
 })();

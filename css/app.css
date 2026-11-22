@@ -650,13 +650,23 @@ label.block{margin-top:14px}
 .wl-rhead{font-size:20px;font-weight:800;min-width:56px;display:flex;align-items:center;justify-content:center}
 .wl-result.ok .wl-rhead{color:var(--green)}.wl-result.ng .wl-rhead{color:var(--danger-fg)}.wl-result.chk .wl-rhead{color:var(--warn-fg);font-size:16px}
 .wl-rbody{font-size:13px;line-height:1.5;flex:1;min-width:0}
-.wl-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;margin-top:10px}
-.wl-cell{display:flex;flex-direction:column;align-items:center;background:var(--bg-elev);border-radius:6px;padding:3px 0;font-variant-numeric:tabular-nums}
-.wl-cell span{font-size:10px;color:var(--text-dim)}
-.wl-cell b{font-size:14px}
-.wl-cell b i{font-style:normal;font-size:10px;color:var(--wl-chk)}
-.wl-cell.tail{background:var(--wl-tail)}
-.wl-cell.cur{box-shadow:inset 0 0 0 2px var(--accent)}
-.wl-key.tail{color:rgba(255,159,10,.6)}
+.wl-sums{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:4px 0 2px}
+.wl-sum{background:var(--bg-elev);border-radius:10px;padding:6px 6px 7px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0}
+.wl-sum .wl-lv{font-size:21px}
+.wl-sum .wl-tag{margin-left:0;white-space:normal;line-height:1.3}
+.wl-tag.eng{background:var(--warn-bg);color:var(--warn-fg)}
+.wl-eng{fill:var(--wl-chk);opacity:.38;stroke:none}
+.m-t{color:var(--danger-fg)}.m-e{color:var(--wl-chk)}.m-h{color:var(--magenta)}.m-f{color:var(--accent)}.m-nl{color:var(--text-dim)}
+.wl-figkey{text-align:center;margin-top:0}
+.wl-tbl{width:100%;border-collapse:separate;border-spacing:0 2px;margin-top:10px;font-variant-numeric:tabular-nums;font-size:13px}
+.wl-tbl th{font-size:11px;color:var(--text-dim);font-weight:600;text-align:left;padding:2px 8px}
+.wl-tbl td{background:var(--bg-elev);padding:4px 8px}
+.wl-tbl td:first-child{border-radius:8px 0 0 8px;color:var(--text-dim);width:22%}
+.wl-tbl td:nth-child(2){font-weight:800;font-size:15px;width:24%}
+.wl-tbl td:last-child{border-radius:0 8px 8px 0;color:var(--text-dim)}
+.wl-tbl tr.tail td{background:var(--wl-tail)}
+.wl-tbl tr.cur td{box-shadow:inset 0 2px 0 var(--accent),inset 0 -2px 0 var(--accent)}
+.wl-tbl tr.cur td:first-child{box-shadow:inset 2px 2px 0 var(--accent),inset 0 -2px 0 var(--accent)}
+.wl-tbl tr.cur td:last-child{box-shadow:inset -2px 2px 0 var(--accent),inset 0 -2px 0 var(--accent)}
 .wl-notes ul{margin:6px 0 4px;padding-left:18px;font-size:12.5px;line-height:1.55}
 .wl-notes li{margin:3px 0}
