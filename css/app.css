@@ -77,21 +77,22 @@ a.btn{display:inline-block;text-decoration:none;margin:4px 0}
 
 /* ---------- shell */
 #app{display:flex;flex-direction:column;height:100%}
-.app-header{display:flex;align-items:center;gap:8px;height:calc(var(--header-h) + env(safe-area-inset-top));padding:env(safe-area-inset-top) 10px 0 14px;
+.app-header{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;column-gap:8px;height:calc(var(--header-h) + env(safe-area-inset-top));padding:env(safe-area-inset-top) 10px 0 14px;
   background:var(--bg-panel);-webkit-backdrop-filter:saturate(180%) blur(18px);backdrop-filter:saturate(180%) blur(18px);border-bottom:.5px solid var(--line-strong);flex:none;z-index:2}
+.brand{justify-self:start;min-width:0}
+.header-actions{display:flex;align-items:center;justify-self:end;justify-content:flex-end;min-width:0}
 .brand{font-weight:700;font-size:16px;letter-spacing:-.01em;white-space:nowrap}
-.header-status{display:flex;gap:6px;flex:1;min-width:0;align-items:center;overflow:hidden}
+.header-status{display:flex;gap:6px;justify-self:center;justify-content:center;min-width:0;align-items:center;overflow:hidden}
 .header-status::-webkit-scrollbar{display:none}
 .header-pills{display:flex;flex-direction:column;gap:2px;flex:0 1 auto;min-width:0;max-width:100%}
 .header-pills .pill{text-align:center;padding:1px 7px;font-size:10px;line-height:1.25;border-radius:8px;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .pill{font-size:12px;font-weight:600;border-radius:999px;padding:4px 10px;white-space:nowrap;color:var(--text-dim);background:var(--bg-elev);font-variant-numeric:tabular-nums;flex:none}
 /* ヘッダー時計：JST と Z を / で区切り、日付＋秒まで。数字を主、ラベルは小さく淡く。狭い幅は2行 */
-#clock.clock{display:grid;grid-template-columns:auto auto auto auto;column-gap:5px;row-gap:2px;align-items:baseline;padding:3px 8px;border-radius:10px;background:var(--bg-elev);color:var(--text);font-variant-numeric:tabular-nums;line-height:1.15;flex:none;max-width:100%;white-space:nowrap}
+#clock.clock{display:grid;grid-template-columns:auto auto auto;column-gap:5px;row-gap:2px;align-items:baseline;padding:3px 8px;border-radius:10px;background:var(--bg-elev);color:var(--text);font-variant-numeric:tabular-nums;line-height:1.15;flex:none;max-width:100%;white-space:nowrap}
 #clock .ck-line{display:contents}
 #clock .ck-date{font-size:10px;font-weight:600;color:var(--text-dim);letter-spacing:0}
 #clock .ck-time{font-size:12.5px;font-weight:700;color:var(--text);letter-spacing:.02em}
 #clock .ck-lab{font-size:9.5px;font-weight:800;color:var(--text-faint);letter-spacing:.04em;line-height:1}
-#clock .ck-slash{font-size:10px;font-weight:700;color:var(--text-faint);line-height:1}
 .pill.ok{color:var(--green);background:rgba(52,199,89,.14)}
 .pill.off{color:#1b1400;background:var(--yellow)}
 .pill.warn{color:var(--yellow);background:var(--warn-bg)}
@@ -355,7 +356,7 @@ label.block{margin-top:14px}
 .brand-emb{filter:drop-shadow(0 0 1px rgba(255,255,255,.45))}
 .brand-lb{position:fixed;inset:0;z-index:4000;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(8,12,20,.7);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);cursor:pointer}
 .brand-lb[hidden]{display:none!important}
-.brand-lb img{width:min(72vw,72vh,360px);height:auto;aspect-ratio:1;border-radius:50%;filter:drop-shadow(0 10px 32px rgba(0,0,0,.45));pointer-events:none;background:transparent}
+.brand-lb img{width:min(72vw,72vh,360px);height:auto;aspect-ratio:1;filter:drop-shadow(0 10px 32px rgba(0,0,0,.45));pointer-events:none;background:transparent}
 .duty-leg{display:block;margin-top:6px;font-size:13px}
 .duty-leg .raw{margin-top:4px}
 
@@ -400,7 +401,7 @@ label.block{margin-top:14px}
 #theme-btn svg{display:none}
 #theme-btn[data-mode="auto"] .ic-auto,#theme-btn[data-mode="light"] .ic-light,#theme-btn[data-mode="dark"] .ic-dark{display:block}
 .app-header{gap:4px}
-@media (max-width:440px){.app-header{padding-right:4px;padding-left:10px;gap:2px}.header-status{gap:4px;margin-right:2px}.pill{padding:4px 8px;font-size:11.5px}.header-pills .pill{padding:1px 6px;font-size:10px}#clock.clock{padding:2px 6px}#clock .ck-date{font-size:9.5px}#clock .ck-time{font-size:11.5px}#clock .ck-lab{font-size:8.5px}#clock .ck-slash{font-size:8.5px}.app-header .btn-icon{min-width:34px;width:34px}.app-header .btn-icon svg{width:21px;height:21px}#wx-btn svg{width:22px;height:22px}}
+@media (max-width:440px){.app-header{padding-right:4px;padding-left:10px;gap:2px}.header-status{gap:4px;margin-right:2px}.pill{padding:4px 8px;font-size:11.5px}.header-pills .pill{padding:1px 6px;font-size:10px}#clock.clock{padding:2px 6px}#clock .ck-date{font-size:9.5px}#clock .ck-time{font-size:11.5px}#clock .ck-lab{font-size:8.5px}.app-header .btn-icon{min-width:34px;width:34px}.app-header .btn-icon svg{width:21px;height:21px}#wx-btn svg{width:22px;height:22px}}
 
 .toast{position:fixed;left:50%;top:calc(var(--header-h) + env(safe-area-inset-top) + 8px);transform:translate(-50%,-6px);z-index:3000;max-width:min(92vw,420px);padding:9px 14px;border-radius:12px;background:var(--bg-card);color:var(--text);box-shadow:var(--shadow);border:1px solid var(--line-strong);font-size:12.5px;line-height:1.45;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
 .toast.show{opacity:1;transform:translate(-50%,0)}
