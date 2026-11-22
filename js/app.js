@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.25';
+  const APP_VERSION = '1.9.26';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { areaHide: 'fb.areaHide', notamMode: 'fb.notamMode', airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
@@ -608,9 +608,20 @@
   }
 
   // ---------------------------------------------------------------- AIRPORT
+  let airportSub = 'info';
   function renderAirport() {
+    document.querySelectorAll('#airport-sub .chip').forEach((b) => b.classList.toggle('active', b.dataset.sub === airportSub));
+    const info = $('airport-info'), ground = $('airport-ground');
+    if (info) info.hidden = airportSub !== 'info';
+    if (ground) ground.hidden = airportSub !== 'ground';
+    if (airportSub === 'ground' && ground) {
+      const names = {};
+      for (const icao of mainAirports()) names[icao] = `${apName(icao)} ${apCodes(icao)}`;
+      window.FBGround.render(ground, state.pack, { airports: mainAirports(), names });
+      return;
+    }
     const date = $('airport-date').value || todayJst();
-    const list = $('airport-list'); list.innerHTML = '';
+    const list = $('airport-list'); if (!list) return; list.innerHTML = '';
     for (const icao of mainAirports()) {
       const p = state.pack?.airports?.airports?.[icao] || {};
       const sw = p.swim || null; const swOk = !!(sw && sw.ok);
@@ -936,6 +947,9 @@
     window.FBViewer.setup();
     $('airport-date').value = state.duty.date || todayJst();
     $('airport-date').onchange = renderAirport;
+    document.querySelectorAll('#airport-sub .chip').forEach((b) => {
+      b.onclick = () => { airportSub = b.dataset.sub; renderAirport(); };
+    });
     document.querySelectorAll('#notam-mode .chip').forEach((b) => { b.onclick = () => { state.notamMode = b.dataset.mode; lsSet(LS.notamMode, state.notamMode); applyNotamMode(); }; });
     document.querySelectorAll('#notam-period .chip').forEach((b) => { b.onclick = () => { state.notamHours = Number(b.dataset.hours); lsSet(LS.notamH, state.notamHours); renderNotam(); }; });
     $('refresh-btn').onclick = () => refresh(false);

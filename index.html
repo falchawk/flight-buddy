@@ -108,9 +108,16 @@
 
     <section id="tab-airport" class="tab-panel">
       <h2>AIRPORT</h2>
-      <p class="hint">選んだ空港の運用プロファイル。取得できなかった項目は「未取得」と表示します。日の出・日没は端末内で計算（オフライン可）。</p>
-      <label class="inline">日付 <input type="date" id="airport-date" /></label>
-      <div id="airport-list"></div>
+      <nav id="airport-sub" class="chips-sub">
+        <button type="button" class="chip active" data-sub="info">運用情報</button>
+        <button type="button" class="chip" data-sub="ground">地上図</button>
+      </nav>
+      <div id="airport-info">
+        <p class="hint">選んだ空港の運用プロファイル。取得できなかった項目は「未取得」と表示します。日の出・日没は端末内で計算（オフライン可）。</p>
+        <label class="inline">日付 <input type="date" id="airport-date" /></label>
+        <div id="airport-list"></div>
+      </div>
+      <div id="airport-ground" hidden></div>
     </section>
 
     <section id="tab-duty" class="tab-panel">
@@ -209,6 +216,7 @@
 <script src="js/vmc-designated.js"></script>
 <script src="js/wx.js"></script>
 <script src="js/pack.js"></script>
+<script src="js/ground.js"></script>
 <script src="js/viewer.js"></script>
 <script src="js/flights.js"></script>
   <script src="js/app.js"></script>

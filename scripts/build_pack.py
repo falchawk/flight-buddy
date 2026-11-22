@@ -8,7 +8,7 @@ Flight Buddy pack builder
 出力（共有ファイル＝全端末がダウンロード／空港別＝各端末が SETTINGS で選んだ空港だけダウンロード）:
   data/packs/<packId>/manifest.json   … 目録（共有ファイル・共有の図・空港別ファイル airportFiles の一覧＋sha256＋サイズ）
   data/packs/<packId>/index.json      … 全空港の一覧（名称・位置・国・飛行状態のみ。SETTINGS の空港選択と MAP 用。小さい）
-  data/packs/<packId>/ap/<ICAO>.json  … 空港別：METAR/TAF・NOTAM・ATIS・空港プロファイル（SWIM・AIP Lost Comm）・飛行場時系列の画像参照
+  data/packs/<packId>/ap/<ICAO>.json  … 空港別：METAR/TAF・NOTAM・ATIS・空港プロファイル（SWIM・AIP Lost Comm）・飛行場時系列の画像参照・地上図（NOTAM照合）
   data/packs/<packId>/wx.json ほか    … wx / notam / atis / airports は出所・取得時刻などの共通情報だけ（空港ごとの中身は ap/）
   data/packs/<packId>/brief.json      … ボットが書いたブリーフ本文（--brief）
   data/packs/<packId>/charts.json     … 図のメタデータ（schema flight-buddy-charts/2。飛行場時系列は ap/ 側）
@@ -52,6 +52,7 @@ from flightcat import classify_metar  # noqa: E402
 import schedule  # noqa: E402
 import flights_pack  # noqa: E402
 import notam_area  # noqa: E402
+import ground_chart  # noqa: E402
 
 
 def log(*a):
@@ -544,9 +545,10 @@ def merge_prev_products(new, prev):
 AP_DIR = "ap"
 
 
-def split_pack(pack_dir, charts):
+def split_pack(pack_dir, charts, grounds=None):
     """組み立て済みの wx/notam/atis/airports/charts を、共有ファイル＋空港別ファイルに分ける。
     戻り値: {ICAO: [blob path, ...]}（空港別の画像）"""
+    grounds = grounds or {}
     wx = read_json(os.path.join(pack_dir, "wx.json"), {}) or {}
     notam = read_json(os.path.join(pack_dir, "notam.json"), {}) or {}
     atis = read_json(os.path.join(pack_dir, "atis.json"), {}) or {}
@@ -568,13 +570,22 @@ def split_pack(pack_dir, charts):
         p = (prof.get("airports") or {}).get(icao)
         d = {"icao": icao, "wx": e, "notam": (notam.get("airports") or {}).get(icao), "profile": p,
              "atis": (atis.get("airports") or {}).get(icao), "atisReason": atis_reasons.get(icao), "series": series.get(icao)}
+        g = grounds.get(icao)
+        if g:
+            d["ground"] = g
         write_json(os.path.join(pack_dir, AP_DIR, f"{icao}.json"), d)
         mt = ((e or {}).get("metar") or [{}])[0]
         index[icao] = {k: v for k, v in {"name": (p or {}).get("name"), "iata": (p or {}).get("iata"), "lat": (p or {}).get("lat"), "lon": (p or {}).get("lon"),
                                           "country": (p or {}).get("country"), "foreign": (p or {}).get("foreign"), "verified": (p or {}).get("verified"),
                                           "fltCat": mt.get("fltCat"), "series": icao in series}.items() if v is not None}
+        blobs = set()
         if icao in series:
-            ap_blobs[icao] = sorted({i["file"] for f in series[icao].get("frames", []) for i in f.get("images", []) if i.get("file", "").startswith("data/blobs/")})
+            blobs |= {i["file"] for f in series[icao].get("frames", []) for i in f.get("images", []) if i.get("file", "").startswith("data/blobs/")}
+        gf = (g or {}).get("file") if g else None
+        if gf:
+            blobs.add(gf)
+        if blobs:
+            ap_blobs[icao] = sorted(blobs)
     wx.pop("airports", None); notam.pop("airports", None); atis.pop("airports", None); atis.pop("reasons", None); prof.pop("airports", None)
     write_json(os.path.join(pack_dir, "wx.json"), wx)
     write_json(os.path.join(pack_dir, "notam.json"), notam)
@@ -614,6 +625,7 @@ def brief_images(text, img_dir):
 def join_pack(pack_dir):
     """空港別ファイルを元の形（wx/notam/atis/airports/charts の airports 付き）に戻す（前回分の引き継ぎ用）。旧形式はそのまま。"""
     out = {k: read_json(os.path.join(pack_dir, f"{k}.json")) for k in ("wx", "notam", "atis", "airports", "charts", "flights", "brief", "duty_default", "notam_area")}
+    out["ground"] = {}
     apd = os.path.join(pack_dir, AP_DIR)
     if not os.path.isdir(apd):
         return out
@@ -636,6 +648,8 @@ def join_pack(pack_dir):
             out["atis"]["reasons"][icao] = d["atisReason"]
         if d.get("series"):
             series.append(d["series"])
+        if d.get("ground"):
+            out["ground"][icao] = d["ground"]
     for c in (out.get("charts") or {}).get("categories", []):
         for it in c["items"]:
             if it["id"] == "apseries":
@@ -703,6 +717,20 @@ def build(args):
             na = dict(prev["notam_area"], carriedOver=True)
         if na:
             write_json(os.path.join(pack_dir, "notam_area.json"), na)
+
+        # ---- 地上図（OSM＋NOTAM照合）。失敗してもパックは続ける
+        grounds = {}
+        try:
+            notam_d = read_json(os.path.join(pack_dir, "notam.json"), {}) or {}
+            grounds = ground_chart.build_all(notam_d.get("airports") or {},
+                                            (profiles.get("airports") or {}),
+                                            prev.get("ground") or {})
+        except Exception as e:  # noqa: BLE001
+            log("地上図 作成失敗（タブはエラー表示、パックは続行）:", type(e).__name__, e)
+            grounds = prev.get("ground") or {}
+            for icao, g0 in list(grounds.items()):
+                if g0:
+                    grounds[icao] = dict(g0, carriedOver=True)
 
         # ---- brief
         prev_brief = prev.get("brief")
@@ -816,13 +844,15 @@ def build(args):
         duty = read_json(args.duty_file) if args.duty_file else (prev_manifest or {}).get("duty")
 
         signature = pack_signature(pack_dir)
+        if grounds:
+            signature = hashlib.sha256((signature + ground_chart.signature_of(grounds)).encode()).hexdigest()
         if args.skip_if_unchanged and prev_manifest and prev_manifest.get("signature") == signature:
             shutil.rmtree(pack_dir)
             log("前回パックから変化なし → 新しいパックは作りません")
             return {"changed": False, "packId": prev_manifest["packId"], "airports": len(prev_manifest.get("airports", [])),
                     "charts": n_frames, "chartMode": "unchanged", "chartErrors": charts.get("errors", []),
                     "chartStats": charts.get("stats")}
-        ap_blob_paths = split_pack(pack_dir, charts)
+        ap_blob_paths = split_pack(pack_dir, charts, grounds)
     except BaseException:
         shutil.rmtree(pack_dir, ignore_errors=True)
         raise

@@ -5,11 +5,11 @@
 // - 外部（Windy等）は一切キャッシュしない（オンライン専用）
 // - data/latest/*, data/index.json は network-first（オフライン時はキャッシュ）
 // v1.9.19 rev2: PM2.5 予測のクライアント側の過去コマ非表示を廃止（同一版のまま再配布するためこの行でバイト列を変える）
-const VERSION = 'v1.9.25';
+const VERSION = 'v1.9.26';
 const SHELL_CACHE = `fb-shell-${VERSION}`;
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
-  'js/airports-data.js', 'js/map.js', 'js/areamap.js', 'js/flights.js', 'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css', 'vendor/basemap.js', 'vendor/leaflet/images/layers.png', 'vendor/leaflet/images/layers-2x.png', 'vendor/leaflet/images/marker-icon.png', 'vendor/leaflet/images/marker-icon-2x.png', 'vendor/leaflet/images/marker-shadow.png', 'js/sun.js', 'js/tas.js', 'js/vmc-designated.js', 'js/wx.js', 'js/pack.js', 'js/viewer.js', 'js/app.js',
+  'js/airports-data.js', 'js/map.js', 'js/areamap.js', 'js/flights.js', 'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css', 'vendor/basemap.js', 'vendor/leaflet/images/layers.png', 'vendor/leaflet/images/layers-2x.png', 'vendor/leaflet/images/marker-icon.png', 'vendor/leaflet/images/marker-icon-2x.png', 'vendor/leaflet/images/marker-shadow.png', 'js/sun.js', 'js/tas.js', 'js/vmc-designated.js', 'js/wx.js', 'js/pack.js', 'js/ground.js', 'js/viewer.js', 'js/app.js',
   'icons/antlers-emblem-32.png', 'icons/brand-fb-96.png', 'icons/favicon-32.png', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
 ];
 

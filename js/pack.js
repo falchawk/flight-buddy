@@ -33,7 +33,7 @@
     const h = await crypto.subtle.digest('SHA-256', buf);
     return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, '0')).join('');
   }
-  const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' };
+  const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', json: 'application/json' };
 
   async function checkRemote() {
     const res = await fetchWithTimeout(new URL(`data/latest/manifest.json?ts=${Date.now()}`, BASE).href, { cache: 'no-store' }, 7000);
@@ -178,9 +178,25 @@
         if (d.atisReason) out.atis.reasons[icao] = d.atisReason;
         if (d.profile) out.airports.airports[icao] = d.profile;
         if (d.series) series[icao] = d.series;
+        if (d.ground) {
+          out.ground = out.ground || {};
+          out.ground[icao] = d.ground;
+        }
       }
       out.seriesByIcao = series;
       setSeries(out);
+      const bcG = await caches.open(BLOBS);
+      for (const icao of Object.keys(out.ground || {})) {
+        const g = out.ground[icao];
+        if (!g || !g.ok || !g.file) continue;
+        try {
+          const r = await bcG.match(siteUrl(g.file));
+          if (r) g.layout = await r.json();
+          else g.loadError = '地図データの読み込みに失敗しました（再ダウンロードしてください）。';
+        } catch (e) {
+          g.loadError = '地図データの読み込みに失敗しました。';
+        }
+      }
     } else {
       for (const icao of Object.keys(out.wx?.airports || {})) out.loadedAirports.add(icao); // 旧形式（全空港入り）
     }
