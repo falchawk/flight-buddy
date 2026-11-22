@@ -71,9 +71,9 @@
 
     <section id="tab-flights" class="tab-panel">
       <h2>FLIGHTS</h2>
-      <p class="hint">パック内の時刻表から便名を検索します（端末内・オフライン。通信しません）。会社コード付き（NH774・JAL501・6J51）は完全一致優先、数字だけ（774）は全社の部分一致。</p>
+      <p class="hint">便名で検索（オフライン）。NH774 ならその会社、数字だけ（774）なら全社から探します。</p>
       <div class="row">
-        <label>DATE <input type="date" id="fl-date" /></label>
+        <label>DATE <input type="date" id="fl-date" autocomplete="off" /></label>
       </div>
       <nav id="fl-carriers" class="chips chips-sub"></nav>
       <input id="fl-search" type="search" inputmode="text" placeholder="便名または数字（例：NH774 / 774 / JAL501）" autocomplete="off" />

@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.27';
+  const APP_VERSION = '1.9.28';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { areaHide: 'fb.areaHide', notamMode: 'fb.notamMode', airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
@@ -127,6 +127,7 @@
       lsSet(LS.tab, tab);
       if (tab === 'notam') setTimeout(() => { try { applyNotamMode(); } catch (e) { console.warn(e); } }, 0);
       if (tab === 'map') setTimeout(() => { try { renderMap(); } catch (e) { console.warn(e); } }, 0);
+      if (tab === 'flights') setTimeout(() => { try { syncFlightsDate(); } catch (e) { console.warn(e); } }, 0);
     };
     btns.forEach((b) => b.addEventListener('click', () => go(b.dataset.tab)));
     let t0 = lsGet(LS.tab, 'map');
@@ -450,7 +451,7 @@
 
 
   // ---------------------------------------------------------------- FLIGHTS（パックの時刻表から便名検索。通信しない）
-  const fl = { carrier: lsGet('fb.flCarrier', 'ALL'), date: null };
+  const fl = { carrier: lsGet('fb.flCarrier', 'ALL'), date: null, manual: false };
   const apShort = (code) => { const p = state.pack?.airports?.airports?.[code]; const a = airportInfo(code); const nm = a?.name || state.pack?.flights?.airportNames?.[code] || p?.name || ''; const iata = a?.iata || p?.iata || (code.length === 3 ? code : ''); return { iata: iata || code, name: nm }; };
   const SRC_JA = { odpt: 'ODPT', 'ana-pdf': 'ANA公式PDF', 'official-pdf': '公式PDF', live: '公式サイト', official: '公式', toki: 'トキエア公式', board: '空港の発着案内', rararakt: 'rararakt' };
   // MAP の判定基準：初期は非表示。凡例（VFR/MVFR/IFR/LIFR）を押すとそのカテゴリの基準を表示（もう一度押すと閉じる）。航空法（国内）と FAA基準（海外）を分けて書く
@@ -473,11 +474,47 @@
       box.classList.remove('hidden');
     });
   }
+  // DATE は今日（JST）を既定にする。localStorage には保存しない（次回起動は必ず今日）。
+  // 手動で別日を選んだときだけ、この起動のあいだはその日付を保つ。タブ再表示・日付の繰り越し・visibilitychange では、手動でなければ今日に戻す。
+  function applyFlightsDate(date, render) {
+    const el = $('fl-date');
+    fl.date = date;
+    if (el && el.value !== date) el.value = date;
+    if (render) renderFlights();
+  }
+  function syncFlightsDate() {
+    const today = todayJst();
+    const el = $('fl-date');
+    if (fl.manual && fl.date && fl.date !== today) {
+      if (el && el.value !== fl.date) el.value = fl.date;
+      return;
+    }
+    const prev = fl.date;
+    fl.manual = false;
+    const need = prev !== today || (el && el.value !== today);
+    applyFlightsDate(today, need && prev != null && prev !== today);
+  }
+  function scheduleFlightsDateRollover() {
+    if (scheduleFlightsDateRollover.t) clearTimeout(scheduleFlightsDateRollover.t);
+    const shifted = Date.now() + 9 * 3600000;
+    const [y, m, d] = todayJst().split('-').map(Number);
+    const ms = Math.max(500, Date.UTC(y, m - 1, d + 1) - shifted + 50);
+    scheduleFlightsDateRollover.t = setTimeout(() => { syncFlightsDate(); scheduleFlightsDateRollover(); }, ms);
+  }
   function setupFlights() {
-    fl.date = todayJst();
-    $('fl-date').value = fl.date;
-    $('fl-date').onchange = (e) => { fl.date = e.target.value || todayJst(); renderFlights(); };
+    fl.manual = false;
+    applyFlightsDate(todayJst(), false);
+    $('fl-date').onchange = (e) => {
+      const today = todayJst();
+      const v = e.target.value;
+      if (!v || v === today) { fl.manual = false; applyFlightsDate(today, true); return; }
+      fl.manual = true;
+      applyFlightsDate(v, true);
+    };
     $('fl-search').oninput = () => renderFlights();
+    scheduleFlightsDateRollover();
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncFlightsDate(); });
+    window.addEventListener('pageshow', () => syncFlightsDate());
   }
   function renderFlights() {
     const d = state.pack?.flights, res = $('fl-results'), cbar = $('fl-carriers');
