@@ -91,10 +91,9 @@
 
   const PILOTS = [
     { id: 'cap', label: '機長操縦' },
-    { id: 'fo', label: '副操縦士操縦', sub: '右席' },
-    { id: 'aom', label: '査察・教官操縦', sub: '右席／左席習熟中' },
+    { id: 'fo', label: '副操縦士操縦' },
   ];
-  const TYPES = [{ id: 'ceo', label: 'A320ceo', sub: 'JA07MC–JA27MC' }, { id: 'neo', label: 'A320neo', sub: 'JA28MC〜' }];
+  const TYPES = [{ id: 'ceo', label: 'CEO' }, { id: 'neo', label: 'NEO' }];
   const parseCell = (s) => { const m = String(s).match(/^([*TEH]?)(\d+)$/); return { mark: m[1], v: Number(m[2]), text: String(s), noLimit: m[1] === '*' }; };
   const fold = (th) => { const a = Math.abs((((th % 360) + 540) % 360) - 180); return a; }; // 0〜180
   function geom(xw, tw, a) { const t = (a * Math.PI) / 180, s = Math.abs(Math.sin(t)), c = Math.cos(t); let v = Infinity; if (s > 1e-9) v = Math.min(v, xw / s); if (c < -1e-9) v = Math.min(v, tw / -c); return v; }
@@ -106,7 +105,7 @@
     if (sel.pilot === 'fo' && !FO.rwycc.includes(Number(sel.rwycc))) { r.permitted = false; r.reasons.push(`副操縦士操縦は DRY / WET のみ（${FO.ref}）`); }
     if (!r.permitted) return r;
     r.table = sel.phase === 'LDG' ? WCT.LDG : sel.type === 'neo' ? WCT.TO_NEO : WCT.TO_CEO;
-    r.tableName = sel.phase === 'LDG' ? 'Landing（ceo・neo 共通）' : sel.type === 'neo' ? 'Takeoff NEO（JA28MC〜）' : 'Takeoff CEO';
+    r.tableName = sel.phase === 'LDG' ? 'Landing（ceo・neo 共通）' : sel.type === 'neo' ? 'Takeoff NEO' : 'Takeoff CEO';
     r.cols.push(String(sel.rwycc));
     if (sel.phase === 'LDG') {
       if (sel.appr === 'cat1low') r.cols.push('cat1');
@@ -146,17 +145,16 @@
     if (m) return { deg: Number(m[1]) * (m[2] === 'E' ? 1 : -1), text: `${m[1]}°${m[2]}`, src: '参考 NOAA' };
     return null;
   }
-  // 戻り値: [{id, trueBrg, mag, lengthM, widthM, src}]  mag = 真方位 − 偏差（東偏が＋）
+  // 戻り値: [{id, trueBrg, mag, src}]  mag = 真方位 − 偏差（東偏が＋）
   function runways(prof) {
     const mv = magVar(prof); if (!mv) return [];
     const aip = prof?.swim?.aip?.runways;
-    if (aip?.length) return aip.filter((r) => r.trueBrg != null).map((r) => ({ id: r.id, trueBrg: Number(r.trueBrg), mag: norm(Number(r.trueBrg) - mv.deg), lengthM: r.lengthM, widthM: r.widthM, src: 'SWIM AIP AD 2.12' }));
+    if (aip?.length) return aip.filter((r) => r.trueBrg != null).map((r) => ({ id: r.id, trueBrg: Number(r.trueBrg), mag: norm(Number(r.trueBrg) - mv.deg), src: 'SWIM AIP AD 2.12' }));
     const out = [];
     for (const r of prof?.runways || []) {
-      if (r.alignment == null) continue; const [a, b] = String(r.id).split('/'); const dim = String(r.dimensionFt || '').match(/(\d+)x(\d+)/);
-      const lm = dim ? Math.round(dim[1] * 0.3048) : null, wm = dim ? Math.round(dim[2] * 0.3048) : null;
-      if (a) out.push({ id: a, trueBrg: Number(r.alignment), mag: norm(r.alignment - mv.deg), lengthM: lm, widthM: wm, src: '参考 NOAA' });
-      if (b) out.push({ id: b, trueBrg: norm(Number(r.alignment) + 180), mag: norm(r.alignment + 180 - mv.deg), lengthM: lm, widthM: wm, src: '参考 NOAA' });
+      if (r.alignment == null) continue; const [a, b] = String(r.id).split('/');
+      if (a) out.push({ id: a, trueBrg: Number(r.alignment), mag: norm(r.alignment - mv.deg), src: '参考 NOAA' });
+      if (b) out.push({ id: b, trueBrg: norm(Number(r.alignment) + 180), mag: norm(r.alignment + 180 - mv.deg), src: '参考 NOAA' });
     }
     return out;
   }
@@ -174,6 +172,7 @@
   const LSK = 'fb.wind';
   const lsGet = () => { try { return JSON.parse(localStorage.getItem(LSK) || '{}'); } catch { return {}; } };
   const st = Object.assign({ icao: null, rwy: null, pilot: 'cap', type: 'ceo', phase: 'LDG', rwycc: 6, appr: 'none', autoland: false, wind: null }, lsGet());
+  if (!['cap', 'fo'].includes(st.pilot)) st.pilot = 'cap'; // 旧版で保存された選択肢は機長操縦に戻す
   const save = () => { try { localStorage.setItem(LSK, JSON.stringify(st)); } catch { /* ignore */ } };
   let ctxFn = () => ({ airports: [] });
 
@@ -275,22 +274,10 @@
     }
     const evBox = ev ? `<div class="wl-result ${ev.state}"><div class="wl-rhead">${ev.state === 'ok' ? 'OK' : 'NG'}</div><div class="wl-rbody"><div>${esc(ev.msg)}</div>${ev.hw != null ? `<div>${ev.hw >= 0 ? '向かい風' : '背風'} ${Math.abs(ev.hw).toFixed(1)}kt ／ 横風 ${ev.xw.toFixed(1)}kt（${ev.xwSide === 'R' ? '右' : '左'}から）</div>` : ''}<div class="hint wl-small">${ev.magDir != null ? `風向 ${d3(ev.magDir)}°M（機首から ${ev.angle.toFixed(1)}°）・` : '風向 VRB（全周の最悪値で判定）・'}${ev.usedGust ? `最大風速 ${ev.use}kt で判定（${REV.om} 3-7-1(2)②）` : `${ev.use}kt で判定`}${w.vfrom != null ? '・変動範囲内の最悪値' : ''}</div></div></div>` : '<div class="wl-result none"><div class="wl-rbody hint">風を入力すると判定します</div></div>';
 
-    let foW = '';
-    if (st.pilot === 'fo' && st.phase === 'LDG' && lim.permitted) {
-      const Lm = rwy.lengthM, Wm = rwy.widthM; let t;
-      if (Wm != null && Wm < 45) t = `幅 ${Wm}m（45m 未満）：表の対象外・要確認`;
-      else if (Lm == null) t = '滑走路長が不明';
-      else if (Lm >= 2100) t = '2,100m 以上：DRY・WET とも最大着陸重量以下';
-      else if (Lm >= 2000) t = '2,000〜2,100m：DRY 最大着陸重量以下 ／ WET 139,000 LBS 以下';
-      else if (Lm >= 1800) t = '1,800〜2,000m：WET 127,000 LBS 以下（DRY の値は未収録・要確認）';
-      else t = '1,800m 未満：表の範囲外・要確認';
-      foW = `<div class="card wl-card"><div class="wl-h">副操縦士操縦時の着陸重量 <span class="wl-ref">${esc(FO.ref)}</span></div><div>${esc(t)}</div><div class="hint wl-small">判定に使った長さ：${esc(rwy.src)} の滑走路長 ${Lm ?? '--'}m × 幅 ${Wm ?? '--'}m。規程は「有効滑走路長（幅45m以上）」なので、短縮運用・LDA（AIP AD 2.13）は別途確認。</div></div>`;
-    }
-
     root.innerHTML = `
       <div class="wl-sel">
         <div class="wl-row2"><label>空港<select id="wl-ap">${optAp}</select></label><label>滑走路<select id="wl-rwy">${optRw}</select></label></div>
-        <div class="wl-row2 eq">${seg('phase', [{ id: 'TO', label: '離陸', sub: 'TO' }, { id: 'LDG', label: '着陸', sub: 'LDG' }], st.phase)}${seg('type', TYPES.map((t) => ({ ...t, label: t.label.replace('A320', '') })), st.type)}</div>
+        <div class="wl-row2 eq">${seg('phase', [{ id: 'TO', label: '離陸', sub: 'TO' }, { id: 'LDG', label: '着陸', sub: 'LDG' }], st.phase)}${seg('type', TYPES, st.type)}</div>
         ${seg('pilot', PILOTS, st.pilot)}
         <label>滑走路状態（RWYCC）<select id="wl-cc">${optCc}</select></label>
         ${st.phase === 'LDG' ? `${seg('appr', [{ id: 'none', label: '通常', sub: 'CAT I 以外' }, { id: 'cat1low', label: 'CAT I', sub: 'RVR/CMV<1200m' }, { id: 'cat2', label: 'CAT II', sub: '\u3000' }], st.appr)}
@@ -315,12 +302,11 @@
         </div>
         ${table}
       </div>
-      ${foW}
       <details class="card wl-card wl-notes"><summary>注記・出典</summary><ul>
         <li>参考用の補助です。AOM が優先。使用にあたっては PF / PM で確認してください。</li>
         <li>OM の制限はすべて同時に適用。最も厳しい値を表示しています。</li>
         <li>横風（RCAM）は会社の最大値で、離陸滑走開始後・着陸決定後の一時的な超過は可（${REV.aom} LIM-AG-OPS）。背風 15kt・Autoland 10kt は AFM LIMITATION で超過不可。</li>
-        <li>副操縦士（右席）の操縦は機長が誰であっても OM の制限（横風は AOM 値の 1/2・背風 10kt・DRY/WET のみ）。表には含まれないのでアプリで計算（${esc(FO.ref)}）。AOM の値になるのは右席の査察・教官が操縦する場合と、左席で機長業務を習熟中の副操縦士（OM 8-11-2(3)）。</li>
+        <li>副操縦士（右席）の操縦は機長が誰であっても OM の制限（横風は AOM 値の 1/2・背風 10kt・DRY/WET のみ）。表には含まれないのでアプリで計算（${esc(FO.ref)}）。</li>
         <li>滑走路状態が混在・3区分で異なる場合は最も悪い値（${REV.aom} LIM-AG-OPS）。AIREP が SNOWTAM より悪いときは機長判断で RWYCC を下げてよい。上げるのは不可。</li>
         <li>確認のタイミング：離陸＝Take-off Clearance 時の風、着陸＝Landing Clearance 時の風。超えていても 500ft AFE までに再確認して以内なら進入継続可（${REV.om} S3-7）。飛行場対空援助業務の飛行場は「Runway is clear」の時。</li>
         <li>横風成分は平均風速、最大風速の通報があればその値（${REV.om} 3-7-1(2)②）。Autoland の風は Tower 通報の Surface Wind 基準（${REV.aom} LIM-AFS）。Flysmart では突風値を平均風の欄に入力。</li>

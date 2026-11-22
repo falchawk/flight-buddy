@@ -608,7 +608,8 @@ label.block{margin-top:14px}
 .wl-row2 label{min-width:0}
 .wl-row2.eq{grid-template-columns:1fr 1fr;gap:6px}
 .wl-row2.eq .wl-seg{margin:6px 0}
-.wl-seg[data-k=pilot],.wl-seg[data-k=appr]{display:grid;grid-template-columns:repeat(3,1fr)}
+.wl-seg[data-k=appr]{display:grid;grid-template-columns:repeat(3,1fr)}
+.wl-seg[data-k=pilot]{display:grid;grid-template-columns:1fr 1fr}
 .wl-seg{margin:6px 0}
 .wl-seg .chip{display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.25;padding:7px 6px;font-size:12.5px;min-width:0}
 .wl-seg .chip small{font-size:10px;font-weight:500;opacity:.75}
