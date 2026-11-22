@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.28';
+  const APP_VERSION = '1.9.29';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { areaHide: 'fb.areaHide', notamMode: 'fb.notamMode', airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
@@ -85,8 +85,25 @@
   // ---------------------------------------------------------------- header / status
   function renderClock() {
     const now = new Date();
-    const j = new Date(now.getTime() + 9 * 3600000).toISOString();
-    $('clock').textContent = `${j.slice(11, 16)}J ${now.toISOString().slice(11, 16)}Z`;
+    const zs = now.toISOString();
+    const js = new Date(now.getTime() + 9 * 3600000).toISOString();
+    const md = (s) => `${s.slice(5, 7)}/${s.slice(8, 10)}`;
+    const hm = (s) => s.slice(11, 19);
+    const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+    set('ck-j-date', md(js)); set('ck-j-time', hm(js));
+    set('ck-z-date', md(zs)); set('ck-z-time', hm(zs));
+    const el = $('clock');
+    if (el) el.setAttribute('aria-label', `JST ${md(js)} ${hm(js)} / Z ${md(zs)} ${hm(zs)}`);
+  }
+  function startClock() {
+    renderClock();
+    if (startClock.t) clearTimeout(startClock.t);
+    if (startClock.i) clearInterval(startClock.i);
+    const toNext = 1000 - (Date.now() % 1000);
+    startClock.t = setTimeout(() => {
+      renderClock();
+      startClock.i = setInterval(renderClock, 1000);
+    }, toNext);
   }
   function renderStatus() {
     const online = navigator.onLine;
@@ -614,30 +631,49 @@
     sorted.forEach((it) => list.appendChild(card(it)));
   }
   function applyNotamMode() {
-    const area = state.notamMode === 'area';
-    document.querySelectorAll('#notam-mode .chip').forEach((b) => b.classList.toggle('active', b.dataset.mode === state.notamMode));
-    $('notam-ap').hidden = area; $('notam-area').hidden = !area;
-    if (area && $('tab-notam').classList.contains('active')) { renderNotamArea(); window.FBAreaMap && window.FBAreaMap.invalidate(); }
+    const mode = (state.notamMode === 'area' || state.notamMode === 'ground') ? state.notamMode : 'ap';
+    state.notamMode = mode;
+    document.querySelectorAll('#notam-mode .chip').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+    $('notam-ap').hidden = mode !== 'ap';
+    $('notam-area').hidden = mode !== 'area';
+    const ground = $('notam-ground');
+    if (ground) ground.hidden = mode !== 'ground';
+    if (!$('tab-notam').classList.contains('active')) return;
+    if (mode === 'area') { renderNotamArea(); window.FBAreaMap && window.FBAreaMap.invalidate(); }
+    if (mode === 'ground') renderNotamGround();
+  }
+  function renderNotamGround() {
+    const el = $('notam-ground'); if (!el || !window.FBGround) return;
+    const names = {};
+    for (const icao of mainAirports()) names[icao] = `${apName(icao)} ${apCodes(icao)}`;
+    window.FBGround.render(el, state.pack, { airports: mainAirports(), names });
   }
   function renderNotam() {
     applyNotamMode();
     document.querySelectorAll('#notam-period .chip').forEach((b) => b.classList.toggle('active', Number(b.dataset.hours) === state.notamHours));
     const n = state.pack?.notam, list = $('notam-list'); list.innerHTML = '';
+    // 期間＝パック作成時刻（generatedAt。無ければ現在）からさかのぼった 3H/1D/1W。判定は発行時刻（issued）。ALL(0)は絞らない。有効期間や DUTY とは無関係。
     const ref = state.pack ? new Date(state.pack.manifest.generatedAt).getTime() : Date.now();
+    const inPeriod = (it) => !state.notamHours || (it.issued && ref - new Date(it.issued).getTime() <= state.notamHours * 3600000);
     for (const icao of mainAirports()) {
       const box = document.createElement('div'); box.className = 'card';
       const items = (n?.airports?.[icao]?.items || []).slice();
-      const isNew = (it) => state.notamHours > 0 && it.issued && ref - new Date(it.issued).getTime() <= state.notamHours * 3600000;
-      items.sort((a, b) => (isNew(b) - isNew(a)) || String(b.issued || '').localeCompare(String(a.issued || '')));
-      const newCount = items.filter(isNew).length;
+      items.sort((a, b) => String(b.issued || '').localeCompare(String(a.issued || '')));
+      const shown = items.filter(inPeriod);
+      const hidden = items.length - shown.length;
       let body;
       if (!n) body = '<p class="hint">パックがありません。</p>';
       else if (!n.ok) body = `<p class="hint">未取得：${esc(n.note || '')}</p>`;
       else if (!n.airports?.[icao]) body = '<p class="hint">このパックに未収録です。</p>';
       else if (n.airports[icao].status) body = `<p class="hint">${esc(n.airports[icao].status)}</p>`;
       else if (!items.length) body = '<p class="hint">該当NOTAMなし（このパックの範囲）</p>';
-      else body = items.map((it) => `<div class="notam-item${state.notamHours > 0 && !isNew(it) ? ' old' : ''}"><span class="nid">${esc(it.id || '')}</span> ${isNew(it) ? '<span class="badge new">NEW</span>' : ''} <span class="hint">発行 ${esc(fmtJst(it.issued))}${it.effectiveFrom ? ` ／ 有効 ${esc(fmtUtc(it.effectiveFrom))}〜${esc(it.effectiveTo ? fmtUtc(it.effectiveTo) : 'PERM')}` : ''}</span><pre>${esc(it.text || '')}</pre></div>`).join('');
-      box.innerHTML = `<div class="card-title"><span>${esc(apName(icao))} <span class="hint">${esc(apCodes(icao))}</span></span>${n?.ok && items.length ? `<span class="badge${newCount ? ' new' : ''}">${state.notamHours ? `直近 ${newCount}件 / ` : ''}全${items.length}件</span>` : ''}</div>${body}`;
+      else {
+        const hideNote = hidden > 0 ? `<p class="hint">期間外 ${hidden}件は非表示</p>` : '';
+        const rows = shown.map((it) => `<div class="notam-item"><span class="nid">${esc(it.id || '')}</span> <span class="hint">発行 ${esc(fmtJst(it.issued))}${it.effectiveFrom ? ` ／ 有効 ${esc(fmtUtc(it.effectiveFrom))}〜${esc(it.effectiveTo ? fmtUtc(it.effectiveTo) : 'PERM')}` : ''}</span><pre>${esc(it.text || '')}</pre></div>`).join('');
+        body = (shown.length ? hideNote + rows : `<p class="hint">この期間に発行されたNOTAMはありません。</p>${hideNote}`);
+      }
+      const badge = n?.ok && items.length ? `<span class="badge">${state.notamHours ? `${shown.length}件` : `全${items.length}件`}</span>` : '';
+      box.innerHTML = `<div class="card-title"><span>${esc(apName(icao))} <span class="hint">${esc(apCodes(icao))}</span></span>${badge}</div>${body}`;
       list.appendChild(box);
     }
     if (n?.source) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = `出所：${n.source}${n.fetchedAt ? `（${fmtJst(n.fetchedAt)}取得・${ageText(n.fetchedAt)}）` : ''} ／ 6時間ごとに更新（00/06/12/18時 JST）`; list.appendChild(p); }
@@ -645,18 +681,7 @@
   }
 
   // ---------------------------------------------------------------- AIRPORT
-  let airportSub = 'info';
   function renderAirport() {
-    document.querySelectorAll('#airport-sub .chip').forEach((b) => b.classList.toggle('active', b.dataset.sub === airportSub));
-    const info = $('airport-info'), ground = $('airport-ground');
-    if (info) info.hidden = airportSub !== 'info';
-    if (ground) ground.hidden = airportSub !== 'ground';
-    if (airportSub === 'ground' && ground) {
-      const names = {};
-      for (const icao of mainAirports()) names[icao] = `${apName(icao)} ${apCodes(icao)}`;
-      window.FBGround.render(ground, state.pack, { airports: mainAirports(), names });
-      return;
-    }
     const date = $('airport-date').value || todayJst();
     const list = $('airport-list'); if (!list) return; list.innerHTML = '';
     for (const icao of mainAirports()) {
@@ -996,9 +1021,6 @@
     window.FBViewer.setup();
     $('airport-date').value = state.duty.date || todayJst();
     $('airport-date').onchange = renderAirport;
-    document.querySelectorAll('#airport-sub .chip').forEach((b) => {
-      b.onclick = () => { airportSub = b.dataset.sub; renderAirport(); };
-    });
     document.querySelectorAll('#notam-mode .chip').forEach((b) => { b.onclick = () => { state.notamMode = b.dataset.mode; lsSet(LS.notamMode, state.notamMode); applyNotamMode(); }; });
     document.querySelectorAll('#notam-period .chip').forEach((b) => { b.onclick = () => { state.notamHours = Number(b.dataset.hours); lsSet(LS.notamH, state.notamHours); renderNotam(); }; });
     $('refresh-btn').onclick = () => refresh(false);
@@ -1006,7 +1028,9 @@
     $('pack-clear').onclick = async () => { if (!confirm('保存済みパックを消去しますか？（オフラインで見られなくなります）')) return; await window.FBPack.clearAll(); state.pack = null; renderAll(); };
     window.addEventListener('online', () => { renderStatus(); renderCharts(); refresh(false); });
     window.addEventListener('offline', () => { renderStatus(); renderCharts(); });
-    renderClock(); setInterval(() => { renderClock(); renderStatus(); }, 15000);
+    startClock();
+    setInterval(() => { renderStatus(); }, 15000);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') renderClock(); });
 
     if ('serviceWorker' in navigator) {
       try { await navigator.serviceWorker.register('sw.js'); } catch (e) { console.warn('SW登録失敗', e); }

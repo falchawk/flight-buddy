@@ -1,4 +1,4 @@
-// AIRPORT タブ「地上図」：OSM の滑走路・誘導路に、パックで照合済みの NOTAM を重ねる。
+// NOTAM タブ「地上図」：OSM の滑走路・誘導路に、パックで照合済みの NOTAM を重ねる。
 (function () {
   const PIN_CAT = { rwy_closed: 1, twy_closed: 1, twy_restr: 1, spot_closed: 1, spot_reloc: 1 };
   const CAT_COLOR = {

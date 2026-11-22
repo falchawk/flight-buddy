@@ -25,9 +25,14 @@
   <header class="app-header">
     <div class="brand"><span class="brand-name">Flight Buddy</span><img class="brand-emb" src="icons/brand-fb-96.png" alt="Flight Buddy" width="32" height="32" draggable="false"></div>
     <div class="header-status">
-      <span id="clock" class="pill clock">--</span>
-      <span id="net-pill" class="pill">--</span>
-      <span id="pack-pill" class="pill">PACK --</span>
+      <span id="clock" class="clock" role="timer" aria-live="off" aria-label="時刻">
+        <span class="ck-line ck-jst"><span class="ck-date" id="ck-j-date">--/--</span><span class="ck-time" id="ck-j-time">--:--:--</span><span class="ck-lab">JST</span><span class="ck-slash" aria-hidden="true">/</span></span>
+        <span class="ck-line ck-z"><span class="ck-date" id="ck-z-date">--/--</span><span class="ck-time" id="ck-z-time">--:--:--</span><span class="ck-lab">Z</span></span>
+      </span>
+      <div class="header-pills">
+        <span id="net-pill" class="pill">--</span>
+        <span id="pack-pill" class="pill">PACK --</span>
+      </div>
     </div>
     <button id="theme-btn" class="btn-icon" type="button" data-mode="auto" title="表示：自動（端末設定）" aria-label="表示：自動（端末設定）。押すとライトに切り替え">
       <svg class="ic-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 3.8v16.4" /><path d="M12 3.8a8.2 8.2 0 0 1 0 16.4z" fill="currentColor" stroke="none"/></svg>
@@ -71,12 +76,12 @@
 
     <section id="tab-flights" class="tab-panel">
       <h2>FLIGHTS</h2>
-      <p class="hint">便名で検索（オフライン）。NH774 ならその会社、数字だけ（774）なら全社から探します。</p>
+      <p class="hint">オフラインで便名を検索できます。</p>
       <div class="row">
         <label>DATE <input type="date" id="fl-date" autocomplete="off" /></label>
       </div>
       <nav id="fl-carriers" class="chips chips-sub"></nav>
-      <input id="fl-search" type="search" inputmode="text" placeholder="便名または数字（例：NH774 / 774 / JAL501）" autocomplete="off" />
+      <input id="fl-search" type="search" inputmode="text" placeholder="便名または数字" autocomplete="off" />
       <div id="fl-results"></div>
       <details id="fl-status-box" class="card"><summary>収録状況（会社別）</summary><div id="fl-status"></div></details>
     </section>
@@ -86,9 +91,10 @@
       <nav id="notam-mode" class="chips chips-sub">
         <button class="chip active" data-mode="ap">空港別</button>
         <button class="chip" data-mode="area">空域</button>
+        <button class="chip" data-mode="ground">地上図</button>
       </nav>
       <div id="notam-ap">
-        <p class="hint">選んだ空港のNOTAMのみ（経路上・代替空港は対象外）。ボタンで「直近増えた分」（発行がその期間内）を強調します。</p>
+        <p class="hint">選んだ空港のNOTAMのみ（経路上・代替空港は対象外）。3H／1D／1Wは、パック作成時点からさかのぼってその期間内に発行されたものだけを表示します。</p>
         <nav id="notam-period" class="chips">
           <button class="chip" data-hours="3">3H</button>
           <button class="chip active" data-hours="24">1D</button>
@@ -104,20 +110,16 @@
         <div id="area-legend" class="area-legend"></div>
         <div id="area-list"></div>
       </div>
+      <div id="notam-ground" hidden></div>
     </section>
 
     <section id="tab-airport" class="tab-panel">
       <h2>AIRPORT</h2>
-      <nav id="airport-sub" class="chips-sub">
-        <button type="button" class="chip active" data-sub="info">運用情報</button>
-        <button type="button" class="chip" data-sub="ground">地上図</button>
-      </nav>
       <div id="airport-info">
         <p class="hint">選んだ空港の運用プロファイル。取得できなかった項目は「未取得」と表示します。日の出・日没は端末内で計算（オフライン可）。</p>
         <label class="inline">日付 <input type="date" id="airport-date" /></label>
         <div id="airport-list"></div>
       </div>
-      <div id="airport-ground" hidden></div>
     </section>
 
     <section id="tab-duty" class="tab-panel">
