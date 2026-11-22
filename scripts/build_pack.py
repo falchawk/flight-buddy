@@ -584,6 +584,10 @@ def split_pack(pack_dir, charts, grounds=None):
         gf = (g or {}).get("file") if g else None
         if gf:
             blobs.add(gf)
+        if g:
+            for k in ("photoFile", "coastFile"):
+                if g.get(k):
+                    blobs.add(g[k])
         if blobs:
             ap_blobs[icao] = sorted(blobs)
     wx.pop("airports", None); notam.pop("airports", None); atis.pop("airports", None); atis.pop("reasons", None); prof.pop("airports", None)

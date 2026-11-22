@@ -549,20 +549,34 @@ label.block{margin-top:14px}
 :root{
   --gc-map:#0c1422;--gc-apron:#142038;--gc-apron-s:#1d2c49;--gc-term:#22314f;
   --gc-rwy:#7b8699;--gc-rwycl:#d8dfeb;--gc-twy:#4a5d80;--gc-twylab:#b4c0d6;
-  --gc-halo:#0c1422;--gc-hatch:#0c1422;--gc-orange:#ff9f0a;
+  --gc-halo:#0c1422;--gc-hatch:#0c1422;--gc-orange:#ff9f0a;--gc-park:#3a4d6a;
+  --gc-land:#f3eee3;--gc-coast:#5d6d7c;--gc-ring:#7a8a99;--gc-apout:#9aa8b8;
 }
 :root[data-theme="light"]{
   --gc-map:#f3f5f8;--gc-apron:#e4e8ef;--gc-apron-s:#d3d9e4;--gc-term:#c9d1df;
   --gc-rwy:#6b7585;--gc-rwycl:#ffffff;--gc-twy:#a7b3c8;--gc-twylab:#3a4560;
-  --gc-halo:#f3f5f8;--gc-hatch:#f3f5f8;--gc-orange:#e07800;
+  --gc-halo:#f3f5f8;--gc-hatch:#f3f5f8;--gc-orange:#e07800;--gc-park:#8f9db3;
+  --gc-land:#f3eee3;--gc-coast:#5d6d7c;--gc-ring:#4e6170;--gc-apout:#2a3a4a;
 }
 @media (prefers-color-scheme: light){:root:not([data-theme="dark"]){
   --gc-map:#f3f5f8;--gc-apron:#e4e8ef;--gc-apron-s:#d3d9e4;--gc-term:#c9d1df;
   --gc-rwy:#6b7585;--gc-rwycl:#ffffff;--gc-twy:#a7b3c8;--gc-twylab:#3a4560;
-  --gc-halo:#f3f5f8;--gc-hatch:#f3f5f8;--gc-orange:#e07800;
+  --gc-halo:#f3f5f8;--gc-hatch:#f3f5f8;--gc-orange:#e07800;--gc-park:#8f9db3;
+  --gc-land:#f3eee3;--gc-coast:#5d6d7c;--gc-ring:#4e6170;--gc-apout:#2a3a4a;
 }}
 #tab-airport{padding-bottom:calc(12px + var(--tabbar-h))}
-#notam-ground{padding-bottom:12px}
+#notam-ground{padding-bottom:calc(16px + var(--tabbar-h))}
+.gc-nss{vector-effect:non-scaling-stroke}
+.gc-map.wide{background:#d5e0ea;--gc-map:#d5e0ea;--gc-land:#f3eee3;--gc-coast:#5d6d7c;--gc-ring:#4e6170;--gc-halo:#f3eee3;--gc-twylab:#2c3a4a;--gc-apout:#2a3a4a;--gc-hatch:#f3eee3;--gc-apron:#efe8d8;--gc-apron-s:#d9d1c2;--gc-term:#d5cbb8;--gc-twy:#8a9aaa;--gc-rwy:#6a7380;--gc-rwycl:#fff;--gc-park:#9aa8b6;--text:#1c242c;--text-dim:#4a5864}
+.gc-map.photo{background:#111}
+.gc-scope{margin:0;flex:none}
+.gc-row.hi{background:var(--accent-soft);box-shadow:0 0 0 2px var(--accent) inset}
+.gc-pin.hi circle:first-of-type,.gc-icon.hi circle:first-of-type{stroke:#fff;stroke-width:2.2}
+.gc-feat{cursor:pointer}
+.gc-unmapped{margin-top:14px;padding-bottom:8px}
+.gc-sh.gc-sub{margin-top:12px;font-size:12.5px}
+.gc-ic.obst{background:#c46b2a}
+.gc-ic.act{background:#8b6cff}
 .gc-airports{margin:0 0 8px}
 .gc-ctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px}
 .gc-time{align-items:center}

@@ -3,6 +3,8 @@
 
 build_pack から呼ぶ。失敗してもパック全体は止めない。
 地図は OpenStreetMap（ODbL）。画面に © OpenStreetMap contributors を出すこと。
+広域の海岸線は Natural Earth 10m Japan（パブリックドメイン）。
+任意の航空写真背景は地理院タイル（出典：国土地理院）。失敗してもパックは止めない。
 """
 from __future__ import annotations
 
@@ -22,6 +24,8 @@ import urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
 STAGING_CACHE = "/workspace/fb-staging/osm-cache"
+GSI_CACHE = "/workspace/fb-staging/gsi-cache"
+COAST_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aupq_japan_coast.json")
 CACHE_TTL_S = 7 * 24 * 3600
 UA = "FlightBuddyPackBuilder/1.0 (personal briefing tool)"
 OVERPASS = [
@@ -233,6 +237,8 @@ class Layout:
         self.SPOT = collections.defaultdict(list)
         self.APRON = []
         self.TERM = []
+        self.STOP = []
+        self.PARK = []
         self.unnamed = []
         for e in osm.get("elements") or []:
             t = e.get("tags") or {}
@@ -246,14 +252,16 @@ class Layout:
                         self.unnamed.append(e)
                 elif a == "runway" and t.get("ref"):
                     self.RWYW[t["ref"]].append(e)
-                elif a == "parking_position" and t.get("ref"):
-                    self.SPOT[t["ref"]].append(e)
+                elif a == "parking_position":
+                    self.PARK.append(e)
+                    if t.get("ref"):
+                        self.SPOT[t["ref"]].append(e)
                 elif a == "apron":
                     self.APRON.append(e)
                 elif a in ("terminal", "hangar"):
                     self.TERM.append(e)
-                elif a == "stopway" and t.get("ref"):
-                    self.RWYW.setdefault(t["ref"], [])  # ignore stopways in rwy chain
+                elif a == "stopway":
+                    self.STOP.append(e)
             else:
                 if a in ("parking_position", "gate") and t.get("ref"):
                     self.SPOT[t["ref"]].append(e)
@@ -477,6 +485,199 @@ def parse_coords(s):
             lo = -lo
         out.append((la, lo))
     return out
+
+
+RADIUS_RE = re.compile(r"RADIUS\s+(\d+(?:\.\d+)?)\s*(KM|NM|M)?", re.I)
+PLACE_RE = re.compile(
+    r"\(([A-Z][A-Z0-9.'-]*(?:-KU|-SHI|-GUN|-CHO|-MACHI|-MURA|-TOWN)?)(?: IN ([A-Z][A-Z-]*))?\)"
+)
+TYPE_RE = re.compile(
+    r"TYPE:\s*([A-Z][A-Z0-9]*(?:[ -][A-Z][A-Z0-9]*)*)(?=\s+(?:PSN|ELEV|PLACE|NUMBER|AREA|CENTER)\b|[\s.]|$)",
+    re.I,
+)
+
+# よく出る市区町村。無いものはローマ字のまま出す。
+_PLACE_JA = {
+    "MINATO-KU": "港区", "KOTO-KU": "江東区", "OTA-KU": "大田区", "SHINAGAWA-KU": "品川区",
+    "SHINJUKU-KU": "新宿区", "CHIYODA-KU": "千代田区", "TOSHIMA-KU": "豊島区", "SUMIDA-KU": "墨田区",
+    "KOTO": "江東区", "MEGURO-KU": "目黒区", "SETAGAYA-KU": "世田谷区", "SHIBUYA-KU": "渋谷区",
+    "BUNKYO-KU": "文京区", "TAITO-KU": "台東区", "NAKANO-KU": "中野区", "SUGINAMI-KU": "杉並区",
+    "KITA-KU": "北区", "ARKAWA-KU": "荒川区", "ARAKAWA-KU": "荒川区", "ITABASHI-KU": "板橋区",
+    "NERIMA-KU": "練馬区", "ADACHI-KU": "足立区", "KATSUSHIKA-KU": "葛飾区", "EDOGAWA-KU": "江戸川区",
+    "CHUO-KU": "中央区", "KAWASAKI-SHI": "川崎市", "YOKOHAMA-SHI": "横浜市", "YOKOHAMA": "横浜市",
+    "FUKUOKA-SHI": "福岡市", "CHIKUSHINO-SHI": "筑紫野市", "ONOJO-SHI": "大野城市",
+    "ASAKURA-GUN": "朝倉郡", "KITAKYUSHU-SHI": "北九州市", "OSAKA-SHI": "大阪市",
+    "SENNAN-GUN": "泉南郡", "IZUMISANO-SHI": "泉佐野市", "TAJIRI-CHO": "田尻町",
+    "NAGOYA-SHI": "名古屋市", "TOKONAME-SHI": "常滑市", "YATOMI-SHI": "弥富市",
+    "SAPPORO-SHI": "札幌市", "CHITOSE-SHI": "千歳市", "TOMAKOMAI-SHI": "苫小牧市",
+    "NAHA-SHI": "那覇市", "SENDAI-SHI": "仙台市", "YAMAGUCHI-SHI": "山口市",
+    "UBE-SHI": "宇部市", "NISHINOMIYA-SHI": "西宮市", "ITAMI-SHI": "伊丹市",
+    "TOYONAKA-SHI": "豊中市",
+}
+_TYPE_JA = {
+    "BLDG": "建物", "BUILDING": "建物", "CHIMNEY": "煙突", "TOWER": "塔", "POLE": "ポール",
+    "CRANE": "クレーン", "POWER LINE TOWER": "送電鉄塔", "SCAFFOLD": "足場", "SHIP": "船舶",
+    "WIND TURBINE": "風車", "ANTENNA": "アンテナ", "TANK": "タンク", "BRIDGE": "橋",
+}
+
+
+def parse_radius_m(s):
+    m = RADIUS_RE.search(s or "")
+    if not m:
+        return None
+    v = float(m.group(1))
+    u = (m.group(2) or "M").upper()
+    if u == "KM":
+        return v * 1000.0
+    if u == "NM":
+        return v * 1852.0
+    return v
+
+
+def _place_of(e):
+    ms = list(PLACE_RE.finditer(e or ""))
+    if not ms:
+        return None
+    # 末尾の（…-KU IN TOKYO）を優先
+    m = ms[-1]
+    key = m.group(1).upper()
+    return _PLACE_JA.get(key, m.group(1))
+
+
+def parse_coord_geoms(e):
+    """E) から点・円・多角形・線を取る。無ければ空。"""
+    e = e or ""
+    out = []
+    # 円（RADIUS … CENTER coord）
+    for m in re.finditer(r"RADIUS\s+(\d+(?:\.\d+)?)\s*(KM|NM|M)?[^\n.]{0,40}?CENTER\s*" + COORD_RE.pattern, e, re.I):
+        v = float(m.group(1))
+        u = (m.group(2) or "M").upper()
+        r = v * 1000.0 if u == "KM" else (v * 1852.0 if u == "NM" else v)
+        pts = parse_coords(m.group(0))
+        if pts:
+            out.append({"t": "circle", "p": pts[0], "r": r})
+    if out:
+        return out
+    # 多角形
+    bm = re.search(r"BOUNDED BY(?: FLW POINTS?)?[^\n]*", e, re.I)
+    if bm:
+        # その句から次のセクション（数字. or RMK or WT:）まで
+        start = bm.start()
+        rest = re.split(r"\s(?:WT:|NUMBER:|ELEV:|RMK:|\d+\.(?![\d]))", e[start:], maxsplit=1)[0]
+        pts = parse_coords(rest)
+        if len(pts) >= 3:
+            if pts[0] != pts[-1]:
+                pts = pts + [pts[0]]
+            out.append({"t": "poly", "pts": pts})
+            return out
+    # 線（船舶など）
+    lm = re.search(r"A LINE CONNECTING[^\n]*", e, re.I)
+    if lm:
+        pts = parse_coords(e[lm.start():lm.start() + 400])
+        if len(pts) >= 2:
+            out.append({"t": "line", "pts": pts})
+            return out
+    pts = parse_coords(e)
+    # 重複を間引き
+    seen, uniq = set(), []
+    for p in pts:
+        k = (round(p[0], 5), round(p[1], 5))
+        if k not in seen:
+            seen.add(k)
+            uniq.append(p)
+    for p in uniq:
+        out.append({"t": "pt", "p": p})
+    return out
+
+
+COORD_SUB = {
+    "OL": "obst_lgt",
+    "OB": "obst",
+    "WU": "uas",
+    "WL": "balloon",
+    "WH": "fireworks",
+    "WP": "pg",
+    "WB": "acro",
+}
+
+
+def cat_of_coord(q, e):
+    q = q or ""
+    sub = q[1:3] if len(q) >= 3 else ""
+    if sub in COORD_SUB:
+        return COORD_SUB[sub]
+    if re.search(r"\bFOUNTAIN\b", e or ""):
+        return "coord"
+    if parse_coords(e or ""):
+        return "coord"
+    return None
+
+
+def is_coordish(q, e=""):
+    if cat_of_coord(q, e):
+        return True
+    return bool(parse_coords(e or ""))
+
+
+def summarize_coord(e, q=""):
+    raw = (e or "").strip()
+    body = raw.split(" RMK")[0].strip()
+    if not body:
+        return raw, False
+    place = _place_of(body)
+    rad = parse_radius_m(body)
+    typ_m = TYPE_RE.search(body)
+    typ = None
+    if typ_m:
+        typ = _TYPE_JA.get(typ_m.group(1).strip().upper(), None)
+    sub = (q or "")[1:3] if q else ""
+    loc = "・".join(x for x in (typ, place) if x)
+    rad_s = None
+    if rad is not None:
+        rad_s = f"半径{int(rad) if rad >= 10 and abs(rad - int(rad)) < 0.05 else rad:g}m"
+
+    def fin(head, extras=None):
+        bits = []
+        for x in (typ, place, *(extras or ())):
+            if x and x not in bits:
+                bits.append(x)
+        if extras is None and rad_s and (sub in ("WU", "WH", "WL", "WP", "WB") or "RADIUS" in body):
+            if rad_s not in bits:
+                bits.append(rad_s)
+        tail = f"（{'・'.join(bits)}）" if bits else ""
+        return head + tail, True
+
+    if sub == "OL" or re.search(r"\bOBST LGT\b", body):
+        return fin("障害物灯使用不能")
+    if re.search(r"\bCRANE\b", body):
+        return fin("クレーン")
+    if re.search(r"\bSCAFFOLD\b", body):
+        return fin("足場")
+    if re.search(r"\bSHIP\b", body):
+        return fin("船舶")
+    if sub == "OB" or re.search(r"\bOBST\b", body):
+        if re.search(r"DAY MARKING ERASED", body):
+            return fin("障害物の昼間標示消去")
+        return fin("障害物")
+    if sub == "WU" or re.search(r"UNMANNED ACFT", body):
+        extra = ["区域"] if re.search(r"BOUNDED BY", body) else []
+        if rad_s:
+            extra.append(rad_s)
+        return fin("無人機", extra)
+    if sub == "WL" or re.search(r"FREE BALLOON|ASCENT OF", body):
+        return fin("気球放球")
+    if sub == "WH" or re.search(r"\bFIREWORKS\b", body):
+        return fin("花火")
+    if sub == "WP" or re.search(r"PARA-GLD|HANG-GLD|PARAGLID", body):
+        return fin("パラグライダー等")
+    if sub == "WB" or re.search(r"AEROBAT", body):
+        return fin("曲技飛行")
+    if re.search(r"\bFOUNTAIN\b", body):
+        return fin("噴水")
+    if place or parse_coords(body):
+        # 位置はあるが種別が不明なら原文
+        return raw, False
+    return raw, False
 
 
 def parse_schedule(d_text):
@@ -901,6 +1102,16 @@ def build_layout_json(layout: Layout):
         c = centroid_pts(pts_of(es[0]))
         if c:
             spots[ref] = enc_pt(c, origin)
+    parking = []
+    for e in layout.PARK:
+        p = pts_of(e)
+        if len(p) >= 2 and length_m(p) >= 8:
+            parking.append(enc_line(p, origin, 2.0))
+    stopways = []
+    for e in layout.STOP:
+        p = pts_of(e)
+        if len(p) >= 2:
+            stopways.append(enc_line(p, origin, 2.0))
     return {
         "schema": SCHEMA,
         "icao": layout.icao,
@@ -918,6 +1129,8 @@ def build_layout_json(layout: Layout):
         "aprons": aprons,
         "terminals": terms,
         "spots": spots,
+        "parking": parking,
+        "stopways": stopways,
     }
 
 
@@ -930,19 +1143,207 @@ def encode_geoms(geoms, origin):
             out.append({"t": "pt", "p": enc_pt(g["p"], origin)})
         elif g["t"] == "rwy":
             out.append({"t": "rwy", "id": g["id"], "label": g.get("label")})
+        elif g["t"] == "poly":
+            out.append({"t": "poly", "pts": enc_line(g["pts"], origin, 4.0)})
+        elif g["t"] == "circle":
+            out.append({"t": "circle", "p": enc_pt(g["p"], origin), "r": int(round(g["r"]))})
     return out
 
 
 def write_blob(obj):
     body = json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return write_bytes(body, "json")
+
+
+def write_bytes(body, ext):
     h = hashlib.sha256(body).hexdigest()
-    rel = f"data/blobs/{h}.json"
+    rel = f"data/blobs/{h}.{ext}"
     dst = os.path.join(ROOT, rel)
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     if not os.path.exists(dst):
         with open(dst, "wb") as f:
             f.write(body)
     return rel, len(body), h
+
+
+_coast_file = None
+
+
+def write_coast_blob():
+    """Natural Earth 10m Japan の海岸線を簡略化して 1 個の共有 blob にする。"""
+    global _coast_file
+    if _coast_file:
+        return _coast_file
+    raw = json.loads(open(COAST_PATH, encoding="utf-8").read())
+    rings = []
+    for ring in raw.get("rings") or []:
+        # [lon,lat] → [lat,lon]、広域用に約 400m で簡略
+        pts = [(p[1], p[0]) for p in ring if len(p) >= 2]
+        pts = simplify(pts, 400)
+        if len(pts) >= 4:
+            rings.append([[round(a, 4), round(b, 4)] for a, b in pts])
+    obj = {
+        "src": "Natural Earth 10m Japan",
+        "attribution": "Natural Earth (public domain)",
+        "rings": rings,
+    }
+    rel, n, _ = write_blob(obj)
+    _coast_file = (rel, n)
+    return _coast_file
+
+
+def _merc_x(lon):
+    return (lon + 180.0) / 360.0
+
+
+def _merc_y(lat):
+    lat = max(-85.05112878, min(85.05112878, lat))
+    s = math.sin(math.radians(lat))
+    return 0.5 - math.log((1 + s) / (1 - s)) / (4 * math.pi)
+
+
+def _gsi_cache_dir():
+    os.makedirs(GSI_CACHE, exist_ok=True)
+    return GSI_CACHE
+
+
+def stitch_gsi_photo(icao, bbox, force=False):
+    """空港 bbox の地理院シームレス写真を 1 枚の JPEG にまとめる。失敗したら None。"""
+    if os.environ.get("GROUND_SKIP_GSI"):
+        return None
+    try:
+        from PIL import Image
+    except ImportError:
+        log(f"{icao}: Pillow が無いため航空写真を作れません")
+        return None
+    if not bbox or len(bbox) < 4:
+        return None
+    s, w, n, e = bbox
+    pad_lat = (n - s) * 0.14
+    pad_lon = (e - w) * 0.14
+    s, w, n, e = s - pad_lat, w - pad_lon, n + pad_lat, e + pad_lon
+    # 細長い bbox（滑走路だけ等）は短辺を最低 2.5km まで広げる
+    mid0 = (s + n) / 2
+    width_m = (e - w) * 111320 * math.cos(math.radians(mid0))
+    height_m = (n - s) * 110950
+    min_m = 2500.0
+    if width_m < min_m:
+        dlon = ((min_m - width_m) / 2) / (111320 * math.cos(math.radians(mid0)))
+        w -= dlon; e += dlon
+    if height_m < min_m:
+        dlat = ((min_m - height_m) / 2) / 110950
+        s -= dlat; n += dlat
+    cache_path = os.path.join(_gsi_cache_dir(), f"{icao}.jpg")
+    meta_path = os.path.join(_gsi_cache_dir(), f"{icao}.meta.json")
+    now = time.time()
+    if os.path.isfile(cache_path) and os.path.getsize(cache_path) > 8000 and not force:
+        try:
+            meta = json.loads(open(meta_path, encoding="utf-8").read())
+        except Exception:
+            meta = {}
+        if now - float(meta.get("fetchedAtUnix") or 0) < CACHE_TTL_S and meta.get("bbox") == [s, w, n, e]:
+            body = open(cache_path, "rb").read()
+            rel, nb, _ = write_bytes(body, "jpg")
+            return {"file": rel, "bytes": nb, "bbox": meta.get("outBbox") or [s, w, n, e],
+                    "width": meta.get("width"), "height": meta.get("height"),
+                    "src": "gsi-seamlessphoto", "z": meta.get("z")}
+        # bbox が変わっていても画像があれば、再取得前にそれを使うのは危険。下で再取得。
+
+    def tile_px(z):
+        ntiles = 2 ** z
+        return ntiles * 256
+
+    def choose_z():
+        mid = (s + n) / 2
+        width_m = (e - w) * 111320 * math.cos(math.radians(mid))
+        height_m = (n - s) * 110950
+        for z in range(18, 13, -1):
+            mpp = 40075016.686 * math.cos(math.radians(mid)) / (2 ** z) / 256
+            pw, ph = width_m / mpp, height_m / mpp
+            tx = int(pw / 256) + 2
+            ty = int(ph / 256) + 2
+            if tx * ty <= 80 and max(pw, ph) <= 3200:
+                return z
+        return 15
+
+    z = choose_z()
+    ntiles = 2 ** z
+    x0 = int(_merc_x(w) * ntiles)
+    x1 = int(_merc_x(e) * ntiles)
+    y0 = int(_merc_y(n) * ntiles)
+    y1 = int(_merc_y(s) * ntiles)
+    x0, x1 = max(0, x0), min(ntiles - 1, x1)
+    y0, y1 = max(0, y0), min(ntiles - 1, y1)
+    cols, rows = x1 - x0 + 1, y1 - y0 + 1
+    if cols * rows > 80:
+        log(f"{icao}: GSI タイルが多すぎる ({cols}x{rows})、写真なし")
+        return None
+    img = Image.new("RGB", (cols * 256, rows * 256), (30, 40, 50))
+    ok = 0
+    for ty in range(y0, y1 + 1):
+        for tx in range(x0, x1 + 1):
+            url = f"https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{tx}/{ty}.jpg"
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "image/jpeg"})
+                with urllib.request.urlopen(req, timeout=25) as r:
+                    tile = r.read()
+                import io
+                tim = Image.open(io.BytesIO(tile)).convert("RGB")
+                img.paste(tim, ((tx - x0) * 256, (ty - y0) * 256))
+                ok += 1
+            except Exception as ex:  # noqa: BLE001
+                log(f"{icao}: GSI タイル失敗 {z}/{tx}/{ty}: {type(ex).__name__}")
+            time.sleep(0.05)
+    if ok < max(1, (cols * rows) // 3):
+        log(f"{icao}: GSI 写真の取得が不足 ({ok}/{cols*rows})")
+        return None
+    # タイル境界を地理座標に戻し、要求 bbox で切り出す
+    def lon_of(x):
+        return x / ntiles * 360.0 - 180.0
+
+    def lat_of(y):
+        # inverse web mercator
+        ny = 0.5 - y / ntiles
+        return math.degrees(math.atan(math.sinh(2 * math.pi * ny)))
+
+    west_t, north_t = lon_of(x0), lat_of(y0)
+    east_t, south_t = lon_of(x1 + 1), lat_of(y1 + 1)
+    W, H = img.size
+    def px_x(lon):
+        return (lon - west_t) / (east_t - west_t) * W
+    def px_y(lat):
+        # y is mercator, not linear in lat — crop in mercator space
+        return (_merc_y(lat) * ntiles - y0) * 256
+    l, t = px_x(w), px_y(n)
+    rgt, b = px_x(e), px_y(s)
+    l, t = max(0, int(math.floor(l))), max(0, int(math.floor(t)))
+    rgt, b = min(W, int(math.ceil(rgt))), min(H, int(math.ceil(b)))
+    if rgt - l >= 32 and b - t >= 32:
+        img = img.crop((l, t, rgt, b))
+        out_bbox = [s, w, n, e]
+    else:
+        out_bbox = [south_t, west_t, north_t, east_t]
+    # 長辺 1536 に縮小
+    max_edge = 1536
+    if max(img.size) > max_edge:
+        img.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
+    import io
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=72, optimize=True, progressive=True)
+    body = buf.getvalue()
+    with open(cache_path, "wb") as f:
+        f.write(body)
+    meta = {
+        "icao": icao, "z": z, "bbox": [s, w, n, e], "outBbox": out_bbox,
+        "width": img.size[0], "height": img.size[1], "bytes": len(body),
+        "tiles": ok, "fetchedAtUnix": now,
+        "fetchedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    open(meta_path, "w", encoding="utf-8").write(json.dumps(meta, ensure_ascii=False))
+    rel, nb, _ = write_bytes(body, "jpg")
+    log(f"{icao}: GSI 写真 {img.size[0]}x{img.size[1]} z{z} {nb}B tiles={ok}/{cols*rows}")
+    return {"file": rel, "bytes": nb, "bbox": out_bbox, "width": img.size[0], "height": img.size[1],
+            "src": "gsi-seamlessphoto", "z": z}
 
 
 def build_airport(icao, items, lat=None, lon=None, rad=None, osm=None, meta=None):
@@ -967,29 +1368,34 @@ def build_airport(icao, items, lat=None, lon=None, rad=None, osm=None, meta=None
     stats = collections.Counter()
     ground_items = []
     for it in items or []:
-        q = (get_Q(it.get("text") or "") + [""] * 2)[1]
-        if not is_groundish(q) and "CLSD" not in (get_E(it.get("text") or "")):
-            # still resolve lights etc already covered by is_groundish
-            if q[1:3] not in ("OL", "WU", "WH") if q else True:
-                if not is_groundish(q):
-                    continue
-        if q[1:3] in ("OL", "WU", "WH"):
-            continue  # 市街地の障害物灯・無人機・花火は地上図対象外
-        e0 = get_E(it.get("text") or "")
-        if re.match(r"REF (?:AIP|AIRAC)|TRIGGER NOTAM", e0 or ""):
-            continue  # 修正通報・トリガで、地上の位置を持たない
+        text = it.get("text") or ""
+        q = (get_Q(text) + [""] * 2)[1]
+        e0 = get_E(text)
         r = resolve(layout, it)
-        if r["cat"] == "other" and not r["geoms"] and not is_groundish(r["q"]):
-            continue
+        cgeoms = parse_coord_geoms(e0)
+        ccat = cat_of_coord(q, e0)
+        groundish = is_groundish(q) or "CLSD" in (e0 or "")
+        # 地上施設に置けず、座標があるものは座標ジオメトリを使う
+        if cgeoms and (ccat or not r["geoms"]):
+            if not groundish or not r["geoms"]:
+                r["cat"] = ccat or r["cat"] or "coord"
+                r["geoms"] = cgeoms
+                sm, ja = summarize_coord(e0, q)
+                r["summary"], r["ja"] = sm, ja
         ground_items.append(r)
         placed = bool(r["geoms"])
-        stats["total"] += 1
-        if placed and not r["unres"] and not r["approx"]:
-            stats["exact"] += 1
-        elif placed:
-            stats["partial"] += 1
-        else:
-            stats["unplaced"] += 1
+        # 地上照合の統計は従来どおり地上系だけ（既存テストのため）
+        if groundish:
+            stats["total"] += 1
+            if placed and not r["unres"] and not r["approx"]:
+                stats["exact"] += 1
+            elif placed:
+                stats["partial"] += 1
+            else:
+                stats["unplaced"] += 1
+        if cgeoms and not groundish:
+            stats["coord"] += 1
+        stats["listed"] += 1
         notams.append({
             "id": r["id"],
             "q": r["q"],
@@ -1011,7 +1417,21 @@ def build_airport(icao, items, lat=None, lon=None, rad=None, osm=None, meta=None
         note = "この空港はOpenStreetMapの誘導路名が少ないため、NOTAMの位置は限られます。"
     else:
         note = None
-    return {
+    attr = "© OpenStreetMap contributors"
+    photo = None
+    try:
+        photo = stitch_gsi_photo(icao, lj.get("bbox"))
+    except Exception as ex:  # noqa: BLE001
+        log(f"{icao}: GSI 写真失敗:", type(ex).__name__, ex)
+        photo = None
+    if photo:
+        attr = attr + " ／ 地理院タイル（航空写真）出典：国土地理院"
+    try:
+        coast_file, coast_bytes = write_coast_blob()
+    except Exception as ex:  # noqa: BLE001
+        log(f"{icao}: 海岸線blob失敗:", type(ex).__name__, ex)
+        coast_file, coast_bytes = None, 0
+    payload = {
         "ok": True,
         "file": file,
         "bytes": nbytes,
@@ -1020,13 +1440,22 @@ def build_airport(icao, items, lat=None, lon=None, rad=None, osm=None, meta=None
         "osmAt": layout.osm_ts,
         "stale": bool((meta or {}).get("stale")),
         "note": note,
-        "attribution": "© OpenStreetMap contributors",
+        "attribution": attr,
         "origin": lj["origin"],
         "scale": SCALE,
+        "arp": [round(lat, 6), round(lon, 6)],
+        "bbox": lj["bbox"],
         "notams": notams,
         "stats": dict(stats),
         "error": err,
-    }, layout, ground_items
+    }
+    if photo:
+        payload["photoFile"] = photo["file"]
+        payload["photo"] = {k: photo[k] for k in ("bbox", "width", "height", "src", "z", "bytes")}
+    if coast_file:
+        payload["coastFile"] = coast_file
+        payload["coastBytes"] = coast_bytes
+    return payload, layout, ground_items
 
 
 def build_all(notam_airports, profiles=None, prev_ground=None):
@@ -1043,7 +1472,8 @@ def build_all(notam_airports, profiles=None, prev_ground=None):
             st = payload.get("stats") or {}
             log(f"{icao}: quality={payload.get('quality')} named={payload.get('namedRefs')} "
                 f"notam={st.get('total', 0)} exact={st.get('exact', 0)} partial={st.get('partial', 0)} "
-                f"unplaced={st.get('unplaced', 0)} layout={payload.get('bytes')}B")
+                f"unplaced={st.get('unplaced', 0)} listed={st.get('listed', 0)} coord={st.get('coord', 0)} "
+                f"layout={payload.get('bytes')}B photo={((payload.get('photo') or {}).get('bytes') or 0)}B")
         except Exception as e:  # noqa: BLE001
             log(f"{icao}: 失敗:", type(e).__name__, e)
             if prev_ground and icao in prev_ground and (prev_ground[icao] or {}).get("ok"):
@@ -1061,6 +1491,8 @@ def signature_of(ground_by_icao):
         g = ground_by_icao[icao] or {}
         h.update(icao.encode())
         h.update((g.get("file") or "").encode())
+        h.update((g.get("photoFile") or "").encode())
+        h.update((g.get("coastFile") or "").encode())
         h.update(json.dumps([n.get("id") for n in g.get("notams") or []], ensure_ascii=False).encode())
         h.update((g.get("error") or "").encode())
     return h.hexdigest()

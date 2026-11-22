@@ -186,6 +186,7 @@
       out.seriesByIcao = series;
       setSeries(out);
       const bcG = await caches.open(BLOBS);
+      let coast = null;
       for (const icao of Object.keys(out.ground || {})) {
         const g = out.ground[icao];
         if (!g || !g.ok || !g.file) continue;
@@ -196,7 +197,23 @@
         } catch (e) {
           g.loadError = '地図データの読み込みに失敗しました。';
         }
+        if (g.photoFile) {
+          try {
+            const rp = await bcG.match(siteUrl(g.photoFile));
+            if (rp) g.photoUrl = URL.createObjectURL(await rp.blob());
+          } catch (e) { /* 写真は無くても地図は出る */ }
+        }
+        if (g.coastFile) {
+          try {
+            if (!coast) {
+              const rc = await bcG.match(siteUrl(g.coastFile));
+              if (rc) coast = await rc.json();
+            }
+            g.coast = coast;
+          } catch (e) { /* 海岸線は広域の背景。無くても点は出る */ }
+        }
       }
+      out.groundCoast = coast;
     } else {
       for (const icao of Object.keys(out.wx?.airports || {})) out.loadedAirports.add(icao); // 旧形式（全空港入り）
     }

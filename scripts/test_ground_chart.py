@@ -8,6 +8,7 @@ import datetime as dt
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ground_chart as g
+os.environ.setdefault('GROUND_SKIP_GSI', '1')
 
 PACK = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                     "data", "packs")
@@ -113,5 +114,59 @@ class TestMatchLivePack(unittest.TestCase):
             self.assertEqual(payload["quality"], "good")
 
 
+
+class TestCoordAndList(unittest.TestCase):
+    def test_parse_circle_and_poly(self):
+        e = "UNMANNED ACFT: AREA: RADIUS 404M CENTER 354333N1394306E (TOSHIMA-KU IN TOKYO)"
+        ge = g.parse_coord_geoms(e)
+        self.assertEqual(ge[0]["t"], "circle")
+        self.assertAlmostEqual(ge[0]["r"], 404)
+        self.assertAlmostEqual(ge[0]["p"][0], 35 + 43 / 60 + 33 / 3600, places=5)
+        e2 = "AREA: BOUNDED BY FLW POINTS 354021N1394720E - 354021N1394719E - 354016N1394720E - 354017N1394725E - 354021N1394720E (KOTO-KU IN TOKYO)"
+        ge2 = g.parse_coord_geoms(e2)
+        self.assertEqual(ge2[0]["t"], "poly")
+        self.assertGreaterEqual(len(ge2[0]["pts"]), 4)
+
+    def test_summarize_coord_ja(self):
+        s, ok = g.summarize_coord("OBST LGT U/S TYPE: BLDG PSN: 353924.3N1395028.3E ELEV: 506FT AMSL (KOTO-KU IN TOKYO)", "QOLAS")
+        self.assertTrue(ok)
+        self.assertIn("障害物灯使用不能", s)
+        self.assertIn("建物", s)
+        self.assertIn("江東区", s)
+        s, ok = g.summarize_coord("UNMANNED ACFT: AREA: RADIUS 404M CENTER 354333N1394306E (TOSHIMA-KU IN TOKYO) WT: 4.3KG", "QWULW")
+        self.assertTrue(ok)
+        self.assertIn("無人機", s)
+        self.assertIn("豊島区", s)
+        self.assertIn("404", s)
+        s, ok = g.summarize_coord("FIREWORKS: PLACE: RADIUS 50M CENTER 353754N1394607E (MINATO-KU IN TOKYO)", "QWHLW")
+        self.assertTrue(ok)
+        self.assertIn("花火", s)
+        self.assertIn("港区", s)
+        s, ok = g.summarize_coord("CRANE EXIST ABV CONICAL SFC 1.PSN: BOUNDED BY FLW POINT 353515.8N1394811.7E - 353513.0N1394814.3E - 353510.1N1394813.1E - 353512.8N1394809.0E - 353515.8N1394811.7E (OTA-KU IN TOKYO)", "QOBCE")
+        self.assertTrue(ok)
+        self.assertIn("クレーン", s)
+        self.assertIn("大田区", s)
+        s, ok = g.summarize_coord("FOUNTAIN: PLACE : 353745N1394612E (MINATO-KU IN TOKYO)", "QXXLW")
+        self.assertTrue(ok)
+        self.assertIn("噴水", s)
+
+    def test_all_notams_listed_and_h1(self):
+        import os
+        os.environ["GROUND_SKIP_GSI"] = "1"
+        items = latest_ap("RJTT")["notam"]["items"]
+        payload, layout, _ = g.build_airport("RJTT", items)
+        self.assertEqual(len(payload["notams"]), len(items))
+        refs = {t["ref"] for t in (json.loads(open(os.path.join(g.ROOT, payload["file"])).read())["taxiways"])}
+        # layout object itself
+        self.assertIn("H1", layout.TWY)
+        self.assertTrue(any(n.get("cat") in ("obst_lgt", "uas", "fireworks", "obst", "coord", "balloon") and n.get("geoms") for n in payload["notams"]))
+        unmapped = [n for n in payload["notams"] if not n.get("geoms")]
+        # リストには置けるもの以外も残る（または全部座標で置けている）
+        self.assertEqual(len(payload["notams"]), len(items))
+        self.assertIn("coastFile", payload)
+        self.assertIn("arp", payload)
+
+
 if __name__ == "__main__":
+
     unittest.main()
