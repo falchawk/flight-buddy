@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.30';
+  const APP_VERSION = '1.9.31';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { areaHide: 'fb.areaHide', notamMode: 'fb.notamMode', airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
@@ -104,6 +104,15 @@
       renderClock();
       startClock.i = setInterval(renderClock, 1000);
     }, toNext);
+  }
+  function setupBrandLightbox() {
+    const btn = $('brand-emb-btn'), lb = $('brand-lightbox');
+    if (!btn || !lb) return;
+    const open = () => { lb.hidden = false; try { lb.focus(); } catch (e) { /* ignore */ } };
+    const close = () => { if (lb.hidden) return; lb.hidden = true; try { btn.focus(); } catch (e) { /* ignore */ } };
+    btn.addEventListener('click', open);
+    lb.addEventListener('click', close);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !lb.hidden) { e.preventDefault(); close(); } });
   }
   function renderStatus() {
     const online = navigator.onLine;
@@ -1029,6 +1038,7 @@
     window.addEventListener('online', () => { renderStatus(); renderCharts(); refresh(false); });
     window.addEventListener('offline', () => { renderStatus(); renderCharts(); });
     startClock();
+    setupBrandLightbox();
     setInterval(() => { renderStatus(); }, 15000);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') renderClock(); });
 

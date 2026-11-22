@@ -23,7 +23,7 @@
 <body>
 <div id="app">
   <header class="app-header">
-    <div class="brand"><span class="brand-name">Flight Buddy</span><img class="brand-emb" src="icons/brand-fb-96.png" alt="Flight Buddy" width="32" height="32" draggable="false"></div>
+    <div class="brand"><span class="brand-name">Flight Buddy</span><button type="button" id="brand-emb-btn" class="brand-emb-btn" aria-label="ロゴを拡大表示" aria-haspopup="dialog" aria-controls="brand-lightbox"><img class="brand-emb" src="icons/brand-fb-96.png" alt="" width="32" height="32" draggable="false"></button></div>
     <div class="header-status">
       <span id="clock" class="clock" role="timer" aria-live="off" aria-label="時刻">
         <span class="ck-line ck-jst"><span class="ck-date" id="ck-j-date">--/--</span><span class="ck-time" id="ck-j-time">--:--:--</span><span class="ck-lab">JST</span><span class="ck-slash" aria-hidden="true">/</span></span>
@@ -230,5 +230,8 @@
 <script src="js/viewer.js"></script>
 <script src="js/flights.js"></script>
   <script src="js/app.js"></script>
+<div id="brand-lightbox" class="brand-lb" hidden role="dialog" aria-modal="true" aria-label="Flight Buddy のロゴ" tabindex="-1">
+  <img src="icons/brand-fb-96.png" alt="Flight Buddy のロゴ" width="96" height="96" draggable="false">
+</div>
 </body>
 </html>

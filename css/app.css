@@ -277,7 +277,7 @@ label.block{margin-top:14px}
 .viewer-stage{flex:1;overflow:hidden;position:relative;touch-action:none}
 #v-content{position:absolute;inset:0}
 
-@media (max-width:440px){.brand-name{display:none}.brand-emb{margin-left:0}}
+@media (max-width:440px){.brand-name{display:none}.brand-emb-btn{margin-left:0}}
 
 /* ---------- MAP（Leaflet＋同梱基図） */
 .tab-panel.map-panel{padding:0;overflow:hidden}
@@ -348,8 +348,14 @@ label.block{margin-top:14px}
 .ap-group{margin:6px 0}
 .ap-group summary{cursor:pointer;padding:10px 4px;font-weight:600}
 
-.brand-emb{height:32px;width:32px;margin-left:7px;vertical-align:-11px}
+.brand-emb-btn{display:inline-flex;align-items:center;justify-content:center;padding:0;margin-left:7px;border:none;background:transparent;border-radius:50%;width:32px;height:32px;vertical-align:-11px;line-height:0;cursor:pointer;flex:none}
+.brand-emb-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.brand-emb-btn:active{transform:scale(.94)}
+.brand-emb{height:32px;width:32px;margin:0;display:block;pointer-events:none}
 .brand-emb{filter:drop-shadow(0 0 1px rgba(255,255,255,.45))}
+.brand-lb{position:fixed;inset:0;z-index:4000;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(8,12,20,.7);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);cursor:pointer}
+.brand-lb[hidden]{display:none!important}
+.brand-lb img{width:min(72vw,72vh,360px);height:auto;aspect-ratio:1;border-radius:50%;filter:drop-shadow(0 10px 32px rgba(0,0,0,.45));pointer-events:none;background:transparent}
 .duty-leg{display:block;margin-top:6px;font-size:13px}
 .duty-leg .raw{margin-top:4px}
 
@@ -406,7 +412,7 @@ label.block{margin-top:14px}
 #refresh-btn .th-sync{position:absolute;left:0;right:0;bottom:3px;text-align:center;font-size:8px;line-height:1;font-weight:800;letter-spacing:.02em;color:var(--accent);pointer-events:none}
 @media (max-width:440px){#refresh-btn{min-width:34px;width:34px}.app-header #refresh-btn svg{width:18px;height:18px}}
 /* 320px 級の極小幅：ロゴ(32px)・テーマ・SYNC は常に表示し、ステータスのピルを詰めて収める */
-@media (max-width:340px){.app-header{padding-left:6px}.app-header .brand-emb{margin-left:0}.header-status{gap:2px}.pill{padding:3px 5px;font-size:10px}.header-pills .pill{padding:1px 5px;font-size:9.5px}#clock.clock{padding:2px 5px}#clock .ck-date{font-size:9px}#clock .ck-time{font-size:11px}#clock .ck-lab{font-size:8px}#clock .ck-line{gap:4px}.app-header #theme-btn,.app-header #refresh-btn{min-width:32px;width:32px}}
+@media (max-width:340px){.app-header{padding-left:6px}.app-header .brand-emb-btn{margin-left:0}.header-status{gap:2px}.pill{padding:3px 5px;font-size:10px}.header-pills .pill{padding:1px 5px;font-size:9.5px}#clock.clock{padding:2px 5px}#clock .ck-date{font-size:9px}#clock .ck-time{font-size:11px}#clock .ck-lab{font-size:8px}#clock .ck-line{gap:4px}.app-header #theme-btn,.app-header #refresh-btn{min-width:32px;width:32px}}
 
 .duty-src{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;vertical-align:middle;margin-left:6px;letter-spacing:0}
 .duty-src:empty{display:none}
