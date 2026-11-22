@@ -996,13 +996,13 @@ def build_charts(data_dir, airports, workers=16):
             {"id": "ir", "label": "赤外", "product": single("ひまわり 赤外（B13）", SRC_JMA, parts.get("ir"), note=sat_note("b13", parts.get("ir")))},
             {"id": "vis", "label": "可視", "product": single("ひまわり 可視（B03）", SRC_JMA, parts.get("vis"), note=sat_note("b03", parts.get("vis")))},
             {"id": "wv", "label": "水蒸気", "product": single("ひまわり 水蒸気（B08）", SRC_JMA, parts.get("wv"), note=sat_note("b08", parts.get("wv")))},
-        ] + [{"id": i, "label": lab, "product": pr} for i, lab, pr in (parts.get("dust") or [])]},
+        ]},
         {"id": "radar", "label": "レーダーエコー", "defaultItem": 0, "items": [
             {"id": "nowcast", "label": "ナウキャスト", "product": product("降水ナウキャスト", SRC_JMA, rain.get("nowcast") or [], "a00")},
             {"id": "rainfc", "label": "今後の雨", "product": product("今後の雨（降水短時間予報）", SRC_JMA, rain.get("rainfc") or [], "a00")},
             {"id": "thunder", "label": "雷ナウキャスト", "product": product("雷ナウキャスト", SRC_JMA, rain.get("thunder") or [], "a00")},
             {"id": "cloudtop", "label": "雲頂高度", "product": single("雲頂高度", SRC_METAIR, parts.get("cloudtop"))},
-        ]},
+        ] + [{"id": i, "label": lab, "product": pr} for i, lab, pr in (parts.get("dust") or [])]},
         {"id": "fxjp", "label": "三十分大気解析", "defaultItem": 0, "items": [
             {"id": "a30", "label": "三十分大気解析", "product": parts.get("a30") or product("三十分大気解析", SRC_METAIR, [])},
         ]},

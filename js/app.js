@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.32';
+  const APP_VERSION = '1.9.33';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { areaHide: 'fb.areaHide', notamMode: 'fb.notamMode', airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
@@ -223,19 +223,8 @@
     const b = state.pack?.brief, m = state.pack?.manifest;
     if (!m) { $('brief-meta').textContent = ''; $('brief-body').innerHTML = '<p class="hint">まだパックがありません。オンラインで一度開くと自動で保存されます。</p>'; return; }
     $('brief-meta').innerHTML = b?.ok && b?.writtenAt ? `${esc(fmtJst(b.writtenAt))}（${esc(briefKindLabel(b))}）` : '';
-    const wx = state.pack?.wx;
-    const rows = mainAirports().map((icao) => {
-      const e = wx?.airports?.[icao];
-      if (!e || !e.ok) return `<tr><td>${esc(icao)}</td><td colspan="3" class="hint">${e ? '未取得' : esc(missText(icao))}</td></tr>`;
-      const mt = e.metar?.[0];
-      const cat = mt ? (window.FBWx.flightCategory(mt.raw, icao) || mt.fltCat) : null;
-      const wind = (mt?.raw || '').match(/\b(\d{3}|VRB)(\d{2,3})(G\d{2,3})?KT\b/);
-      const gusts = [...((e.taf?.raw || '').matchAll(/\b(?:\d{3}|VRB)\d{2,3}G(\d{2,3})KT\b/g))].map((m) => Number(m[1]));
-      return `<tr><td><strong>${esc(icao)}</strong> <span class="hint">${esc(apName(icao))}</span></td><td>${cat ? `<span class="badge ${cat}">${cat}</span>` : ''}</td><td>${esc(wind ? wind[0] : '--')}</td><td>${gusts.length ? `G${Math.max(...gusts)}` : '--'}</td></tr>`;
-    }).join('');
-    const summary = `<div class="card"><div class="card-title"><span>選択空港サマリー</span><span class="hint">METAR / TAF最大ガスト</span></div><table class="sum-table"><tbody>${rows}</tbody></table></div>`;
     const carried = b?.ok && b.carriedOver ? `<p class="hint"><span class="badge stale">前回のブリーフ</span> 本文は ${esc(fmtJst(b.writtenAt))} 作成（${esc(ageText(b.writtenAt))}）。METAR/TAF・図は最新パックの内容です。</p>` : '';
-    $('brief-body').innerHTML = summary + carried + `<div class="brief-text">${b?.ok && b.text ? mdToHtml(b.text) : '<p class="hint">いまのブリーフ本文はまだありません。自動作成は、その日の初便の3時間前（便が無い日・午後便の日は 08:30）までに行います。</p>'}</div>`;
+    $('brief-body').innerHTML = carried + `<div class="brief-text">${b?.ok && b.text ? mdToHtml(b.text) : '<p class="hint">いまのブリーフ本文はまだありません。自動作成は、その日の初便の3時間前（便が無い日・午後便の日は 08:30）までに行います。</p>'}</div>`;
     hydrateBriefImages($('brief-body'), b);
   }
 
@@ -296,17 +285,64 @@
     if (t > Date.now()) return '';
     return ageText(fr.time);
   }
+  function isAnalysisFrame(fr) {
+    return String(fr?.kind || '') === 'ANALYSIS' || String(fr?.label || '').startsWith('ANALYSIS');
+  }
+  function latestAnalysisIndex(frames) {
+    let idx = -1;
+    for (let i = 0; i < frames.length; i++) if (isAnalysisFrame(frames[i])) idx = i;
+    return idx;
+  }
   function legacyCategory(extra) {
     return { id: 'extra', label: 'その他', defaultItem: 0, items: extra.map((c, i) => ({ id: `x${i}`, label: c.title || c.id,
       product: { type: 'series', title: c.title, source: c.source, variants: [{ id: 'main', label: c.title, defaultFrame: 0,
         frames: [{ label: [c.kind, c.level, c.validTime ? fmtUtc(c.validTime) : ''].filter(Boolean).join(' ・ '), images: [{ file: c.file }] }] }] } })) };
   }
+  function isDustItem(it) {
+    return it && (it.id === 'kosa' || it.id === 'pm25' || it.label === '黄砂' || it.label === 'PM2.5');
+  }
   function chartCats() {
     const ch = state.pack?.charts;
     if (!ch) return [];
-    const cats = (ch.categories || []).slice();
-    if (ch.extra?.length) cats.push(legacyCategory(ch.extra));
-    return cats;
+    // 黄砂・PM2.5 はレーダーエコーのサブタブへ（既にそこにあるパックはそのまま。旧パックは衛星画像などから移す）
+    const cats = (ch.categories || []).map((c) => ({ ...c, items: (c.items || []).slice() }));
+    const moved = [];
+    for (const c of cats) {
+      if (c.id === 'radar' || c.label === 'レーダーエコー') continue;
+      const keep = [];
+      for (const it of c.items) {
+        if (isDustItem(it)) moved.push(it);
+        else keep.push(it);
+      }
+      c.items = keep;
+    }
+    const radar = cats.find((c) => c.id === 'radar' || c.label === 'レーダーエコー');
+    if (radar && moved.length) {
+      const have = new Set((radar.items || []).map((it) => it.id));
+      for (const it of moved) {
+        if (!have.has(it.id)) { radar.items.push(it); have.add(it.id); }
+      }
+      let changed = false;
+      for (const it of moved) {
+        for (const from of [...cats.map((c) => c.id), 'satellite', 'kosa', 'pm25', 'dust']) {
+          if (!from || from === radar.id) continue;
+          const oldKey = `${from}/${it.id}`;
+          const newKey = `${radar.id}/${it.id}`;
+          if (chartSel.variant[oldKey] != null && chartSel.variant[newKey] == null) {
+            chartSel.variant[newKey] = chartSel.variant[oldKey]; changed = true;
+          }
+          if (chartSel.item[from] === it.id) {
+            if (chartSel.cat === from) { chartSel.cat = radar.id; changed = true; }
+            if (!chartSel.item[radar.id]) { chartSel.item[radar.id] = it.id; changed = true; }
+          }
+        }
+        if (chartSel.cat === it.id) { chartSel.cat = radar.id; chartSel.item[radar.id] = it.id; changed = true; }
+      }
+      if (changed) saveSel();
+    }
+    const out = cats.filter((c) => (c.items && c.items.length) || c.id === 'radar' || c.label === 'レーダーエコー');
+    if (ch.extra?.length) out.push(legacyCategory(ch.extra));
+    return out;
   }
   function renderCharts() {
     const ch = state.pack?.charts;
@@ -403,12 +439,16 @@
     const fkey = `${key}/${v.id}`;
     if (frameIdx[fkey] == null || frameIdx[fkey] >= frames.length) frameIdx[fkey] = Math.min(v.defaultFrame ?? frames.length - 1, frames.length - 1);
     const carried = p.carriedOver || v.carriedOver;
+    const latestI = (cat.id === 'fxjp' || item.id === 'a30') ? latestAnalysisIndex(frames) : -1;
+    const latestBtnHtml = (latestI >= 0 && frames.length > 1)
+      ? '<button type="button" class="btn f-latest" aria-label="最新の ANALYSIS に戻る">最新</button>' : '';
     panel.innerHTML = head(carried ? ' <span class="badge carried">前回分</span>' : '')
       + '<div class="chart-stage"><p class="hint">読み込み中…</p></div>'
-      + (frames.length > 1 ? `<div class="frame-bar"><button class="btn f-prev">◀</button><span class="lbl"></span><button class="btn f-next">▶</button></div><input class="frame-slider" type="range" min="0" max="${frames.length - 1}" step="1" />` : '<div class="frame-bar"><span class="lbl"></span></div>')
+      + (frames.length > 1 ? `<div class="frame-bar"><button type="button" class="btn f-prev">◀</button><span class="lbl"></span>${latestBtnHtml}<button type="button" class="btn f-next">▶</button></div><input class="frame-slider" type="range" min="0" max="${frames.length - 1}" step="1" />` : '<div class="frame-bar"><span class="lbl"></span></div>')
       + (p.note ? `<div class="chart-note hint">${esc(p.note.replace('アプリを開いた時に過去になったコマは自動で隠す。', ''))}</div>` : '');
     body.appendChild(panel);
     const stage = panel.querySelector('.chart-stage'), lbl = panel.querySelector('.lbl'), slider = panel.querySelector('.frame-slider');
+    const latestBtn = panel.querySelector('.f-latest');
     let tok = 0;
     const show = async (i) => {
       i = Math.max(0, Math.min(frames.length - 1, i)); frameIdx[fkey] = i;
@@ -416,6 +456,11 @@
       const age = frameAge(fr);
       lbl.textContent = `${frames.length > 1 ? `${i + 1}/${frames.length} ・ ` : ''}${fr.label || ''}${age ? `（${age}）` : ''}`;
       if (slider) slider.value = String(i);
+      if (latestBtn) {
+        const atLatest = i === latestI;
+        latestBtn.disabled = atLatest;
+        latestBtn.setAttribute('aria-disabled', atLatest ? 'true' : 'false');
+      }
       const my = ++tok;
       const node = await window.FBViewer.compose(fr, state.pack.imageUrl, 'inline');
       if (my !== tok) return;
@@ -427,6 +472,7 @@
     if (frames.length > 1) {
       panel.querySelector('.f-prev').onclick = () => show(frameIdx[fkey] - 1);
       panel.querySelector('.f-next').onclick = () => show(frameIdx[fkey] + 1);
+      if (latestBtn) latestBtn.onclick = () => { if (latestI >= 0) show(latestI); };
       slider.oninput = () => show(Number(slider.value));
     }
     stage.onclick = () => window.FBViewer.open(frames, frameIdx[fkey], state.pack.imageUrl, `${p.title || item.label}${variants.length > 1 ? ' ・ ' + v.label : ''}`, (i) => { frameIdx[fkey] = i; show(i); });

@@ -193,6 +193,9 @@ label.block{margin-top:14px}
 .frame-bar{display:flex;align-items:center;gap:8px;padding:10px 12px 4px}
 .frame-bar .lbl{flex:1;text-align:center;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
 .frame-bar .btn{min-width:48px;padding:9px 0;font-size:15px}
+.frame-bar .f-latest{min-width:auto;padding:9px 12px;font-weight:800}
+.frame-bar .f-latest:not(:disabled){background:var(--accent);color:var(--on-accent)}
+.frame-bar .f-latest:disabled{opacity:.4;font-weight:600;cursor:default;background:var(--bg-elev);color:var(--text-dim)}
 .frame-slider{width:calc(100% - 28px);margin:6px 14px 12px;accent-color:var(--accent)}
 .chart-stage{background:var(--bg-inset);min-height:180px;display:flex;justify-content:center;cursor:zoom-in;position:relative;margin:0 10px;border-radius:var(--radius-sm);overflow:hidden}
 .chart-stage .fr{width:100%}
