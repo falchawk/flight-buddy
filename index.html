@@ -154,6 +154,12 @@
       <p class="hint">1 kt = 1.852 km/h</p>
     </section>
 
+    <section id="tab-wind" class="tab-panel">
+      <h2>WIND <span class="h-sub">Wind Limitation</span></h2>
+      <p class="hint">滑走路ごとに、風の吹いてくる方向（磁方位）から何 kt まで許容かを1つの範囲で表示（背風・横風を分けず、厳しい方の値）。端末内で計算（オフライン可）。最終判断は規程・Flysmart で。</p>
+      <div id="wind-root"></div>
+    </section>
+
     <section id="tab-settings" class="tab-panel">
       <h2>SETTINGS</h2>
       <h3>MAIN AIRPORTS</h3>
@@ -186,6 +192,7 @@
     <button class="tab-btn" data-tab="notam"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l10 18H2z"/><path d="M12 10v4"/><circle cx="12" cy="17" r="0.8" fill="currentColor" stroke="none"/></svg><span>NOTAM</span></button>
     <button class="tab-btn" data-tab="airport"><svg viewBox="0 0 24 24"><path d="M2 21h20" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M6.3 21V12h1.4v9z" fill="currentColor"/><path fill-rule="evenodd" d="M3.5 8.3H10.5V12H3.5Z M4.3 9H9.7V9.5H4.3Z M4.3 10.3H9.7V10.8H4.3Z" fill="currentColor"/><g transform="translate(16.5,9) rotate(45) scale(0.58) translate(-12,-11)"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2.5 2v1.5L12 21l4.5 1.5V21l-2.5-2v-5.5L21 16z" fill="currentColor"/></g></svg><span>AIRPORT</span></button>
     <button class="tab-btn" data-tab="tas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4.5 15.5a7.5 7.5 0 1 1 15 0"/><path d="M12 15.5l3.6-4.6"/><circle cx="12" cy="15.5" r="1" fill="currentColor" stroke="none"/></svg><span>TAS</span></button>
+    <button class="tab-btn" data-tab="wind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V3"/><path d="M4 4l15 2.2v5.6L4 14z"/><path d="M9 4.7v8.6M14 5.5v7.1" /></svg><span>WIND</span></button>
     <button class="tab-btn" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5c.04-.33.06-.66.06-1s-.02-.67-.06-1l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.4 7.4 0 0 0-1.73-1l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.63.24-1.21.58-1.73 1l-2.39-.96a.5.5 0 0 0-.6.22L2.65 9.28a.5.5 0 0 0 .12.64L4.8 11.5c-.04.33-.06.66-.06 1s.02.67.06 1l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.42.32.66.22l2.39-.96c.52.42 1.1.76 1.73 1l.36 2.54c.05.25.26.42.5.42h3.84c.24 0 .45-.17.5-.42l.36-2.54c.63-.24 1.21-.58 1.73-1l2.39.96c.24.1.52.02.66-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58z"/></svg><span>SETTINGS</span></button>
   </nav>
 </div>
@@ -213,6 +220,7 @@
 <script src="js/areamap.js"></script>
 <script src="js/sun.js"></script>
 <script src="js/tas.js"></script>
+<script src="js/wind.js"></script>
 <script src="js/vmc-designated.js"></script>
 <script src="js/wx.js"></script>
 <script src="js/pack.js"></script>

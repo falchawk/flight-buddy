@@ -751,6 +751,18 @@
   }
 
   // ---------------------------------------------------------------- TAS
+  // ---------------------------------------------------------------- WIND（Wind Limitation）
+  function setupWind() {
+    if (!window.FBWind) return;
+    window.FBWind.setup(() => ({
+      airports: wantedAirports().map((icao) => ({
+        icao, label: `${icao} ${apName(icao)}`,
+        profile: state.pack?.airports?.airports?.[icao] || null,
+        metar: state.pack?.wx?.airports?.[icao]?.metar?.[0] || null,
+      })),
+    }));
+  }
+  function renderWind() { try { window.FBWind?.render(); } catch (e) { console.warn(e); } }
   function setupTas() {
     window.FBTas.build($('tas-table'));
     $('tas-kt').oninput = (e) => { const v = parseFloat(e.target.value); $('tas-kmh').value = Number.isFinite(v) ? (v * 1.852).toFixed(1) : ''; };
@@ -825,7 +837,7 @@
   // ---------------------------------------------------------------- pack flow
   function renderAll() {
     const dutyChanged = applyDutyDefault();
-    renderStatus(); renderMap(); renderCharts(); renderNotam(); renderAirport(); renderDuty(); renderFlights(); renderSwimStatus();
+    renderStatus(); renderMap(); renderCharts(); renderNotam(); renderAirport(); renderDuty(); renderFlights(); renderWind(); renderSwimStatus();
     setupAirportPicker.renderSel && setupAirportPicker.renderSel();
     renderPackInfo();
     if (dutyChanged) ensureAirports();   // 自動入力した便の空港をこの端末にもダウンロード
@@ -943,7 +955,7 @@
   }
   async function start() {
     $('app-version').textContent = `App v${APP_VERSION}`;
-    setupTheme(); setupTabs(); setupTas(); setupDuty(); setupFlights(); setupMapLegend(); setupAirportPicker(); try { localStorage.removeItem('fb.feedback'); } catch (e) { /* 旧 FEEDBACK 欄の保存分を片付け */ }
+    setupTheme(); setupTabs(); setupTas(); setupWind(); setupDuty(); setupFlights(); setupMapLegend(); setupAirportPicker(); try { localStorage.removeItem('fb.feedback'); } catch (e) { /* 旧 FEEDBACK 欄の保存分を片付け */ }
     window.FBViewer.setup();
     $('airport-date').value = state.duty.date || todayJst();
     $('airport-date').onchange = renderAirport;
