@@ -179,7 +179,7 @@ LEAD_H, EARLY_MIN = 3, 13    # 初便 STD の 3 時間前が狙い。15分スロ
 
 
 def target_time(t):
-    """狙い時刻（JST の datetime）と理由・便名（任意）を返す。duty_default.json は duty_fetch.py（02:02 の更新）が書く今日の運航便（FLT）だけ。"""
+    """狙い時刻（JST の datetime）と理由・便名（任意）を返す。duty_default.json は duty_fetch.py（00:02 の更新）が書く今日の運航便（FLT）だけ。"""
     j = t.astimezone(JST)
     today = j.strftime("%Y-%m-%d")
     default = j.replace(hour=DEFAULT_TARGET[0], minute=DEFAULT_TARGET[1], second=0, microsecond=0)

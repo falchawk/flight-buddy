@@ -250,7 +250,7 @@ def main():
         if fl_due:
             schedule.mark(st2, "flights", not fl.startswith(("fail", "skip(no-runner")), now)
         schedule.save(st2)
-        # DUTY の自動入力用（今日の便。iFlight 主アカウント）。02:00 JST 以降の最初の回（02:02）のみ。失敗は60分後に再試行
+        # DUTY の自動入力用（今日の便。iFlight 主アカウント）。00:00 JST 以降の最初の回と 05:00 JST 以降の最初の回。失敗は60分後に再試行
         duty_state = "skip(not-due)"
         if schedule.is_due("duty_default", None, now):
             duty_state = refresh_duty_default(a.duty_default_file)
