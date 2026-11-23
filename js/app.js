@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.40';
+  const APP_VERSION = '1.9.41';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { areaHide: 'fb.areaHide', notamMode: 'fb.notamMode', airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
@@ -88,12 +88,14 @@
     const zs = now.toISOString();
     const js = new Date(now.getTime() + 9 * 3600000).toISOString();
     const md = (s) => `${s.slice(5, 7)}/${s.slice(8, 10)}`;
-    const hm = (s) => s.slice(11, 19);
+    const hm = (s) => s.slice(11, 16);
+    const sec = (s) => s.slice(16, 19);
+    const hms = (s) => s.slice(11, 19);
     const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
-    set('ck-j-date', md(js)); set('ck-j-time', hm(js));
-    set('ck-z-date', md(zs)); set('ck-z-time', hm(zs));
+    set('ck-j-date', md(js)); set('ck-j-time', hm(js)); set('ck-j-sec', sec(js));
+    set('ck-z-date', md(zs)); set('ck-z-time', hm(zs)); set('ck-z-sec', sec(zs));
     const el = $('clock');
-    if (el) el.setAttribute('aria-label', `JST ${md(js)} ${hm(js)} / Z ${md(zs)} ${hm(zs)}`);
+    if (el) el.setAttribute('aria-label', `JST ${md(js)} ${hms(js)} / Z ${md(zs)} ${hms(zs)}`);
   }
   function startClock() {
     renderClock();

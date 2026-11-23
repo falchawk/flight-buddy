@@ -91,8 +91,12 @@ a.btn{display:inline-block;text-decoration:none;margin:4px 0}
 #clock.clock{display:grid;grid-template-columns:auto auto auto;column-gap:5px;row-gap:2px;align-items:baseline;padding:3px 8px;border-radius:10px;background:var(--bg-elev);color:var(--text);font-variant-numeric:tabular-nums;line-height:1.15;flex:none;max-width:100%;white-space:nowrap}
 #clock .ck-line{display:contents}
 #clock .ck-date{font-size:10px;font-weight:600;color:var(--text-dim);letter-spacing:0}
+#clock .ck-hms{display:inline-flex;align-items:baseline;white-space:nowrap}
 #clock .ck-time{font-size:12.5px;font-weight:700;color:var(--text);letter-spacing:.02em}
+#clock .ck-sec{font-size:11.5px;font-weight:500;color:var(--text);letter-spacing:.02em}
 #clock .ck-lab{font-size:9.5px;font-weight:800;color:var(--text-faint);letter-spacing:.04em;line-height:1}
+#net-pill{font-size:11px}
+#pack-pill,#wx-live-pill{font-size:9px}
 .pill.ok{color:var(--green);background:rgba(52,199,89,.14)}
 .pill.off{color:#1b1400;background:var(--yellow)}
 .pill.warn{color:var(--yellow);background:var(--warn-bg)}
@@ -404,7 +408,7 @@ label.block{margin-top:14px}
 #theme-btn svg{display:none}
 #theme-btn[data-mode="auto"] .ic-auto,#theme-btn[data-mode="light"] .ic-light,#theme-btn[data-mode="dark"] .ic-dark{display:block}
 .app-header{gap:4px}
-@media (max-width:440px){.app-header{padding-right:4px;padding-left:10px;gap:2px}.header-status{gap:4px;margin-right:2px}.pill{padding:4px 8px;font-size:11.5px}.header-pills .pill{padding:1px 6px;font-size:10px}#clock.clock{padding:2px 6px}#clock .ck-date{font-size:9.5px}#clock .ck-time{font-size:11.5px}#clock .ck-lab{font-size:8.5px}.app-header .btn-icon{min-width:34px;width:34px}.app-header .btn-icon svg{width:21px;height:21px}#wx-btn svg{width:22px;height:22px}}
+@media (max-width:440px){.app-header{padding-right:4px;padding-left:10px;gap:2px}.header-status{gap:4px;margin-right:2px}.pill{padding:4px 8px;font-size:11.5px}.header-pills .pill{padding:1px 6px;font-size:10px}#clock.clock{padding:2px 6px}#clock .ck-date{font-size:9.5px}#clock .ck-time{font-size:11.5px}#clock .ck-sec{font-size:10.5px}#clock .ck-lab{font-size:8.5px}.app-header .btn-icon{min-width:34px;width:34px}.app-header .btn-icon svg{width:21px;height:21px}#wx-btn svg{width:22px;height:22px}}
 
 .toast{position:fixed;left:50%;top:calc(var(--header-h) + env(safe-area-inset-top) + 8px);transform:translate(-50%,-6px);z-index:3000;max-width:min(92vw,420px);padding:9px 14px;border-radius:12px;background:var(--bg-card);color:var(--text);box-shadow:var(--shadow);border:1px solid var(--line-strong);font-size:12.5px;line-height:1.45;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
 .toast.show{opacity:1;transform:translate(-50%,0)}
@@ -416,7 +420,7 @@ label.block{margin-top:14px}
 #refresh-btn .th-sync{position:absolute;left:0;right:0;bottom:3px;text-align:center;font-size:8px;line-height:1;font-weight:800;letter-spacing:.02em;color:var(--accent);pointer-events:none}
 @media (max-width:440px){#refresh-btn{min-width:34px;width:34px}.app-header #refresh-btn svg{width:18px;height:18px}}
 /* 320px 級の極小幅：ロゴ(32px)・テーマ・SYNC は常に表示し、ステータスのピルを詰めて収める */
-@media (max-width:340px){.app-header{padding-left:6px}.app-header .brand-emb-btn{margin-left:0}.header-status{gap:2px}.pill{padding:3px 5px;font-size:10px}.header-pills .pill{padding:1px 5px;font-size:9.5px}#clock.clock{padding:2px 5px}#clock .ck-date{font-size:9px}#clock .ck-time{font-size:11px}#clock .ck-lab{font-size:8px}#clock .ck-line{gap:4px}.app-header #theme-btn,.app-header #refresh-btn{min-width:32px;width:32px}}
+@media (max-width:340px){.app-header{padding-left:6px}.app-header .brand-emb-btn{margin-left:0}.header-status{gap:2px}.pill{padding:3px 5px;font-size:10px}.header-pills .pill{padding:1px 5px;font-size:9.5px}#net-pill{font-size:10.5px}#pack-pill,#wx-live-pill{font-size:8.5px}#clock.clock{padding:2px 5px}#clock .ck-date{font-size:9px}#clock .ck-time{font-size:11px}#clock .ck-sec{font-size:10px}#clock .ck-lab{font-size:8px}#clock .ck-line{gap:4px}.app-header #theme-btn,.app-header #refresh-btn{min-width:32px;width:32px}}
 
 .duty-src{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;vertical-align:middle;margin-left:6px;letter-spacing:0}
 .duty-src:empty{display:none}
