@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 14
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment2.outputs.page_url || steps.deployment3.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: Fetch data pack (release asset)
@@ -39,5 +39,35 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+      # deploy-pages@v4 can race the just-uploaded artifact and fail immediately
+      # with "Found 0 artifact(s)" / "Fetching artifact metadata failed".
+      # Sleep, then retry up to 3 attempts in this same job so a later success
+      # still concludes the workflow run as success. auto_update.py only
+      # dispatches this workflow and does not wait; a re-dispatched second run
+      # would leave the first run red, so retries stay in-job.
+      # concurrency (group: pages, cancel-in-progress: false) is unchanged.
+      - name: Wait for Pages artifact to be visible
+        run: sleep 12
       - id: deployment
+        name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - name: Wait before Pages deploy retry 2
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 15
+      - id: deployment2
+        name: Deploy to GitHub Pages (retry 2)
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - name: Wait before Pages deploy retry 3
+        if: steps.deployment.outcome == 'failure' && steps.deployment2.outcome == 'failure'
+        run: sleep 25
+      - id: deployment3
+        name: Deploy to GitHub Pages (retry 3)
+        if: steps.deployment.outcome == 'failure' && steps.deployment2.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+      - name: Confirm Pages deploy succeeded
+        if: steps.deployment.outcome == 'success' || steps.deployment2.outcome == 'success' || steps.deployment3.outcome == 'success'
+        run: |
+          echo "Pages deploy succeeded (attempt outcomes: 1=${{ steps.deployment.outcome }} 2=${{ steps.deployment2.outcome }} 3=${{ steps.deployment3.outcome }})"
