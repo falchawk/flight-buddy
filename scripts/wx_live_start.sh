@@ -24,6 +24,6 @@ if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" || -z "$
   echo "--local だけなら: python3 $ROOT/scripts/wx_live_poller.py --loop --local"
   exit 1
 fi
-nohup python3 "$ROOT/scripts/wx_live_poller.py" --loop >>"$LOG" 2>&1 &
+PYTHONUNBUFFERED=1 nohup python3 "$ROOT/scripts/wx_live_poller.py" --loop >>"$LOG" 2>&1 &
 echo $! >"$PIDFILE"
 echo "started pid=$! log=$LOG"

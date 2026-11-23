@@ -562,7 +562,7 @@ def cycle(cfg, out_path, local_only=False, skip_awc=False, skip_swim=False, swim
           f"atis={stats['atis']} "
           f"metarSwim={stats['metarSwim']} metarAwc={stats['metarAwc']} "
           f"tafSwim={stats['tafSwim']} tafAwc={stats['tafAwc']} speci={stats['speci']} "
-          f"swim={'ok' if swim.get('ok') else swim.get('reason') or 'fail'} kv={kv} t={dt_s:.0f}s")
+          f"swim={'ok' if swim.get('ok') else swim.get('reason') or 'fail'} kv={kv} t={dt_s:.0f}s", flush=True)
     return 0 if (swim.get("ok") or stats["metarAwc"] or stats["atis"] or bool((prev.get("airports") or {}) and payload.get("airports"))) else 1
 
 
@@ -601,7 +601,7 @@ def main(argv=None):
                 cycle(cfg, args.out, local_only=args.local, skip_awc=args.skip_awc, skip_swim=args.skip_swim)
             except Exception as e:  # noqa: BLE001
                 log("周期失敗:", type(e).__name__)
-                print(f"WX-LIVE FAIL {type(e).__name__}")
+                print(f"WX-LIVE FAIL {type(e).__name__}", flush=True)
             time.sleep(max(30, interval))
     finally:
         try:

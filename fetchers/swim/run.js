@@ -54,7 +54,8 @@ const now = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
     return Date.now() - Date.parse(p.fetchedAt) >= INTERVAL[part];
   };
   const airportsChanged = (part) => { const p = prev[part]; if (!p || !p.fetchedAt) return true; const have = new Set(p.airports || []); return AIRPORTS.some((a) => !have.has(a)); };
-  const parts = ['atis', 'profile', 'notam', 'aip'].filter((p) => (PARTS ? PARTS.has(p) || airportsChanged(p) || FORCE : due(p)));
+  // --parts を付けたときはその部品だけ（--force でも他部品は増やさない）。--force の鮮度無視は due() 側。
+  const parts = ['atis', 'profile', 'notam', 'aip'].filter((p) => (PARTS ? PARTS.has(p) : due(p)));
   const run = async () => {
     const res = {};
     await Promise.all(parts.map(async (part) => {
