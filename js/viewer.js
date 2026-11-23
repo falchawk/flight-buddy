@@ -11,7 +11,7 @@
     const wrap = document.createElement('div');
     const layout = frame.layout || (frame.images.length > 1 ? 'stack' : 'single');
     wrap.className = `fr fr-${layout} fr-${mode}`;
-    const urls = await Promise.all(frame.images.map((im) => urlFn(im.file)));
+    const urls = await Promise.all((frame.images || []).map((im) => (im && im.url) ? im.url : urlFn(im && im.file)));
     const loads = [];
     urls.forEach((u, i) => {
       const img = new Image();

@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.36';
+  const APP_VERSION = '1.9.37';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { areaHide: 'fb.areaHide', notamMode: 'fb.notamMode', airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
@@ -379,6 +379,7 @@
     return out;
   }
   function renderCharts() {
+    if (window.FBRadarLive) window.FBRadarLive.unwatch();
     const ch = state.pack?.charts;
     const meta = $('charts-meta'), catsNav = $('chart-cats'), itemsNav = $('chart-items'), vbox = $('chart-variants'), body = $('chart-body');
     catsNav.innerHTML = ''; itemsNav.innerHTML = ''; vbox.innerHTML = ''; body.innerHTML = '';
@@ -468,49 +469,97 @@
       vbox.appendChild(stepWrap(w));
     }
     // PM2.5 予測：パック作成時点で「いま以降で一番早い時刻」から5コマ。開いた後に過去になっても作成時のまま全コマ表示する
-    const frames = v.frames || [];
+    const packFrames = v.frames || [];
+    const radarLive = !!(window.FBRadarLive && window.FBRadarLive.isLiveProduct(item.id));
+    let frames = packFrames;
+    if (radarLive) {
+      const cached = window.FBRadarLive.get(item.id, v.id);
+      if (cached) frames = window.FBRadarLive.mergeFrames(packFrames, cached).frames;
+    }
     if (!frames.length) { panel.innerHTML = head() + '<div class="chart-stage"><p class="hint">表示できるコマがありません。</p></div>'; body.appendChild(panel); return; }
     const fkey = `${key}/${v.id}`;
-    if (frameIdx[fkey] == null || frameIdx[fkey] >= frames.length) frameIdx[fkey] = Math.min(v.defaultFrame ?? frames.length - 1, frames.length - 1);
+    if (frameIdx[fkey] == null || frameIdx[fkey] >= frames.length) {
+      frameIdx[fkey] = radarLive
+        ? window.FBRadarLive.defaultObsIndex(frames)
+        : Math.min(v.defaultFrame ?? frames.length - 1, frames.length - 1);
+    }
     const carried = p.carriedOver || v.carriedOver;
     const latestI = (cat.id === 'fxjp' || item.id === 'a30') ? latestAnalysisIndex(frames) : -1;
     const latestBtnHtml = (latestI >= 0 && frames.length > 1)
       ? '<button type="button" class="btn f-latest" aria-label="最新の ANALYSIS に戻る">最新</button>' : '';
+    const credit = radarLive ? `<div class="chart-note hint">${esc(window.FBRadarLive.CREDIT)}</div>` : '';
+    const note = p.note ? `<div class="chart-note hint">${esc(p.note.replace('アプリを開いた時に過去になったコマは自動で隠す。', ''))}</div>` : '';
     panel.innerHTML = head(carried ? ' <span class="badge carried">前回分</span>' : '')
       + '<div class="chart-stage"><p class="hint">読み込み中…</p></div>'
       + (frames.length > 1 ? `<div class="frame-bar"><button type="button" class="btn f-prev">◀</button><span class="lbl"></span>${latestBtnHtml}<button type="button" class="btn f-next">▶</button></div><input class="frame-slider" type="range" min="0" max="${frames.length - 1}" step="1" />` : '<div class="frame-bar"><span class="lbl"></span></div>')
-      + (p.note ? `<div class="chart-note hint">${esc(p.note.replace('アプリを開いた時に過去になったコマは自動で隠す。', ''))}</div>` : '');
+      + note + credit;
     body.appendChild(panel);
     const stage = panel.querySelector('.chart-stage'), lbl = panel.querySelector('.lbl'), slider = panel.querySelector('.frame-slider');
     const latestBtn = panel.querySelector('.f-latest');
     let tok = 0;
+    const urlFn = state.pack.imageUrl;
     const show = async (i) => {
+      if (!frames.length) return;
       i = Math.max(0, Math.min(frames.length - 1, i)); frameIdx[fkey] = i;
       const fr = frames[i];
       const age = frameAge(fr);
-      lbl.textContent = `${frames.length > 1 ? `${i + 1}/${frames.length} ・ ` : ''}${fr.label || ''}${age ? `（${age}）` : ''}`;
-      if (slider) slider.value = String(i);
+      if (radarLive && lbl) {
+        const badge = window.FBRadarLive.badgeHtml(fr, { online: navigator.onLine, receivedAt: fr.receivedAt });
+        lbl.innerHTML = `${frames.length > 1 ? `${i + 1}/${frames.length} ・ ` : ''}${esc(fr.label || '')}${age ? `（${esc(age)}）` : ''} ${badge}`;
+      } else if (lbl) {
+        lbl.textContent = `${frames.length > 1 ? `${i + 1}/${frames.length} ・ ` : ''}${fr.label || ''}${age ? `（${age}）` : ''}`;
+      }
+      if (slider) { slider.max = String(Math.max(0, frames.length - 1)); slider.value = String(i); }
       if (latestBtn) {
         const atLatest = i === latestI;
         latestBtn.disabled = atLatest;
         latestBtn.setAttribute('aria-disabled', atLatest ? 'true' : 'false');
       }
       const my = ++tok;
-      const node = await window.FBViewer.compose(fr, state.pack.imageUrl, 'inline');
-      if (my !== tok) return;
+      const node = await window.FBViewer.compose(fr, urlFn, 'inline');
+      if (my !== tok || !panel.isConnected) return;
       stage.innerHTML = ''; stage.appendChild(node);
+      if (fr.live) stage.dataset.radarLive = '1'; else delete stage.dataset.radarLive;
+      stage.dataset.frameTime = fr.time || '';
       stage.insertAdjacentHTML('beforeend', '<span class="zoom-hint">タップで拡大</span>');
       // 前後のコマを先読み
-      for (const j of [i + 1, i - 1]) if (frames[j]) frames[j].images.forEach((im) => state.pack.imageUrl(im.file));
+      for (const j of [i + 1, i - 1]) if (frames[j]) frames[j].images.forEach((im) => { if (im && im.file && !im.url) urlFn(im.file); });
     };
-    if (frames.length > 1) {
-      panel.querySelector('.f-prev').onclick = () => show(frameIdx[fkey] - 1);
-      panel.querySelector('.f-next').onclick = () => show(frameIdx[fkey] + 1);
+    const bindControls = () => {
+      const prev = panel.querySelector('.f-prev'), next = panel.querySelector('.f-next'), sl = panel.querySelector('.frame-slider');
+      if (prev) prev.onclick = () => show(frameIdx[fkey] - 1);
+      if (next) next.onclick = () => show(frameIdx[fkey] + 1);
       if (latestBtn) latestBtn.onclick = () => { if (latestI >= 0) show(latestI); };
-      slider.oninput = () => show(Number(slider.value));
-    }
-    stage.onclick = () => window.FBViewer.open(frames, frameIdx[fkey], state.pack.imageUrl, `${p.title || item.label}${variants.length > 1 ? ' ・ ' + v.label : ''}`, (i) => { frameIdx[fkey] = i; show(i); });
+      if (sl) sl.oninput = () => show(Number(sl.value));
+    };
+    bindControls();
+    stage.onclick = () => window.FBViewer.open(frames, frameIdx[fkey], urlFn, `${p.title || item.label}${variants.length > 1 ? ' ・ ' + v.label : ''}`, (i) => { frameIdx[fkey] = i; show(i); });
     show(frameIdx[fkey]);
+    if (radarLive) {
+      window.FBRadarLive.watch({
+        product: item.id,
+        area: v.id,
+        packFrames,
+        reason: 'open',
+        onUpdate: (rec) => {
+          if (!panel.isConnected) return;
+          const merged = window.FBRadarLive.mergeFrames(packFrames, rec);
+          const nextI = window.FBRadarLive.resolveIndex(frames, frameIdx[fkey], merged.frames);
+          frames = merged.frames;
+          if (slider) slider.max = String(Math.max(0, frames.length - 1));
+          else if (frames.length > 1 && !panel.querySelector('.frame-slider')) {
+            const bar = panel.querySelector('.frame-bar');
+            if (bar && !bar.querySelector('.f-prev')) {
+              bar.insertAdjacentHTML('afterbegin', '<button type="button" class="btn f-prev">◀</button>');
+              bar.insertAdjacentHTML('beforeend', '<button type="button" class="btn f-next">▶</button>');
+            }
+            bar.insertAdjacentHTML('afterend', `<input class="frame-slider" type="range" min="0" max="${frames.length - 1}" step="1" />`);
+            bindControls();
+          }
+          show(nextI);
+        },
+      });
+    }
   }
   function renderWxText(panel, head) {
     panel.innerHTML = head();
@@ -1127,6 +1176,9 @@
     }
     try { await navigator.storage?.persist?.(); } catch { /* ignore */ }
 
+    if (window.FBRadarLive) {
+      try { await window.FBRadarLive.start(); } catch (err) { console.warn(err); }
+    }
     if (window.FBWxLive) {
       window.FBWxLive.start({ onUpdate() {
         try { renderStatus(); renderCharts(); renderMap(); renderDuty(); renderWind(); } catch (err) { console.warn(err); }

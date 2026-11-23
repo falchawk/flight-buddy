@@ -708,6 +708,8 @@ label.block{margin-top:14px}
 /* 近リアルタイム気象（LIVE リレー） */
 #wx-live-pill[hidden]{display:none!important}
 .badge.live{color:#fff;background:var(--o-green,#34c759);letter-spacing:.04em}
+.frame-bar .radar-valid{font-weight:500}
+.chart-note a.credit-jma{color:inherit}
 .badge.pack{color:var(--text-dim);background:var(--bg-elev);border:1px solid var(--line)}
 .badge.speci{color:#fff;background:var(--ifr,#c0392b);letter-spacing:.04em}
 .sub-label.speci-now{color:var(--ifr,#c0392b)}
