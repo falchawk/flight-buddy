@@ -1,18 +1,6 @@
 {
-  "schema": "flight-buddy-wx-relay/1",
-  "_note": "近リアルタイム気象リレー（ATIS・METAR/SPECI・TAF）。秘密情報は書かない。取得対象は SWIM 負荷を抑えるため、ATIS 対象空港＋SFJ 路線＋SETTINGS 既定の主空港に限定。",
+  "schema": "flight-buddy-wx-relay-config/1",
+  "_note": "近リアルタイム気象リレー（ATIS・METAR/SPECI・TAF）。秘密情報は書かない。対象は SWIM が対応する国内空港のすべて（METAR/SPECI/TAF＝pack の japan_all のうち RJ**/RO**、ATIS＝swim.js の ATIS_SUPPORTED_ICAO）。路線や SETTINGS 既定などの部分集合には絞らない。空港リストはここに固定せず、実行時に解決する。ATIS は locationList の1リクエストで全対応空港を取る。METAR/TAF プロファイルは空港ごとに1リクエスト（並列は SWIM_MAX_PARALLEL、既定4）。実測では 134 空港の atis+profile 一括が約16秒。負荷を抑えるため ATIS は pollSeconds ごと、プロファイルは profileCycleSeconds に分割して一周する。初回（出力が空のとき）だけ全件を一度取る。このポラーは箱上の通常プロセスで、モデルや LLM は呼ばない。",
   "pollSeconds": 90,
-  "kvNamespaceName": "FB_WX_LIVE",
-  "kvKey": "live",
-  "workerName": "flight-buddy-wx",
-  "atisAirports": [
-    "RJCC", "RJCH", "RJSS", "RJAA", "RJTT", "RJSN", "RJGG", "RJOO", "RJBB", "RJBE",
-    "RJOA", "RJOT", "RJOM", "RJOK", "RJFF", "RJFS", "RJFU", "RJFT", "RJFO", "RJFM",
-    "RJFK", "ROAH", "ROIG"
-  ],
-  "profileAirports": [
-    "RJAA", "RJBB", "RJBE", "RJCC", "RJCH", "RJDC", "RJFF", "RJFK", "RJFM", "RJFO",
-    "RJFR", "RJFS", "RJFT", "RJFU", "RJGG", "RJOA", "RJOK", "RJOM", "RJOO", "RJOT",
-    "RJSN", "RJSS", "RJTT", "ROAH", "ROIG"
-  ]
+  "profileCycleSeconds": 180
 }

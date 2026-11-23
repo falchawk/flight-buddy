@@ -2,7 +2,10 @@
 """近リアルタイム気象ポラー（ATIS / METAR / SPECI / TAF）。
 
 SWIM を第一出典とし、空港の取得に失敗したときだけ AWC（aviationweather.gov）に倒す。
-1–2 分ごとに走らせ、ローカル JSON を書き、設定があれば Cloudflare KV へ上げる。
+箱上の通常の Python + Node プロセス。モデルや LLM は呼ばない（Grok Bot の使用量も使わない）。
+pollSeconds ごとに走らせ、ローカル JSON を書き、設定があれば Cloudflare KV へ上げる。
+対象は SWIM 対応の国内空港すべて（路線や既定空港では絞らない）。
+ATIS は1リクエストで全対応空港、METAR/TAF は空港ごと（profileCycleSeconds で分割一周する）。
 認証情報（SWIM / Cloudflare）は環境変数または 600 の env ファイルのみ。ログ・リポジトリ・JSON 本文に出さない。
 """
 from __future__ import annotations
@@ -30,6 +33,7 @@ CFG_PATH = os.path.join(ROOT, "config", "wx_relay.json")
 SWIM_RUNNER = os.path.join(ROOT, "fetchers", "swim", "run.js")
 OUT_DEFAULT = os.environ.get("FB_WX_LIVE_FILE", "/workspace/fb-staging/wx-live.json")
 STAGING = os.environ.get("FB_WX_LIVE_SWIM_DIR", "/workspace/fb-staging/wx-live-swim")
+CURSOR_PATH = os.environ.get("FB_WX_LIVE_CURSOR", "/workspace/fb-staging/wx-live-cursor.json")
 LOCK = os.environ.get("FB_WX_LIVE_LOCK", "/tmp/flight-buddy-wx-live.lock")
 SCHEMA = "flight-buddy-wx-live/1"
 UA = "FlightBuddyWxLive/1.0 (+https://falchawk.github.io/flight-buddy/)"
@@ -56,16 +60,71 @@ def load_cfg(path=CFG_PATH):
         return json.load(f)
 
 
-def watched(cfg):
-    atis = [x.upper() for x in (cfg.get("atisAirports") or [])]
-    prof = [x.upper() for x in (cfg.get("profileAirports") or [])]
-    # プロファイル対象は ATIS 対象も必ず含める（漏れ防止）
-    seen, prof_all = set(), []
-    for x in prof + atis:
-        if x not in seen:
+def _uniq(seq):
+    seen, out = set(), []
+    for x in seq:
+        if x and x not in seen:
             seen.add(x)
-            prof_all.append(x)
-    return atis, prof_all
+            out.append(x)
+    return out
+
+
+def atis_supported_icaos():
+    """SWIM が ATIS を返す空港。出典は fetchers/swim/swim.js の ATIS_SUPPORTED_ICAO のみ。"""
+    path = os.path.join(ROOT, "fetchers", "swim", "swim.js")
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    m = re.search(r"ATIS_SUPPORTED_ICAO\s*=\s*new Set\(\s*\[([^\]]+)\]", text)
+    if not m:
+        raise RuntimeError("ATIS_SUPPORTED_ICAO を swim.js から読めない")
+    return _uniq(re.findall(r"['\"]([A-Z]{4})['\"]", m.group(1)))
+
+
+def profile_airports():
+    """SWIM 国内プロファイル対象＝japan_all の RJ**/RO** すべて。路線では絞らない。"""
+    pack_cfg = build_pack.read_json(os.path.join(ROOT, "config", "pack_config.json"), {}) or {}
+    return _uniq(x.upper() for x in build_pack.swim_targets(pack_cfg))
+
+
+def poll_seconds(cfg):
+    return int((cfg or {}).get("pollSeconds") or 90)
+
+
+def profile_cycle_seconds(cfg):
+    poll = poll_seconds(cfg)
+    cycle = int((cfg or {}).get("profileCycleSeconds") or 180)
+    return max(poll, cycle)
+
+
+def profile_chunk_size(n, cfg):
+    """profileCycleSeconds で全件を一周するよう、1周期あたりの件数を決める。"""
+    if n <= 0:
+        return 0
+    poll = poll_seconds(cfg)
+    cycle = profile_cycle_seconds(cfg)
+    return max(1, min(n, (n * poll + cycle - 1) // cycle))
+
+
+def next_chunk(all_icaos, cursor, size):
+    n = len(all_icaos)
+    if n == 0:
+        return [], 0
+    size = max(1, min(int(size), n))
+    start = int(cursor or 0) % n
+    chunk = [all_icaos[(start + i) % n] for i in range(size)]
+    return chunk, (start + size) % n
+
+
+def watched(cfg):
+    """本番は全国内 SWIM 対象。テスト用に cfg へ明示リストを置ける（部分集合運用ではない）。"""
+    if (cfg or {}).get("atisAirports") or (cfg or {}).get("profileAirports"):
+        atis = _uniq(x.upper() for x in (cfg.get("atisAirports") or []))
+        prof = _uniq(x.upper() for x in (cfg.get("profileAirports") or []))
+    else:
+        atis = atis_supported_icaos()
+        prof = profile_airports()
+    # プロファイル対象は ATIS 対象も必ず含める（漏れ防止）
+    return atis, _uniq(prof + atis)
 
 
 def atis_meta(text, ref):
@@ -200,46 +259,98 @@ def fetch_awc(icaos, hours=12):
     return {"fetchedAt": fetched, "airports": out, "ok": err is None, "error": err}
 
 
-def run_swim(icaos, staging=STAGING, timeout=180):
+def _read_swim_json(staging):
+    path = os.path.join(staging, "swim.json")
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def run_swim(icaos, staging=STAGING, timeout=180, parts="atis,profile", take_lock=True):
+    """SWIM ランナーを呼ぶ。take_lock=False のときは呼び出し側が swim ロックを持つ。"""
+    import subprocess
+    icaos = [i for i in (icaos or []) if i]
+    if not icaos:
+        return {"ok": True, "reason": None, "atis": None, "profile": None, "line": "SWIM skip empty"}
     os.makedirs(staging, exist_ok=True)
     if not os.path.exists(SWIM_RUNNER):
         return {"ok": False, "reason": "no-runner", "atis": None, "profile": None}
     if not (os.environ.get("SWIM_USER") and os.environ.get("SWIM_PASS")):
         return {"ok": False, "reason": "no-creds", "atis": None, "profile": None}
-    import subprocess
+
+    def _run():
+        r = subprocess.run(
+            ["node", SWIM_RUNNER, "--out", staging, "--airports", ",".join(icaos),
+             "--parts", parts, "--force"],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        line = next((ln for ln in reversed((r.stdout or "").strip().splitlines()) if ln.startswith("SWIM ")), "")
+        # 本文や認証情報は出さない
+        log(line or f"exit={r.returncode}")
+        data = _read_swim_json(staging)
+        ok = r.returncode == 0 and line.startswith("SWIM OK")
+        return {"ok": ok, "reason": None if ok else (line or f"exit{r.returncode}"),
+                "atis": data.get("atis"), "profile": data.get("profile"), "line": line}
+
     try:
-        with swim_lock.hold(timeout_s=180):
-            r = subprocess.run(
-                ["node", SWIM_RUNNER, "--out", staging, "--airports", ",".join(icaos),
-                 "--parts", "atis,profile", "--force"],
-                capture_output=True, text=True, timeout=timeout,
-            )
+        if take_lock:
+            with swim_lock.hold(timeout_s=180):
+                return _run()
+        return _run()
     except TimeoutError:
         log("SWIM ロック待ちタイムアウト")
         return {"ok": False, "reason": "lock-timeout", "atis": None, "profile": None}
     except subprocess.TimeoutExpired:
         log("SWIM タイムアウト")
         return {"ok": False, "reason": "timeout", "atis": None, "profile": None}
-    line = next((ln for ln in reversed((r.stdout or "").strip().splitlines()) if ln.startswith("SWIM ")), "")
-    # 本文や認証情報は出さない
-    log(line or f"exit={r.returncode}")
-    path = os.path.join(staging, "swim.json")
-    data = {}
-    if os.path.isfile(path):
-        try:
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception:  # noqa: BLE001
-            data = {}
-    ok = r.returncode == 0 and line.startswith("SWIM OK")
-    return {"ok": ok, "reason": None if ok else (line or f"exit{r.returncode}"),
-            "atis": data.get("atis"), "profile": data.get("profile"), "line": line}
 
 
-def build_payload(cfg, swim, awc, ref=None):
-    """SWIM 優先。その空港の METAR/TAF/ATIS が SWIM から取れないときだけ AWC。"""
+def fetch_swim_cycle(atis_list, profile_chunk, staging=STAGING, timeout=180):
+    """同じ swim ロックの中で、ATIS 全件（バッチ）とプロファイルの当該チャンクを取る。"""
+    import subprocess
+    try:
+        with swim_lock.hold(timeout_s=180):
+            atis_res = run_swim(atis_list, staging=staging, timeout=timeout, parts="atis", take_lock=False)
+            prof_res = run_swim(profile_chunk, staging=staging, timeout=timeout, parts="profile", take_lock=False)
+    except TimeoutError:
+        log("SWIM ロック待ちタイムアウト")
+        return {"ok": False, "reason": "lock-timeout", "atis": None, "profile": None,
+                "atisOk": False, "profileOk": False}
+    except subprocess.TimeoutExpired:
+        log("SWIM タイムアウト")
+        return {"ok": False, "reason": "timeout", "atis": None, "profile": None,
+                "atisOk": False, "profileOk": False}
+    atis_ok = bool(atis_res.get("ok"))
+    prof_ok = bool(prof_res.get("ok"))
+    reason = None
+    if not (atis_ok and prof_ok):
+        reason = "atis:%s;profile:%s" % (atis_res.get("reason") or "ok", prof_res.get("reason") or "ok")
+    return {
+        "ok": atis_ok or prof_ok,
+        "reason": reason,
+        "atis": atis_res.get("atis"),
+        "profile": prof_res.get("profile"),
+        "atisOk": atis_ok,
+        "profileOk": prof_ok,
+    }
+
+
+def build_payload(cfg, swim, awc, ref=None, atis_list=None, prof_list=None, refresh_profile=None):
+    """SWIM 優先。その空港の METAR/TAF/ATIS が SWIM から取れないときだけ AWC。
+
+    refresh_profile を渡したときは、その空港だけ METAR/TAF を埋め、他は空（呼び出し側で前回分と合成）。
+    """
     ref = ref or now_utc()
-    atis_list, prof_list = watched(cfg)
+    if atis_list is None or prof_list is None:
+        atis_list, prof_list = watched(cfg)
+    if refresh_profile is None:
+        refresh_profile = set(prof_list)
+    else:
+        refresh_profile = set(refresh_profile)
     awc_ap = (awc or {}).get("airports") or {}
     swim_ok = bool(swim and swim.get("ok"))
     atis_part = (swim or {}).get("atis") or {}
@@ -249,38 +360,37 @@ def build_payload(cfg, swim, awc, ref=None):
     airports = {}
     stats = {"metarSwim": 0, "metarAwc": 0, "tafSwim": 0, "tafAwc": 0, "atis": 0, "speci": 0}
     for icao in prof_list:
-        pr = prof_by.get(icao) or {}
-        sm = metar_entry(pr.get("metarText") or ((prof_part.get("metarByIcao") or {}).get(icao) or {}).get("text"), ref, "SWIM")
-        st_raw = swim_staging._clean(pr.get("tafText") or ((prof_part.get("tafByIcao") or {}).get(icao) or {}).get("text"))
-        st = None
-        if st_raw:
-            st = {"raw": st_raw, "issueTime": taf_issue(st_raw, ref), "validFrom": None, "validTo": None, "source": "SWIM"}
-        aw = awc_ap.get(icao) or {}
-        metar_src = "SWIM"
-        taf_src = "SWIM"
-        if sm:
-            stats["metarSwim"] += 1
-            metars = [sm]
-        else:
-            metars = list(aw.get("metar") or [])
-            if metars:
-                metar_src = "AWC"
-                stats["metarAwc"] += 1
+        metars, taf, metar_src, taf_src = [], None, None, None
+        if icao in refresh_profile:
+            pr = prof_by.get(icao) or {}
+            sm = metar_entry(pr.get("metarText") or ((prof_part.get("metarByIcao") or {}).get(icao) or {}).get("text"), ref, "SWIM")
+            st_raw = swim_staging._clean(pr.get("tafText") or ((prof_part.get("tafByIcao") or {}).get(icao) or {}).get("text"))
+            st = None
+            if st_raw:
+                st = {"raw": st_raw, "issueTime": taf_issue(st_raw, ref), "validFrom": None, "validTo": None, "source": "SWIM"}
+            aw = awc_ap.get(icao) or {}
+            if sm:
+                stats["metarSwim"] += 1
+                metars = [sm]
+                metar_src = "SWIM"
             else:
-                metar_src = None
-        if st:
-            stats["tafSwim"] += 1
-            taf = st
-        else:
-            taf = aw.get("taf")
-            if taf:
-                taf_src = "AWC"
-                stats["tafAwc"] += 1
+                metars = list(aw.get("metar") or [])
+                if metars:
+                    metar_src = "AWC"
+                    stats["metarAwc"] += 1
+            if st:
+                stats["tafSwim"] += 1
+                taf = st
+                taf_src = "SWIM"
             else:
-                taf_src = None
-                taf = None
-        if metars and (metars[0].get("type") == "SPECI"):
-            stats["speci"] += 1
+                taf = aw.get("taf")
+                if taf:
+                    taf_src = "AWC"
+                    stats["tafAwc"] += 1
+                else:
+                    taf = None
+            if metars and (metars[0].get("type") == "SPECI"):
+                stats["speci"] += 1
         at = atis_by.get(icao) or {}
         atis = None
         atis_src = None
@@ -356,39 +466,104 @@ def write_json(path, data):
     os.replace(tmp, path)
 
 
-def cycle(cfg, out_path, local_only=False, skip_awc=False, skip_swim=False, swim_override=None):
+def read_json(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def merge_airports(prev, payload, refresh_profile, atis_ok):
+    """チャンク更新：今回取った METAR/TAF と、成功したときの ATIS だけ上書き。失敗分は前回を残す。"""
+    prev_ap = (prev or {}).get("airports") or {}
+    new_ap = (payload or {}).get("airports") or {}
+    refresh_profile = set(refresh_profile or [])
+    out = {}
+    for icao, fresh in new_ap.items():
+        old = prev_ap.get(icao)
+        if not old:
+            out[icao] = fresh
+            continue
+        merged = dict(old)
+        if icao in refresh_profile:
+            for k in ("metar", "taf", "metarSource", "tafSource"):
+                merged[k] = fresh.get(k)
+        if atis_ok:
+            for k in ("atis", "atisSource", "atisReason", "atisFetchedAt"):
+                merged[k] = fresh.get(k)
+        out[icao] = merged
+    payload = dict(payload)
+    payload["airports"] = out
+    if prev and not (payload.get("fetchedAt") or {}).get("atis") and (prev.get("fetchedAt") or {}).get("atis") and not atis_ok:
+        fetched = dict(payload.get("fetchedAt") or {})
+        fetched["atis"] = (prev.get("fetchedAt") or {}).get("atis")
+        payload["fetchedAt"] = fetched
+    return payload
+
+
+def cycle(cfg, out_path, local_only=False, skip_awc=False, skip_swim=False, swim_override=None,
+          cursor_path=CURSOR_PATH):
     t0 = time.time()
     atis_list, prof_list = watched(cfg)
-    if skip_swim:
-        swim = {"ok": False, "reason": "skipped", "atis": None, "profile": None}
-    elif swim_override is not None:
-        swim = swim_override
+    prev = read_json(out_path) if os.path.isfile(out_path) else {}
+    cursor_state = read_json(cursor_path) if cursor_path and os.path.isfile(cursor_path) else {}
+    cursor = int(cursor_state.get("profileCursor") or 0)
+    # テストの swim_override や、まだ出力が無い初回は全件。以降はチャンク。
+    first_fill = (swim_override is None and not skip_swim
+                  and not (prev.get("airports") or {}))
+    if first_fill or swim_override is not None or skip_swim:
+        profile_chunk = list(prof_list)
+        next_cursor = 0
+        mode = "full"
     else:
-        swim = run_swim(prof_list)
+        size = profile_chunk_size(len(prof_list), cfg)
+        profile_chunk, next_cursor = next_chunk(prof_list, cursor, size)
+        mode = "chunk"
+    refresh_profile = set(profile_chunk)
+    if skip_swim:
+        swim = {"ok": False, "reason": "skipped", "atis": None, "profile": None,
+                "atisOk": False, "profileOk": False}
+    elif swim_override is not None:
+        swim = dict(swim_override)
+        swim.setdefault("atisOk", bool(swim.get("ok")))
+        swim.setdefault("profileOk", bool(swim.get("ok")))
+    else:
+        swim = fetch_swim_cycle(atis_list, profile_chunk)
     need_awc = []
+    profile_ok = bool(swim.get("profileOk")) if "profileOk" in swim else bool(swim.get("ok"))
+    atis_ok = bool(swim.get("atisOk")) if "atisOk" in swim else bool(swim.get("ok"))
     if not skip_awc:
-        if not swim.get("ok"):
-            need_awc = list(prof_list)
+        if not profile_ok:
+            need_awc = list(profile_chunk)
         else:
             prof_by = ((swim.get("profile") or {}).get("byIcao") or {})
-            for icao in prof_list:
+            for icao in profile_chunk:
                 pr = prof_by.get(icao) or {}
                 if not swim_staging._clean(pr.get("metarText")) or not swim_staging._clean(pr.get("tafText")):
                     need_awc.append(icao)
     awc = fetch_awc(need_awc) if need_awc else {"fetchedAt": None, "airports": {}, "ok": True, "error": None}
-    payload, stats = build_payload(cfg, swim, awc)
+    payload, stats = build_payload(
+        cfg, swim, awc, atis_list=atis_list, prof_list=prof_list, refresh_profile=refresh_profile,
+    )
+    if prev.get("airports") and swim_override is None:
+        payload = merge_airports(prev, payload, refresh_profile, atis_ok=atis_ok)
     write_json(out_path, payload)
+    if cursor_path and swim_override is None and not skip_swim:
+        write_json(cursor_path, {"profileCursor": next_cursor, "lastMode": mode,
+                                 "lastChunk": profile_chunk, "updatedAt": payload.get("generatedAt")})
     kv = "skip(local)"
     if not local_only:
         kv = put_kv(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
     dt_s = time.time() - t0
     # 値に空白を入れない1行サマリー（途中で切れても読める）
-    print(f"WX-LIVE {'OK' if swim.get('ok') or stats['metarAwc'] else 'FAIL'} "
-          f"airports={len(payload['airports'])} atis={stats['atis']} "
+    print(f"WX-LIVE {'OK' if swim.get('ok') or stats['metarAwc'] or stats['atis'] else 'FAIL'} "
+          f"airports={len(payload['airports'])} mode={mode} chunk={len(profile_chunk)}/{len(prof_list)} "
+          f"atis={stats['atis']} "
           f"metarSwim={stats['metarSwim']} metarAwc={stats['metarAwc']} "
           f"tafSwim={stats['tafSwim']} tafAwc={stats['tafAwc']} speci={stats['speci']} "
           f"swim={'ok' if swim.get('ok') else swim.get('reason') or 'fail'} kv={kv} t={dt_s:.0f}s")
-    return 0 if (swim.get("ok") or stats["metarAwc"] or stats["atis"]) else 1
+    return 0 if (swim.get("ok") or stats["metarAwc"] or stats["atis"] or bool((prev.get("airports") or {}) and payload.get("airports"))) else 1
 
 
 def acquire_self_lock():

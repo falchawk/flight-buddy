@@ -138,7 +138,8 @@ python3 -m http.server 8000   # → http://localhost:8000/
 
 
 ## 近リアルタイム気象（ATIS / METAR / SPECI / TAF）
-- 15分パックとは別に、箱側のポラー（`scripts/wx_live_poller.py`）が SWIM から対象空港だけを 1–2 分ごとに取り、Cloudflare Worker + KV 経由でアプリへ渡す（AWC は SWIM が失敗した空港だけ）。
+- 15分パックとは別に、箱側のポラー（`scripts/wx_live_poller.py`）が SWIM 対応の国内空港すべて（METAR/SPECI/TAF はプロファイル対象の全空港、ATIS は SWIM が返す全空港）を取り、Cloudflare Worker + KV 経由でアプリへ渡す（AWC は SWIM が失敗した空港だけ）。路線や SETTINGS 既定などの部分集合には絞らない。
+- 間隔：ATIS は 90 秒ごと（対応空港を1リクエストでまとめて取得）。METAR/TAF は空港ごとに1リクエストのため、約 3 分で全件を一周するよう分割する（1周期あたり約半分。並列は既定4。実測の全件一括は約16秒）。初回だけ全件を一度取る。ポラーは箱上の通常プロセスで、モデルや LLM は呼ばない。
 - アプリは `js/wx-relay-config.js` の URL が空のあいだ無効。設定後は画面が表示中かつオンラインのとき約 60 秒ごと（再表示・オンライン復帰ですぐ）にリレーを見に行き、**報の発表時刻がパックより新しいときだけ**置き換える（古くはしない）。報ごとに LIVE / PACK を表示。SPECI は強調。
 - 最後に受信した LIVE 報は端末（localStorage）に残す。機内オフラインやアプリ再起動後も、より古いパックへは戻さない。オフライン中は「LIVE 受信 N分前」。オンラインに戻ると自動更新を再開。
 - 手順・再起動は `relay/README.md`。秘密情報はリポジトリに置かない。

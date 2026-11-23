@@ -1,6 +1,6 @@
 # 近リアルタイム気象リレー（Flight Buddy）
 
-SWIM の ATIS / METAR / SPECI / TAF を 1–2 分ごとに箱側で取り、Cloudflare KV に置き、Worker が CORS 付き JSON を返します。アプリ（オンライン時）は約 60 秒ごとにこれを見て、パックより新しい報だけを重ねます。オフラインでは最後に受信した LIVE 報を端末に残し、より古いパックへは戻りません。
+SWIM の ATIS / METAR / SPECI / TAF を箱側の通常プロセス（`scripts/wx_live_poller.py`。モデルや LLM は呼ばない）で取り、Cloudflare KV に置き、Worker が CORS 付き JSON を返します。アプリ（オンライン時）は約 60 秒ごとにこれを見て、パックより新しい報だけを重ねます。オフラインでは最後に受信した LIVE 報を端末に残し、より古いパックへは戻りません。
 
 秘密情報（SWIM の ID/パスワード、Cloudflare の API トークン）はリポジトリ・クライアント・ログに出さないでください。
 
@@ -10,7 +10,7 @@ SWIM の ATIS / METAR / SPECI / TAF を 1–2 分ごとに箱側で取り、Clou
 - Worker: `relay/src/worker.js`（読み取り専用。書き込みは Cloudflare API）
 - アプリ: `js/wx-live.js`。`js/wx-relay-config.js` の `FB_WX_RELAY_URL` が空なら無効（今の公開版は空のまま）
 
-対象空港は `config/wx_relay.json`（ATIS 23 空港＋SFJ 路線＋既定の主空港。全 134 空港は取らない）。
+対象は SWIM が対応する国内空港のすべて（METAR/SPECI/TAF ＝ pack の japan_all のうち RJ**/RO**、ATIS ＝ `fetchers/swim/swim.js` の `ATIS_SUPPORTED_ICAO`）。路線や SETTINGS 既定などの部分集合には絞らない。間隔は `config/wx_relay.json`（ATIS は 90 秒ごと、1リクエストで全対応空港。METAR/TAF は空港ごとのリクエストなので約 3 分で全件一周。初回のみ全件を一度取る。全件一括の実測は約16秒）。
 
 ## ボックスが入れ替わったとき
 

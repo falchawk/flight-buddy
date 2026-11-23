@@ -80,5 +80,82 @@ class TestBuildPayload(unittest.TestCase):
             self.assertIn("RJTT", d["airports"])
 
 
+
+class TestAllAirportsAndChunks(unittest.TestCase):
+    def test_production_config_has_no_subset_lists(self):
+        cfg = w.load_cfg()
+        self.assertFalse(cfg.get("atisAirports"))
+        self.assertFalse(cfg.get("profileAirports"))
+        self.assertEqual(int(cfg["pollSeconds"]), 90)
+        self.assertEqual(int(cfg["profileCycleSeconds"]), 180)
+
+    def test_atis_supported_is_swim_set(self):
+        atis = w.atis_supported_icaos()
+        self.assertEqual(len(atis), 23)
+        self.assertIn("RJTT", atis)
+        self.assertIn("ROAH", atis)
+        self.assertIn("ROIG", atis)
+        self.assertEqual(len(set(atis)), 23)
+
+    def test_profile_is_all_domestic_swim_targets(self):
+        prof = w.profile_airports()
+        self.assertGreaterEqual(len(prof), 134)
+        self.assertTrue(all(x.startswith("RJ") or x.startswith("RO") for x in prof))
+        atis, watched = w.watched({})
+        self.assertEqual(atis, w.atis_supported_icaos())
+        self.assertTrue(set(atis).issubset(set(watched)))
+        self.assertGreaterEqual(len(watched), 134)
+
+    def test_chunk_size_and_wrap(self):
+        cfg = {"pollSeconds": 90, "profileCycleSeconds": 180}
+        self.assertEqual(w.profile_chunk_size(134, cfg), 67)
+        icaos = [f"A{i:03d}" for i in range(134)]
+        a, c1 = w.next_chunk(icaos, 0, 67)
+        b, c2 = w.next_chunk(icaos, c1, 67)
+        self.assertEqual(len(a), 67)
+        self.assertEqual(len(b), 67)
+        self.assertEqual(c2, (67 + 67) % 134)
+        self.assertEqual(sorted(set(a + b)), sorted(icaos))
+
+    def test_merge_keeps_old_metar_updates_atis(self):
+        prev = {"airports": {
+            "RJTT": {"metar": [{"raw": "OLD METAR"}], "taf": {"raw": "OLD TAF"},
+                     "metarSource": "SWIM", "tafSource": "SWIM",
+                     "atis": {"text": "OLD ATIS", "ident": "A"}, "atisSource": "SWIM",
+                     "atisReason": None, "atisFetchedAt": "2026-11-23T03:00:00Z"},
+            "RJDC": {"metar": [{"raw": "OLD DC"}], "taf": None, "metarSource": "SWIM",
+                     "tafSource": None, "atis": None, "atisSource": None,
+                     "atisReason": "対象外", "atisFetchedAt": None},
+        }}
+        payload = {"airports": {
+            "RJTT": {"metar": [{"raw": "NEW METAR"}], "taf": {"raw": "NEW TAF"},
+                     "metarSource": "SWIM", "tafSource": "SWIM",
+                     "atis": {"text": "NEW ATIS", "ident": "B"}, "atisSource": "SWIM",
+                     "atisReason": None, "atisFetchedAt": "2026-11-23T03:30:00Z"},
+            "RJDC": {"metar": [], "taf": None, "metarSource": None, "tafSource": None,
+                     "atis": None, "atisSource": None, "atisReason": "対象外", "atisFetchedAt": None},
+        }, "fetchedAt": {"atis": "2026-11-23T03:30:00Z"}}
+        # refresh only RJDC profile; ATIS ok so RJTT atis updates, RJTT metar stays old
+        out = w.merge_airports(prev, payload, refresh_profile=["RJDC"], atis_ok=True)
+        self.assertEqual(out["airports"]["RJTT"]["metar"][0]["raw"], "OLD METAR")
+        self.assertEqual(out["airports"]["RJTT"]["atis"]["ident"], "B")
+        self.assertEqual(out["airports"]["RJDC"]["metar"], [])
+        # ATIS failure keeps previous ATIS
+        out2 = w.merge_airports(prev, payload, refresh_profile=["RJTT"], atis_ok=False)
+        self.assertEqual(out2["airports"]["RJTT"]["metar"][0]["raw"], "NEW METAR")
+        self.assertEqual(out2["airports"]["RJTT"]["atis"]["ident"], "A")
+
+    def test_refresh_profile_does_not_fill_other_metars(self):
+        cfg = {"atisAirports": ["RJTT"], "profileAirports": ["RJTT", "RJDC"]}
+        swim_raw = json.loads(FIXTURE.read_text())
+        swim = {"ok": True, "atis": swim_raw["atis"], "profile": swim_raw["profile"]}
+        payload, stats = w.build_payload(cfg, swim, {"airports": {}}, ref=REF, refresh_profile=["RJTT"])
+        self.assertEqual(payload["airports"]["RJTT"]["metarSource"], "SWIM")
+        self.assertIsNone(payload["airports"]["RJDC"]["metarSource"])
+        self.assertEqual(payload["airports"]["RJDC"]["metar"], [])
+        self.assertGreaterEqual(stats["metarSwim"], 1)
+
+
+
 if __name__ == "__main__":
     unittest.main()
