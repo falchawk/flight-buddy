@@ -1,5 +1,7 @@
 // レーダーエコー（ナウキャスト・雷ナウキャスト）の近リアルタイム表示
-// 気象庁 bosai/rain の time.json と地域別オーバーレイ PNG を、開いている地域だけ直接取得する。
+// 気象庁 bosai/rain の time.json と地域別オーバーレイ PNG を直接取得する。
+// アプリが表示中のあいだ、雨・雷の全20地域（計40枚の最新実況）を低並列（3）で裏読みし IndexedDB に残す。
+// 開いている地域だけは予想コマも取る。地域は絞り込まない。パックのコマは矢印で残す。
 // METAR/ATIS 用の中継サーバーは使わない（気象の文字電文の速度に影響させない）。
 // パックのコマは残し、新しい実況と予想だけを時刻順に差し込む。
 (function (root) {
@@ -11,6 +13,12 @@
   const CREDIT_PAGE = 'https://www.jma.go.jp/bosai/rain/';
   const CREDIT = '出典：気象庁ホームページ（https://www.jma.go.jp/bosai/rain/）。気象庁の画像を地図・境界と重ねて表示しています。';
   const POLL_MS = 60 * 1000;
+  // 気象庁 bosai/rain の全地域（charts.py RAIN_REGIONS と同じ。絶対に絞り込まない）
+  const AREAS = ['00', '05', '04', '06', '17', '18', '09', '11', '19', '07', '08', '10', '02', '16', '12', '13', '01', '14', '03', '15'];
+  const PRODUCT_IDS = ['nowcast', 'thunder'];
+  const PREFETCH_CONCURRENCY = 3;
+  const MAX_LIVE_OBS = 6;
+  const START_DELAY_MS = 1500;
   const DB_NAME = 'fb-radar-live';
   const DB_STORE = 'frames';
   const DB_VER = 1;
@@ -21,6 +29,7 @@
     timer: null,
     listeners: false,
     objectUrls: [],
+    prefetchInflight: null,
   };
 
   function isLiveProduct(id) { return !!PRODUCTS[id]; }
@@ -184,29 +193,107 @@
 
 
   // 以前取った LIVE 実況（5分ごと）は残し、新しい実況と今回の予想を足す。パックより古い実況は捨てる。
+  // 実況だけ取ったとき（全地域の先読み）は、まだ先の予想コマが残っていれば捨てない。
   function accumulateLiveFrames(prev, fetched, packLatestObsMs) {
     const keep = [];
     const fetchedTimes = new Set((fetched || []).map((fr) => fr.time));
-    for (const fr of (prev && prev.frames) || []) {
+    let fetchedLatestObs = NaN;
+    for (const fr of fetched || []) {
       if (!isObs(fr)) continue;
       const t = frameTimeMs(fr);
-      if (!isNewer(t, packLatestObsMs)) continue;
-      if (fetchedTimes.has(fr.time) || fetchedTimes.has(toIsoZ(fr.time))) continue;
-      keep.push(fr);
+      if (isNewer(t, fetchedLatestObs)) fetchedLatestObs = t;
+    }
+    for (const fr of (prev && prev.frames) || []) {
+      const t = frameTimeMs(fr);
+      if (fetchedTimes.has(fr.time) || (fr.time && fetchedTimes.has(toIsoZ(fr.time)))) continue;
+      if (isObs(fr)) {
+        if (!isNewer(t, packLatestObsMs)) continue;
+        keep.push(fr);
+      } else if (Number.isFinite(t) && (!Number.isFinite(fetchedLatestObs) || t > fetchedLatestObs)) {
+        keep.push(fr);
+      }
     }
     return keep.concat(fetched || []);
+  }
+
+  function revokeFrameUrl(fr) {
+    if (!fr || !fr.objectUrl || typeof URL === 'undefined' || !URL.revokeObjectURL) return;
+    try { URL.revokeObjectURL(fr.objectUrl); } catch (e) { /* ignore */ }
+    const i = state.objectUrls.indexOf(fr.objectUrl);
+    if (i >= 0) state.objectUrls.splice(i, 1);
+    fr.objectUrl = null;
+  }
+
+  // 地域ごと・製品ごとに残す LIVE 実況を直近 MAX_LIVE_OBS 枚に抑え、保存量を上限する。
+  function pruneLiveFrames(frames, packLatestObsMs, maxObs) {
+    const cap = maxObs == null ? MAX_LIVE_OBS : maxObs;
+    const obs = [];
+    const fcst = [];
+    for (const fr of frames || []) {
+      const t = frameTimeMs(fr);
+      if (!Number.isFinite(t)) continue;
+      if (isObs(fr)) {
+        if (Number.isFinite(packLatestObsMs) && t < packLatestObsMs) { revokeFrameUrl(fr); continue; }
+        obs.push(fr);
+      } else fcst.push(fr);
+    }
+    obs.sort((a, b) => frameTimeMs(a) - frameTimeMs(b));
+    if (obs.length > cap) obs.splice(0, obs.length - cap).forEach(revokeFrameUrl);
+    const latestObs = obs.length ? frameTimeMs(obs[obs.length - 1]) : packLatestObsMs;
+    const keptFcst = [];
+    for (const fr of fcst) {
+      const t = frameTimeMs(fr);
+      if (Number.isFinite(latestObs) && t <= latestObs) { revokeFrameUrl(fr); continue; }
+      keptFcst.push(fr);
+    }
+    return obs.concat(keptFcst);
+  }
+
+  async function pool(items, n, fn) {
+    const list = items || [];
+    const conc = Math.max(1, n == null ? PREFETCH_CONCURRENCY : n);
+    let i = 0;
+    const workers = Array.from({ length: Math.min(conc, list.length) }, async () => {
+      while (i < list.length) {
+        const k = i++;
+        await fn(list[k], k);
+      }
+    });
+    await Promise.all(workers);
+  }
+
+  // 全20地域×雨・雷。開いている地域だけ予想も取る。地域の絞り込み引数は持たない。
+  function prefetchJobs(watch) {
+    const jobs = [];
+    const wProd = watch && watch.product;
+    const wArea = watch ? areaCode(watch.area) : null;
+    for (const prod of PRODUCT_IDS) {
+      for (const area of AREAS) {
+        const isWatch = !!(wProd === prod && wArea === area);
+        jobs.push({ product: prod, area: `a${area}`, obsOnly: !isWatch });
+      }
+    }
+    if (wProd && wArea) {
+      jobs.sort((a, b) => {
+        const aw = a.product === wProd && areaCode(a.area) === wArea ? 0 : 1;
+        const bw = b.product === wProd && areaCode(b.area) === wArea ? 0 : 1;
+        return aw - bw;
+      });
+    }
+    return jobs;
   }
 
   function shouldFetch(jmaLatestMs, packLatestObsMs, lastLiveMs) {
     return isNewer(jmaLatestMs, packLatestObsMs) && isNewer(jmaLatestMs, lastLiveMs);
   }
 
-  function plannedRequests(productId, areaId, latest) {
+  function plannedRequests(productId, areaId, latest, opts) {
     const prod = PRODUCTS[productId];
     const area = areaCode(areaId);
     if (!prod || !area || !latest) return [];
     const t = (latest instanceof Date) ? latest : new Date(latest);
     const req = [{ kind: '実況', time: toIsoZ(t), ft: 0, url: rainUrl(prod.typ, prod.elem, t, 0, area) }];
+    if (opts && opts.obsOnly) return req;
     for (const slot of forecastSlots(t, prod.stepMin)) {
       req.push({ kind: '予想', time: toIsoZ(slot.time), ft: slot.ft, offMin: slot.offMin, url: rainUrl(prod.typ, prod.elem, t, slot.ft, area) });
     }
@@ -235,7 +322,7 @@
 
   function rememberUrl(u) {
     if (u) state.objectUrls.push(u);
-    if (state.objectUrls.length > 80) {
+    if (state.objectUrls.length > 280) {
       const old = state.objectUrls.shift();
       try { URL.revokeObjectURL(old); } catch (e) { /* ignore */ }
     }
@@ -331,24 +418,56 @@
     return r.blob();
   }
 
-  async function refresh(productId, areaId, packFrames) {
+  async function readLatest(productId) {
+    const prod = PRODUCTS[productId];
+    if (!prod) return null;
+    const tj = await fetchJson(timeUrl(prod.timePath));
+    const latest = new Date(parseIso(tj.time));
+    return Number.isFinite(+latest) ? latest : null;
+  }
+
+  function packFramesFor(productId, areaId) {
+    const w = state.watch;
+    if (w && w.product === productId && areaCode(w.area) === areaCode(areaId)) return w.packFrames || [];
+    return [];
+  }
+
+  function notifyWatch(rec) {
+    const w = state.watch;
+    if (!w || !rec || rec.product !== w.product || areaCode(rec.area) !== areaCode(w.area)) return;
+    const sig = `${rec.latestTime}|${rec.receivedAt}|${(rec.frames || []).length}`;
+    if (sig === w.lastSig) return;
+    w.lastSig = sig;
+    if (typeof w.onUpdate === 'function') w.onUpdate(rec);
+  }
+
+  function isAppVisible() {
+    if (typeof document === 'undefined' || !document.visibilityState) return true;
+    return document.visibilityState === 'visible';
+  }
+  function isOnline() {
+    return typeof navigator === 'undefined' || !navigator || navigator.onLine !== false;
+  }
+
+  async function refresh(productId, areaId, packFrames, opts) {
     const prod = PRODUCTS[productId];
     const area = areaCode(areaId);
     if (!prod || !area) return get(productId, areaId);
     const prev = get(productId, areaId);
     const packLatest = latestObsTime(packFrames || []);
     const lastLive = prev ? parseIso(prev.latestTime) : NaN;
-    if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) return prev || null;
+    if (!isOnline()) return prev || null;
     if (typeof fetch !== 'function') return prev || null;
-    let latest;
-    try {
-      const tj = await fetchJson(timeUrl(prod.timePath));
-      latest = new Date(parseIso(tj.time));
-      if (!Number.isFinite(+latest)) return prev || null;
-    } catch (e) { return prev || null; }
+    let latest = opts && opts.latest;
+    if (!latest) {
+      try {
+        latest = await readLatest(productId);
+        if (!latest) return prev || null;
+      } catch (e) { return prev || null; }
+    }
     const jmaMs = +latest;
     if (!shouldFetch(jmaMs, packLatest, lastLive)) return prev || null;
-    const reqs = plannedRequests(productId, areaId, latest);
+    const reqs = plannedRequests(productId, areaId, latest, { obsOnly: !!(opts && opts.obsOnly) });
     const fetched = [];
     for (const req of reqs) {
       const blob = await fetchPng(req.url);
@@ -360,7 +479,7 @@
       });
     }
     if (!fetched.length) return prev || null;
-    const frames = accumulateLiveFrames(prev, fetched, packLatest);
+    const frames = pruneLiveFrames(accumulateLiveFrames(prev, fetched, packLatest), packLatest, MAX_LIVE_OBS);
     const rec = {
       product: productId, area: areaId,
       latestTime: toIsoZ(latest),
@@ -372,24 +491,53 @@
     return rec;
   }
 
-  function wxRadarVisible() {
-    if (typeof document === 'undefined') return !!state.watch;
-    const wx = document.getElementById('tab-wx');
-    return !!(state.watch && wx && wx.classList.contains('active') && (!document.visibilityState || document.visibilityState === 'visible'));
+  async function prefetchAll(reason) {
+    if (!isAppVisible() || !isOnline() || typeof fetch !== 'function') return null;
+    if (state.prefetchInflight) return state.prefetchInflight;
+    const run = (async () => {
+      const latest = {};
+      for (const id of PRODUCT_IDS) {
+        try { latest[id] = await readLatest(id); } catch (e) { latest[id] = null; }
+      }
+      const jobs = prefetchJobs(state.watch).filter((j) => latest[j.product]);
+      const need = jobs.filter((j) => {
+        const prev = get(j.product, j.area);
+        const packLatest = latestObsTime(packFramesFor(j.product, j.area));
+        const lastLive = prev ? parseIso(prev.latestTime) : NaN;
+        return shouldFetch(+latest[j.product], packLatest, lastLive);
+      });
+      await pool(need, PREFETCH_CONCURRENCY, async (j) => {
+        try {
+          const rec = await refresh(j.product, j.area, packFramesFor(j.product, j.area), {
+            latest: latest[j.product],
+            obsOnly: j.obsOnly,
+          });
+          notifyWatch(rec);
+        } catch (e) { /* 1地域の失敗で他を止めない */ }
+      });
+      return latest;
+    })();
+    state.prefetchInflight = run;
+    try { return await run; } finally { if (state.prefetchInflight === run) state.prefetchInflight = null; }
+  }
+
+  function startPrefetchLoop() {
+    if (state.timer) return;
+    state.timer = setInterval(() => { prefetchAll('interval'); }, POLL_MS);
   }
 
   function tick(reason) {
+    return prefetchAll(reason || 'tick').catch(() => null);
+  }
+
+  async function refreshWatched(reason) {
     const w = state.watch;
-    if (!w || !wxRadarVisible()) return Promise.resolve(null);
-    return refresh(w.product, w.area, w.packFrames).then((rec) => {
-      if (!rec) return rec;
-      const sig = `${rec.latestTime}|${rec.receivedAt}|${(rec.frames || []).length}`;
-      if (sig !== w.lastSig) {
-        w.lastSig = sig;
-        if (typeof w.onUpdate === 'function') w.onUpdate(rec);
-      }
+    if (!w) return null;
+    try {
+      const rec = await refresh(w.product, w.area, w.packFrames);
+      notifyWatch(rec);
       return rec;
-    }).catch(() => null);
+    } catch (e) { return null; }
   }
 
   function watch(opts) {
@@ -401,33 +549,42 @@
       lastSig: null,
     };
     ensureListeners();
-    if (state.timer) clearInterval(state.timer);
-    state.timer = setInterval(() => tick('interval'), POLL_MS);
-    return tick(opts.reason || 'watch');
+    startPrefetchLoop();
+    const reason = opts.reason || 'watch';
+    return refreshWatched(reason).then(() => prefetchAll(reason));
   }
 
+  // 表示中の地域の監視だけ外す。全地域の先読みタイマーはアプリ表示中は止めない。
   function unwatch() {
     state.watch = null;
-    if (state.timer) { clearInterval(state.timer); state.timer = null; }
   }
 
   function ensureListeners() {
     if (state.listeners || typeof window === 'undefined') return;
     state.listeners = true;
-    window.addEventListener('online', () => tick('online'));
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') tick('visible'); });
+    window.addEventListener('online', () => prefetchAll('online'));
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') prefetchAll('visible'); });
   }
 
   async function start() {
     ensureListeners();
     await hydrate();
+    startPrefetchLoop();
+    // 起動直後の METAR/ATIS 中継に先を譲る（パック取得は並行してよい）。呼び出し側は待たない。
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+      setTimeout(() => { prefetchAll('start'); }, START_DELAY_MS);
+    } else {
+      prefetchAll('start');
+    }
   }
 
   const api = {
-    PRODUCTS, RAIN_BASE, CREDIT, CREDIT_PAGE, POLL_MS,
+    PRODUCTS, PRODUCT_IDS, AREAS, RAIN_BASE, CREDIT, CREDIT_PAGE, POLL_MS,
+    PREFETCH_CONCURRENCY, MAX_LIVE_OBS, START_DELAY_MS,
     isLiveProduct, areaCode, parseIso, isNewer, ts14, toIsoZ, fmtJst, fmtJstHm, ageText,
     timeUrl, rainUrl, forecastSlots, offsetLabel, plannedRequests,
     isObs, latestObsTime, defaultObsIndex, mergeFrames, resolveIndex, accumulateLiveFrames, shouldFetch,
+    pruneLiveFrames, pool, prefetchJobs, prefetchAll, readLatest,
     badgeText, badgeHtml, get, refresh, watch, unwatch, start, tick, hydrate,
     _state: state,
     _savePersisted: savePersisted,

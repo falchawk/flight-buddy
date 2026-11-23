@@ -194,4 +194,148 @@ assert.ok(L.CREDIT.includes('重ねて表示'));
 assert.ok(!/workers\.dev/i.test(code), 'must not call the METAR/ATIS worker');
 assert.ok(!/wx-relay-config|FBWxLive|wx_live_poller/.test(code), 'must not use the METAR/ATIS live path');
 
+console.log('OK test_radar_live.js (sync)');
+
+(async () => {
+
+
+// ---- 全地域先読み（雨・雷 × 20地域 = 40枚の最新実況）----
+assert.strictEqual(L.AREAS.length, 20, 'all 20 JMA rain regions');
+assert.strictEqual(new Set(L.AREAS).size, 20, 'area codes unique');
+assert.strictEqual(L.AREAS.join(','), '00,05,04,06,17,18,09,11,19,07,08,10,02,16,12,13,01,14,03,15');
+assert.ok(L.AREAS.every((a) => /^\d{2}$/.test(a)));
+assert.strictEqual(L.PRODUCT_IDS.join(','), 'nowcast,thunder');
+assert.strictEqual(L.PREFETCH_CONCURRENCY, 3);
+assert.ok(L.MAX_LIVE_OBS >= 1);
+
+const jobs = L.prefetchJobs();
+assert.strictEqual(jobs.length, 40, '20 areas × 2 products, never a subset');
+assert.strictEqual(jobs.filter((j) => j.product === 'nowcast').length, 20);
+assert.strictEqual(jobs.filter((j) => j.product === 'thunder').length, 20);
+assert.ok(jobs.every((j) => j.obsOnly), 'no watch: latest obs only');
+assert.ok(L.AREAS.every((a) => jobs.some((j) => j.product === 'nowcast' && j.area === `a${a}`)));
+assert.ok(L.AREAS.every((a) => jobs.some((j) => j.product === 'thunder' && j.area === `a${a}`)));
+
+const watched = L.prefetchJobs({ product: 'nowcast', area: 'a09' });
+assert.strictEqual(watched.length, 40);
+assert.strictEqual(watched[0].product, 'nowcast');
+assert.strictEqual(watched[0].area, 'a09');
+assert.strictEqual(watched[0].obsOnly, false, 'open region also fetches forecasts');
+assert.strictEqual(watched.filter((j) => !j.obsOnly).length, 1);
+assert.ok(watched.slice(1).every((j) => j.obsOnly));
+
+const obsOnly = L.plannedRequests('nowcast', 'a09', new Date('2026-11-23T03:25:00Z'), { obsOnly: true });
+assert.strictEqual(obsOnly.length, 1);
+assert.strictEqual(obsOnly[0].kind, '実況');
+assert.ok(obsOnly[0].url.endsWith('_a09.png'));
+
+// 先読み（実況のみ）では、まだ先の予想を捨てない
+const accKeepFc = L.accumulateLiveFrames(
+  { frames: [
+    { time: '2026-11-23T03:25:00Z', kind: '実況', url: 'a.png' },
+    { time: '2026-11-23T03:30:00Z', kind: '予想', url: 'b.png' },
+    { time: '2026-11-23T04:00:00Z', kind: '予想', url: 'c.png' },
+  ] },
+  [{ time: '2026-11-23T03:25:00Z', kind: '実況', url: 'a2.png' }],
+  Date.parse('2026-11-23T03:15:00Z')
+);
+assert.strictEqual(accKeepFc.find((f) => f.kind === '実況').url, 'a2.png');
+assert.strictEqual(accKeepFc.filter((f) => f.kind === '予想').map((f) => f.time).join(','), '2026-11-23T03:30:00Z,2026-11-23T04:00:00Z');
+
+// 保存量の上限：古い LIVE 実況を切る。パック実況より古いものも捨てる。予想は残す。
+const many = [];
+for (let i = 0; i < 12; i++) {
+  const t = new Date(Date.parse('2026-11-23T03:00:00Z') + i * 5 * 60000).toISOString().replace('.000Z', 'Z');
+  many.push({ time: t, kind: '実況', url: `obs-${i}.png` });
+}
+many.push({ time: '2026-11-23T04:00:00Z', kind: '予想', url: 'fc.png' });
+const pruned = L.pruneLiveFrames(many, Date.parse('2026-11-23T03:15:00Z'), 6);
+assert.strictEqual(pruned.filter((f) => f.kind === '実況').length, 6);
+assert.ok(!pruned.some((f) => f.time === '2026-11-23T03:00:00Z' || f.time === '2026-11-23T03:10:00Z'), 'older than pack / beyond cap dropped');
+assert.ok(pruned.some((f) => f.time === '2026-11-23T03:30:00Z' && f.kind === '実況'));
+assert.ok(pruned.some((f) => f.time === '2026-11-23T03:55:00Z' && f.kind === '実況'));
+assert.strictEqual(pruned.filter((f) => f.kind === '予想').length, 1);
+
+// 並列は 3 を超えない
+let inflight = 0, peak = 0, ran = 0;
+const t0 = Date.now();
+await L.pool(jobs, L.PREFETCH_CONCURRENCY, async () => {
+  inflight++;
+  peak = Math.max(peak, inflight);
+  await new Promise((r) => setTimeout(r, 15));
+  inflight--;
+  ran++;
+});
+assert.strictEqual(ran, 40);
+assert.ok(peak <= 3, `peak concurrency ${peak} exceeds 3`);
+assert.ok(peak >= 2, `expected parallel workers, peak=${peak}`);
+assert.ok(Date.now() - t0 >= 40, 'pool should take multiple batches');
+
+// prefetchAll: time.json は製品あたり1回、PNG は最新実況40枚。開いている地域だけ予想も取る。
+const fetches = [];
+let pngInflight = 0, pngPeak = 0;
+sandbox.fetch = async (url) => {
+  fetches.push(url);
+  if (/time\.json/.test(url)) {
+    return { ok: true, json: async () => ({ time: '2026-11-23T03:25:00+00:00' }) };
+  }
+  pngInflight++;
+  pngPeak = Math.max(pngPeak, pngInflight);
+  await new Promise((r) => setTimeout(r, 5));
+  pngInflight--;
+  return { ok: true, headers: { get: () => 'image/png' }, blob: async () => new Uint8Array([1, 2, 3]) };
+};
+L._state.watch = { product: 'nowcast', area: 'a09', packFrames: pack, onUpdate: null, lastSig: null };
+await L.prefetchAll('test');
+const timeReqs = fetches.filter((u) => /time\.json/.test(u));
+const pngReqs = fetches.filter((u) => /\.png$/.test(u));
+assert.strictEqual(timeReqs.filter((u) => u.endsWith('/rain/time.json')).length, 1);
+assert.strictEqual(timeReqs.filter((u) => u.endsWith('/thunder/time.json')).length, 1);
+assert.ok(pngPeak <= 3, `png peak ${pngPeak} exceeds 3`);
+// 39 regions obs-only + kanto nowcast (obs+2 forecasts). thunder kanto obs only.
+assert.strictEqual(pngReqs.filter((u) => /_f00_/.test(u)).length, 40, 'latest obs for every region and product');
+assert.ok(pngReqs.some((u) => /rain_20261123032500_f01_a09\.png$/.test(u)), 'open kanto nowcast also fetches forecast');
+assert.ok(pngReqs.some((u) => /rain_20261123032500_f07_a09\.png$/.test(u)));
+assert.ok(!pngReqs.some((u) => /_f01_a00/.test(u)), 'unopened regions do not fetch forecasts');
+assert.ok(!pngReqs.some((u) => /thunder_.*_f0[1-9]_/.test(u)), 'unopened thunder does not fetch forecasts');
+for (const a of L.AREAS) {
+  assert.ok(pngReqs.some((u) => u.endsWith(`_f00_a${a}.png`) && u.includes('/rain/')), `missing rain obs a${a}`);
+  assert.ok(pngReqs.some((u) => u.endsWith(`_f00_a${a}.png`) && u.includes('/thunder/')), `missing thunder obs a${a}`);
+}
+assert.ok(L.get('nowcast', 'a00'), 'prefetched unopened region is cached');
+assert.ok(L.get('thunder', 'a15'), 'prefetched remote region is cached');
+assert.strictEqual(L.get('nowcast', 'a00').latestTime, '2026-11-23T03:25:00Z');
+assert.strictEqual(L.get('nowcast', 'a00').frames.filter((f) => f.kind === '実況').length, 1);
+assert.strictEqual(L.get('nowcast', 'a09').frames.filter((f) => f.kind === '予想').length, 2);
+
+// time.json が進まなければ再取得しない
+const before = fetches.length;
+await L.prefetchAll('test-again');
+assert.strictEqual(fetches.filter((u) => /time\.json/.test(u)).length, 4, 'time.json polled again');
+assert.strictEqual(fetches.filter((u) => /\.png$/.test(u)).length, pngReqs.length, 'no png refetch if time unchanged');
+
+// time.json が進んだら最新実況を取り直す
+sandbox.fetch = async (url) => {
+  fetches.push(url);
+  if (/time\.json/.test(url)) {
+    return { ok: true, json: async () => ({ time: '2026-11-23T03:30:00+00:00' }) };
+  }
+  return { ok: true, headers: { get: () => 'image/png' }, blob: async () => new Uint8Array([4, 5, 6]) };
+};
+await L.prefetchAll('test-advance');
+const pngAfter = fetches.filter((u) => /20261123033000_f00_/.test(u));
+assert.strictEqual(pngAfter.length, 40, 'new latest obs for all 40 when time.json advances');
+assert.ok(L.get('nowcast', 'a00').frames.some((f) => f.time === '2026-11-23T03:25:00Z' && f.kind === '実況'), 'previous live obs kept until pruned');
+assert.ok(L.get('nowcast', 'a00').frames.some((f) => f.time === '2026-11-23T03:30:00Z' && f.kind === '実況'));
+
+// unwatch しても先読みタイマー用の状態は落とさない（タイマーはテストでは未起動）
+L.unwatch();
+assert.strictEqual(L._state.watch, null);
+assert.ok(L.get('thunder', 'a03'), 'cache survives unwatch');
+
+assert.ok(!/更新中/.test(code), 'must not add an updating indicator');
+assert.ok(!/packDownload|FBPack|download\(/.test(code), 'must not gate prefetch on pack download');
+
 console.log('OK test_radar_live.js');
+
+})().catch((e) => { console.error(e); process.exit(1); });
