@@ -443,10 +443,69 @@
     return { over: over.join('') + hits.join(''), marks: labs.join('') + icons.join('') + pins.join('') };
   }
 
-  function labelsOf(V, layout, zoomS) {
-    const labs = [];
+  function wayLength(p) {
+    let L = 0;
+    for (let i = 0; i < p.length - 1; i++) L += distM(p[i], p[i + 1]);
+    return L;
+  }
+  function alongPts(p, n) {
+    const out = [];
+    if (!p || p.length < 2) return out;
+    const seg = [];
+    let L = 0;
+    for (let i = 0; i < p.length - 1; i++) { const d = distM(p[i], p[i + 1]); seg.push(d); L += d; }
+    if (L < 0.5) { out.push(p[0]); return out; }
+    const count = Math.max(1, n | 0);
+    for (let k = 0; k < count; k++) {
+      const target = ((k + 0.5) / count) * L;
+      let acc = 0;
+      for (let i = 0; i < p.length - 1; i++) {
+        if (acc + seg[i] >= target || i === p.length - 2) {
+          const u = seg[i] ? Math.max(0, Math.min(1, (target - acc) / seg[i])) : 0;
+          out.push([p[i][0] + (p[i + 1][0] - p[i][0]) * u, p[i][1] + (p[i + 1][1] - p[i][1]) * u]);
+          break;
+        }
+        acc += seg[i];
+      }
+    }
+    return out;
+  }
+  function taxiCandidates(layout) {
     const o = layout.origin, sc = layout.scale;
+    const out = [];
+    for (const t of layout.taxiways || []) {
+      if (!t.ref) continue;
+      const ways = [];
+      let totalL = 0, best = null, bestL = 0;
+      for (const raw of t.ways || []) {
+        const p = decLine(raw, o, sc);
+        if (p.length < 2) continue;
+        const L = wayLength(p);
+        if (!L) continue;
+        ways.push(p);
+        totalL += L;
+        if (L > bestL) { bestL = L; best = p; }
+      }
+      if (!ways.length) continue;
+      out.push({ ref: t.ref, ways, best, L: totalL, bestL });
+    }
+    return out;
+  }
+  function lodKeep(t, mpp, showAll) {
+    if (showAll) return true;
+    const major = t.ref.length === 1;
+    // 概観〜広域：長い幹線（1文字の誘導路）だけ
+    if (mpp > 22) return major && t.L >= 80;
+    if (mpp > 14) return major || t.L >= 420;
+    // 中間：短い枝（H1 など）を出し始める
+    if (mpp > 9) return major || t.L >= 130 || (t.ref.length === 2 && t.L >= 70);
+    if (mpp > 5.5) return t.ref.length <= 2 || t.L >= 40;
+    return true;
+  }
+  // 配置計画（検証用にも使う）。max zoom では OSM にある ref を落とさない。
+  function taxiLabelPlan(V, layout, zoomS) {
     const mpp = V.mpp / (zoomS || 1);
+    const showAll = (zoomS || 1) >= 7.5 || mpp <= 4.2;
     const occupied = [];
     const collide = (x, y, w) => {
       for (const b of occupied) {
@@ -454,41 +513,62 @@
       }
       return false;
     };
-    const cands = [];
-    for (const t of layout.taxiways || []) {
-      if (!t.ref || t.ref.length > 5) continue;
-      let best = null, bestL = 0;
-      for (const raw of t.ways) {
-        const p = decLine(raw, o, sc);
-        let L = 0;
-        for (let i = 0; i < p.length - 1; i++) L += distM(p[i], p[i + 1]);
-        if (L > bestL) { bestL = L; best = p; }
-      }
-      if (!best || bestL < 22) continue;
-      const m = mid(best);
-      if (!V.inside(m, -4)) continue;
-      // 概観でも 2 文字（H1 など）を出す。超広域だけ 1 文字に絞る
-      if (mpp > 28 && t.ref.length > 1) continue;
-      cands.push({ ref: t.ref, p: best, m, L: bestL });
-    }
-    cands.sort((a, b) => a.ref.length - b.ref.length || b.L - a.L);
+    const perp = (p, dist) => {
+      if (!p || p.length < 2) return [0, 0];
+      const a = p[0], b = p[p.length - 1];
+      const [x0, y0] = V.xy(a), [x1, y1] = V.xy(b);
+      const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy) || 1;
+      return [-dy / L * dist, dx / L * dist];
+    };
+    const cands = taxiCandidates(layout).filter((t) => lodKeep(t, mpp, showAll));
+    cands.sort((a, b) => {
+      const ma = a.ref.length === 1 ? 0 : 1, mb = b.ref.length === 1 ? 0 : 1;
+      if (ma !== mb) return ma - mb;
+      return b.L - a.L || a.ref.localeCompare(b.ref);
+    });
+    const placed = [];
     for (const t of cands) {
-      let [x, y] = V.xy(t.m);
       const fs = t.ref.length > 2 ? 7 : (mpp < 9 ? 7.4 : 8);
       const w = t.ref.length * fs * 0.72 + 4;
-      let ok = !collide(x, y, w);
-      if (!ok && t.ref.length >= 2) {
-        // 直交方向に少しずらす
-        const a = t.p[0], b = t.p[t.p.length - 1];
-        const [x0, y0] = V.xy(a), [x1, y1] = V.xy(b);
-        const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy) || 1;
-        const nx = -dy / L * 9, ny = dx / L * 9;
-        if (!collide(x + nx, y + ny, w)) { x += nx; y += ny; ok = true; }
-        else if (!collide(x - nx, y - ny, w)) { x -= nx; y -= ny; ok = true; }
+      const samples = [];
+      const nAlong = showAll ? 6 : (t.ref.length === 1 ? 5 : 3);
+      for (const way of (t.ref.length === 1 || showAll ? t.ways : [t.best])) {
+        alongPts(way, nAlong).forEach((pt) => samples.push({ pt, way }));
       }
-      if (!ok) continue;
-      occupied.push([x, y, w]);
-      labs.push(ns(x, y + 2.4, `<text text-anchor="middle" font-size="${fs}" font-weight="700" fill="var(--gc-twylab)" stroke="var(--gc-halo)" stroke-width="2.4" paint-order="stroke">${esc(t.ref)}</text>`));
+      let pick = null;
+      for (const s of samples) {
+        if (!V.inside(s.pt, -2) && !showAll) continue;
+        if (!V.inside(s.pt, 40) && showAll) continue;
+        let [x, y] = V.xy(s.pt);
+        if (!collide(x, y, w)) { pick = { x, y, fs, w, ref: t.ref }; break; }
+        const [nx, ny] = perp(s.way, 9);
+        if (!collide(x + nx, y + ny, w)) { pick = { x: x + nx, y: y + ny, fs, w, ref: t.ref }; break; }
+        if (!collide(x - nx, y - ny, w)) { pick = { x: x - nx, y: y - ny, fs, w, ref: t.ref }; break; }
+      }
+      if (!pick && showAll) {
+        // 最大拡大：螺旋で空いた位置を探し、それでも駄目なら中点に置く（欠落させない）
+        const anchor = (t.best && V.inside(mid(t.best), 80)) ? mid(t.best) : (samples[0] ? samples[0].pt : null);
+        if (anchor) {
+          let [x, y] = V.xy(anchor);
+          for (let k = 0; k < 48; k++) {
+            const ang = k * 2.399, rad = 5 + k * 2.6;
+            const xx = x + Math.cos(ang) * rad, yy = y + Math.sin(ang) * rad;
+            if (!collide(xx, yy, w)) { x = xx; y = yy; break; }
+          }
+          pick = { x, y, fs, w, ref: t.ref };
+        }
+      }
+      if (!pick) continue;
+      occupied.push([pick.x, pick.y, pick.w]);
+      placed.push(pick);
+    }
+    return placed;
+  }
+  function labelsOf(V, layout, zoomS) {
+    const labs = [];
+    const o = layout.origin, sc = layout.scale;
+    for (const t of taxiLabelPlan(V, layout, zoomS)) {
+      labs.push(ns(t.x, t.y + 2.4, `<text text-anchor="middle" font-size="${t.fs}" font-weight="700" fill="var(--gc-twylab)" stroke="var(--gc-halo)" stroke-width="2.4" paint-order="stroke">${esc(t.ref)}</text>`));
     }
     for (const r of layout.runways || []) {
       const parts = r.id.split('/');
@@ -885,9 +965,23 @@
   }
   function rerender() { if (lastEl) render(lastEl, lastPack, lastCtx); }
 
+  function labelCoverage(layout, mpp, zoomS) {
+    const b = layout.bbox;
+    const midLat = (b[0] + b[2]) / 2, midLon = (b[1] + b[3]) / 2;
+    const hM = (b[2] - b[0]) * 110950, wM = (b[3] - b[1]) * 111320 * Math.cos(midLat * Math.PI / 180);
+    const W = Math.max(240, wM / mpp + 80), H = Math.max(240, hM / mpp + 80);
+    const V = new View(midLat, midLon, mpp, W, H);
+    const all = taxiCandidates(layout).map((x) => x.ref);
+    const placed = taxiLabelPlan(V, layout, zoomS || 1).map((x) => x.ref);
+    const set = new Set(placed);
+    return { all, placed, missing: all.filter((r) => !set.has(r)), mpp, zoomS: zoomS || 1, W, H };
+  }
   window.FBGround = {
     render,
     setIcao(icao) { ui.icao = icao; },
     icao() { return ui.icao; },
+    taxiLabelPlan,
+    taxiCandidates,
+    labelCoverage,
   };
 })();
