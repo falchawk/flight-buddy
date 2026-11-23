@@ -387,44 +387,98 @@
   }
 
   // ----- IndexedDB（無ければメモリのみ。テスト環境でも動く）
+  // PNG は Blob のまま保存する（以前の overlayB64 も読める）。FileReader で全部を base64 にすると
+  // 全地域先読みのたびにメインスレッドとメモリを大きく占有するため。
+  let dbPromise = null;
+  const persistQueue = new Map();
+  let persistTimer = null;
+  let persistInflight = null;
   function idbAvailable() { return typeof indexedDB !== 'undefined'; }
   function idbOpen() {
-    return new Promise((resolve, reject) => {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VER);
-      req.onupgradeneeded = () => { req.result.createObjectStore(DB_STORE); };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        db.onclose = () => { dbPromise = null; };
+        db.onversionchange = () => { try { db.close(); } catch (e) { /* ignore */ } dbPromise = null; };
+        resolve(db);
+      };
+      req.onerror = () => { dbPromise = null; reject(req.error); };
     });
+    return dbPromise;
   }
-  function blobToB64(blob) {
-    return new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result));
-      r.onerror = () => reject(r.error);
-      r.readAsDataURL(blob);
-    });
+  function yieldToMain() {
+    if (typeof scheduler !== 'undefined' && typeof scheduler.yield === 'function') return scheduler.yield();
+    return new Promise((r) => setTimeout(r, 0));
+  }
+  // Blob があればそれを残す。base64 化はしない。旧データの overlayB64 だけ引き継ぐ。
+  function frameForPersist(fr) {
+    const overlay = fr && fr.overlay ? fr.overlay : null;
+    return {
+      time: fr.time, kind: fr.kind, offMin: fr.offMin, label: fr.label,
+      overlay,
+      overlayB64: overlay ? null : (fr.overlayB64 || null),
+    };
+  }
+  function recForPersist(rec) {
+    return {
+      product: rec.product, area: rec.area,
+      latestTime: rec.latestTime, receivedAt: rec.receivedAt,
+      frames: (rec.frames || []).map(frameForPersist),
+    };
+  }
+  function schedulePersistFlush() {
+    if (persistTimer != null) return;
+    const go = () => { persistTimer = null; flushPersist(); };
+    if (typeof requestIdleCallback === 'function') {
+      persistTimer = { kind: 'idle', id: requestIdleCallback(go, { timeout: 200 }) };
+    } else {
+      persistTimer = { kind: 'timeout', id: setTimeout(go, 32) };
+    }
+  }
+  function cancelPersistTimer() {
+    if (!persistTimer) return;
+    if (persistTimer.kind === 'idle' && typeof cancelIdleCallback === 'function') cancelIdleCallback(persistTimer.id);
+    else clearTimeout(persistTimer.id);
+    persistTimer = null;
+  }
+  async function flushPersist() {
+    cancelPersistTimer();
+    if (persistInflight) await persistInflight;
+    if (!persistQueue.size || !idbAvailable()) { persistQueue.clear(); return; }
+    const batch = [...persistQueue.values()];
+    persistQueue.clear();
+    persistInflight = (async () => {
+      try {
+        const db = await idbOpen();
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(DB_STORE, 'readwrite');
+          const store = tx.objectStore(DB_STORE);
+          for (const rec of batch) store.put(recForPersist(rec), recKey(rec.product, rec.area));
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+        });
+      } catch (e) { /* 永続化失敗でもメモリ上の表示は続ける */ }
+    })();
+    try { await persistInflight; } finally { persistInflight = null; }
+    if (persistQueue.size) schedulePersistFlush();
   }
   async function savePersisted(rec) {
     state.cache[recKey(rec.product, rec.area)] = rec;
     if (!idbAvailable()) return;
-    try {
-      const serial = {
-        product: rec.product, area: rec.area,
-        latestTime: rec.latestTime, receivedAt: rec.receivedAt,
-        frames: await Promise.all((rec.frames || []).map(async (fr) => ({
-          time: fr.time, kind: fr.kind, offMin: fr.offMin, label: fr.label,
-          overlayB64: fr.overlayB64 || (fr.overlay ? await blobToB64(fr.overlay) : null),
-        }))),
-      };
-      const db = await idbOpen();
-      await new Promise((resolve, reject) => {
-        const tx = db.transaction(DB_STORE, 'readwrite');
-        tx.objectStore(DB_STORE).put(serial, recKey(rec.product, rec.area));
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
-      db.close();
-    } catch (e) { /* 永続化失敗でもメモリ上の表示は続ける */ }
+    persistQueue.set(recKey(rec.product, rec.area), rec);
+    await flushPersist();
+  }
+  function queuePersist(rec) {
+    state.cache[recKey(rec.product, rec.area)] = rec;
+    if (!idbAvailable()) return;
+    persistQueue.set(recKey(rec.product, rec.area), rec);
+    schedulePersistFlush();
   }
   async function hydrate() {
     if (!idbAvailable()) return;
@@ -436,7 +490,6 @@
         req.onsuccess = () => resolve(req.result || []);
         req.onerror = () => reject(req.error);
       });
-      db.close();
       for (const rec of rows) {
         if (!rec || !rec.product || !rec.area) continue;
         state.cache[recKey(rec.product, rec.area)] = attachObjectUrls(rec);
@@ -444,13 +497,14 @@
     } catch (e) { /* ignore */ }
   }
 
+  const PREFETCH_FETCH = { cache: 'no-store', priority: 'low' };
   async function fetchJson(url) {
-    const r = await fetch(url, { cache: 'no-store' });
+    const r = await fetch(url, PREFETCH_FETCH);
     if (!r.ok) throw new Error(`time.json HTTP ${r.status}`);
     return r.json();
   }
   async function fetchPng(url) {
-    const r = await fetch(url, { cache: 'no-store' });
+    const r = await fetch(url, PREFETCH_FETCH);
     if (!r.ok) return null;
     const ct = (r.headers.get('content-type') || '').toLowerCase();
     if (ct && ct.indexOf('image') < 0 && ct.indexOf('octet-stream') < 0) return null;
@@ -530,7 +584,8 @@
       frames,
     };
     attachObjectUrls(rec);
-    await savePersisted(rec);
+    // メモリにはすぐ載せ、IndexedDB は先読みを止めずに後でまとめて書く
+    queuePersist(rec);
     return rec;
   }
 
@@ -557,6 +612,7 @@
           });
           notifyWatch(rec);
         } catch (e) { /* 1地域の失敗で他を止めない */ }
+        await yieldToMain();
       });
       return latest;
     })();
@@ -630,8 +686,11 @@
     shouldRefresh, missingLiveForecasts, indexAtTime,
     pruneLiveFrames, pool, prefetchJobs, prefetchAll, readLatest,
     badgeText, badgeHtml, get, refresh, watch, unwatch, start, tick, hydrate,
+    frameForPersist, recForPersist, yieldToMain,
     _state: state,
     _savePersisted: savePersisted,
+    _queuePersist: queuePersist,
+    _flushPersist: flushPersist,
   };
   if (typeof window !== 'undefined') window.FBRadarLive = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

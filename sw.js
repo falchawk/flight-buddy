@@ -5,7 +5,7 @@
 // - 外部（Windy等）は一切キャッシュしない（オンライン専用）
 // - data/latest/*, data/index.json は network-first（オフライン時はキャッシュ）
 // v1.9.19 rev2: PM2.5 予測のクライアント側の過去コマ非表示を廃止（同一版のまま再配布するためこの行でバイト列を変える）
-const VERSION = 'v1.9.41';
+const VERSION = 'v1.9.42';
 const SHELL_CACHE = `fb-shell-${VERSION}`;
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
@@ -29,6 +29,14 @@ self.addEventListener('activate', (e) => {
 });
 
 async function matchPacks(req) {
+  // パック URL は packId を含むので、該当キャッシュだけ見ればよい（新規パックの一括保存時に全 fb-pack-* を毎回走査しない）
+  const url = new URL(req.url);
+  const m = url.pathname.match(/\/data\/packs\/([^/]+)\//);
+  if (m) {
+    const n = `fb-pack-${m[1]}`;
+    if (await caches.has(n)) return (await caches.open(n)).match(req, { ignoreSearch: true });
+    return null;
+  }
   for (const n of await caches.keys()) {
     if (!n.startsWith('fb-pack-')) continue;
     const r = await (await caches.open(n)).match(req, { ignoreSearch: true });

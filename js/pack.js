@@ -11,6 +11,7 @@
   const LS_KEY = 'fb.packs.v1';
   const KEEP = 2;
   const PARALLEL = 6;
+  const PROGRESS_MS = 100;
   const BLOBS = 'fb-blobs';
   // 旧「WX だけ更新」（v1.9.x まで）が端末に残した保存（別 Cache と localStorage）。機能を廃止したので、起動時に一度だけ消す
   const LEGACY_WXO = 'fb-wx-overlay', LEGACY_LS = ['fb.wxo.v1', 'fb.wxLast.v1'];
@@ -66,6 +67,39 @@
     });
     await Promise.all(workers);
   }
+  // 保存の合間に描画・入力を通す。パック取得そのものは止めない。
+  function yieldToMain() {
+    if (typeof scheduler !== 'undefined' && typeof scheduler.yield === 'function') return scheduler.yield();
+    return new Promise((r) => setTimeout(r, 0));
+  }
+  function throttleProgress(fn, ms) {
+    if (!fn) {
+      const noop = () => {};
+      noop.flush = () => {};
+      return noop;
+    }
+    let last = 0, timer = null, pending = null;
+    const flush = () => {
+      timer = null;
+      last = Date.now();
+      if (pending) { const a = pending; pending = null; fn(...a); }
+    };
+    const wrapped = (...args) => {
+      pending = args;
+      const now = Date.now();
+      if (now - last >= ms) {
+        if (timer) { clearTimeout(timer); timer = null; }
+        flush();
+      } else if (!timer) {
+        timer = setTimeout(flush, Math.max(0, ms - (now - last)));
+      }
+    };
+    wrapped.flush = () => {
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (pending) flush();
+    };
+    return wrapped;
+  }
 
   // 選んだ空港のうち、このパックに空港別ファイルがあるもの
   const apList = (manifest, selected) => (manifest.airportFiles ? (selected || []).filter((i) => manifest.airportFiles[i]) : []);
@@ -88,16 +122,20 @@
     const have = new Set((await bc.keys()).map((r) => r.url));
     const needBlobs = blobs.filter((b) => !have.has(siteUrl(b.file)));
     const needFiles = [];
-    for (const f of files) if (!(await cache.match(packUrl(manifest, f.path)))) needFiles.push(f);
+    await pool(files, PARALLEL, async (f) => {
+      if (!(await cache.match(packUrl(manifest, f.path)))) needFiles.push(f);
+    });
     const total = needFiles.length + needBlobs.length;
     const totalBytes = needFiles.reduce((a, f) => a + (f.bytes || 0), 0) + needBlobs.reduce((a, b) => a + (b.bytes || 0), 0);
     let done = 0, doneBytes = 0;
-    const tick = (bytes) => { done++; doneBytes += bytes || 0; onProgress && onProgress(done, total, doneBytes, totalBytes); };
-    onProgress && onProgress(0, total, 0, totalBytes);
+    const report = throttleProgress(onProgress, PROGRESS_MS);
+    const tick = (bytes) => { done++; doneBytes += bytes || 0; report(done, total, doneBytes, totalBytes); };
+    report(0, total, 0, totalBytes);
     await pool(needFiles, PARALLEL, async (f) => {
       const url = packUrl(manifest, f.path);
       try { await cache.put(url, await fetchVerified(url, f.sha256, f.type)); } catch (e) { throw new Error(`${f.path} の保存に失敗: ${e.message}`); }
       tick(f.bytes);
+      await yieldToMain();
     });
     await pool(needBlobs, PARALLEL, async (b) => {
       const url = siteUrl(b.file);
@@ -105,7 +143,9 @@
       const [sha, ext] = name.split('.');
       try { await bc.put(url, await fetchVerified(url, sha, MIME[ext])); } catch (e) { throw new Error(`${b.file} の保存に失敗: ${e.message}`); }
       tick(b.bytes);
+      await yieldToMain();
     });
+    report.flush();
     await cache.put(packUrl(manifest, 'manifest.json'), new Response(JSON.stringify(manifest), { headers: { 'Content-Type': 'application/json' } }));
     const prev = list().find((p) => p.packId === manifest.packId);
     const gotAps = [...new Set([...(prev?.airports || []), ...aps])];
@@ -248,7 +288,7 @@
     const files = m.files.concat(aps.map((i) => m.airportFiles[i]));
     const blobs = (m.blobs || []).concat(...aps.map((i) => m.airportFiles[i].blobs || []));
     let have = 0;
-    for (const f of files) if (await cache.match(packUrl(m, f.path))) have++;
+    await pool(files, PARALLEL, async (f) => { if (await cache.match(packUrl(m, f.path))) have++; });
     const bkeys = new Set((await (await caches.open(BLOBS)).keys()).map((r) => r.url));
     for (const b of blobs) if (bkeys.has(siteUrl(b.file))) have++;
     const total = files.length + blobs.length;
@@ -264,5 +304,5 @@
     verified.clear();
   }
 
-  window.FBPack = { list, checkRemote, download, load, verify, clearAll, cacheName, deviceBytes };
+  window.FBPack = { list, checkRemote, download, load, verify, clearAll, cacheName, deviceBytes, _throttleProgress: throttleProgress, _yieldToMain: yieldToMain, PROGRESS_MS };
 })();

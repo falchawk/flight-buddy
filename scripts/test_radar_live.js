@@ -372,6 +372,24 @@ L.unwatch();
 assert.strictEqual(L._state.watch, null);
 assert.ok(L.get('thunder', 'a03'), 'cache survives unwatch');
 
+// PNG は Blob のまま残し、先読み経路で base64 化しない。旧 overlayB64 は読める。
+const blob = { isBlob: true };
+const persisted = L.frameForPersist({
+  time: '2026-11-23T03:25:00Z', kind: '実況', offMin: 0, label: '実況 12:25 JST',
+  overlay: blob, overlayB64: 'data:image/png;base64,OLD',
+});
+assert.strictEqual(persisted.overlay, blob);
+assert.strictEqual(persisted.overlayB64, null);
+const legacy = L.frameForPersist({
+  time: '2026-11-23T03:25:00Z', kind: '実況', label: 'x',
+  overlayB64: 'data:image/png;base64,ABC',
+});
+assert.strictEqual(legacy.overlay, null);
+assert.strictEqual(legacy.overlayB64, 'data:image/png;base64,ABC');
+assert.ok(code.includes("priority: 'low'"), 'prefetch fetches should be low priority');
+assert.ok(code.includes('queuePersist'), 'IDB writes should be queued, not blocking each region');
+assert.ok(!/readAsDataURL/.test(code), 'must not base64-encode overlays on the prefetch path');
+
 assert.ok(!/更新中/.test(code), 'must not add an updating indicator');
 assert.ok(!/packDownload|FBPack|download\(/.test(code), 'must not gate prefetch on pack download');
 

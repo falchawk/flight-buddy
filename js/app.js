@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.41';
+  const APP_VERSION = '1.9.42';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { areaHide: 'fb.areaHide', notamMode: 'fb.notamMode', airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
@@ -1056,8 +1056,15 @@
   }
 
   // ---------------------------------------------------------------- pack flow
+  let refreshing = false;
+  let pendingLiveRender = false;
+  const applyLiveRender = () => {
+    pendingLiveRender = false;
+    try { renderStatus(); renderCharts(); renderMap(); renderDuty(); renderWind(); } catch (err) { console.warn(err); }
+  };
   function renderAll() {
     const dutyChanged = applyDutyDefault();
+    pendingLiveRender = false;
     renderStatus(); renderMap(); renderCharts(); renderNotam(); renderAirport(); renderDuty(); renderFlights(); renderWind(); renderSwimStatus();
     setupAirportPicker.renderSel && setupAirportPicker.renderSel();
     renderPackInfo();
@@ -1088,10 +1095,10 @@
       state.downloading = null;
       await showPack(cur.packId);
     } catch (e) {
-      state.downloading = null; state.remoteError = e.message; renderStatus();
+      state.downloading = null; state.remoteError = e.message;
+      if (pendingLiveRender) applyLiveRender(); else renderStatus();
     } finally { refreshing = false; }
   }
-  let refreshing = false;
   async function refresh(force = false) {
     if (refreshing) return; refreshing = true;
     $('refresh-btn').classList.add('spinning');
@@ -1117,7 +1124,8 @@
       state.downloading = null;
       state.remoteError = navigator.onLine ? (e.name === 'AbortError' ? 'タイムアウト' : e.message) : 'オフライン';
       if (state.packSource === 'latest') state.packSource = 'cached';
-      renderStatus(); renderPackInfo();
+      if (pendingLiveRender) applyLiveRender();
+      else { renderStatus(); renderPackInfo(); }
     } finally {
       refreshing = false; $('refresh-btn').classList.remove('spinning');
     }
@@ -1200,10 +1208,13 @@
     if (window.FBRadarLive) {
       try { await window.FBRadarLive.start(); } catch (err) { console.warn(err); }
     }
+    // パック保存中は LIVE 更新で図・地図まで描き直さない（進行表示だけ更新し、保存後にまとめて描く）
+    const onLiveUpdate = () => {
+      if (state.downloading) { pendingLiveRender = true; try { renderStatus(); } catch (err) { console.warn(err); } return; }
+      applyLiveRender();
+    };
     if (window.FBWxLive) {
-      window.FBWxLive.start({ onUpdate() {
-        try { renderStatus(); renderCharts(); renderMap(); renderDuty(); renderWind(); } catch (err) { console.warn(err); }
-      } });
+      window.FBWxLive.start({ onUpdate: onLiveUpdate });
     }
     const packs = window.FBPack.list();
     if (packs.length) { state.packSource = 'cached'; await showPack(packs[0].packId); } else renderAll();
