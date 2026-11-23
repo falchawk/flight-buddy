@@ -1,0 +1,18 @@
+{
+  "schema": "flight-buddy-wx-relay/1",
+  "_note": "近リアルタイム気象リレー（ATIS・METAR/SPECI・TAF）。秘密情報は書かない。取得対象は SWIM 負荷を抑えるため、ATIS 対象空港＋SFJ 路線＋SETTINGS 既定の主空港に限定。",
+  "pollSeconds": 90,
+  "kvNamespaceName": "FB_WX_LIVE",
+  "kvKey": "live",
+  "workerName": "flight-buddy-wx",
+  "atisAirports": [
+    "RJCC", "RJCH", "RJSS", "RJAA", "RJTT", "RJSN", "RJGG", "RJOO", "RJBB", "RJBE",
+    "RJOA", "RJOT", "RJOM", "RJOK", "RJFF", "RJFS", "RJFU", "RJFT", "RJFO", "RJFM",
+    "RJFK", "ROAH", "ROIG"
+  ],
+  "profileAirports": [
+    "RJAA", "RJBB", "RJBE", "RJCC", "RJCH", "RJDC", "RJFF", "RJFK", "RJFM", "RJFO",
+    "RJFR", "RJFS", "RJFT", "RJFU", "RJGG", "RJOA", "RJOK", "RJOM", "RJOO", "RJOT",
+    "RJSN", "RJSS", "RJTT", "ROAH", "ROIG"
+  ]
+}

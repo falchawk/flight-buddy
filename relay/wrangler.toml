@@ -1,0 +1,12 @@
+# Flight Buddy 気象リレー（読み取り専用 Worker）。秘密情報は置かない。
+# デプロイ時に CLOUDFLARE_ACCOUNT_ID を環境変数で渡す。
+# kv_namespaces.id はアカウント作成後に KV 名前空間を作ってから記入する。
+name = "flight-buddy-wx"
+main = "src/worker.js"
+compatibility_date = "2026-11-23"
+
+# account_id = "set-via-CLOUDFLARE_ACCOUNT_ID"
+
+[[kv_namespaces]]
+binding = "WX_KV"
+id = "REPLACE_AFTER_CREATE"

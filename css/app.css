@@ -704,3 +704,11 @@ label.block{margin-top:14px}
 .wl-tbl tr.cur td:last-child{box-shadow:inset -2px 2px 0 var(--accent),inset 0 -2px 0 var(--accent)}
 .wl-notes ul{margin:6px 0 4px;padding-left:18px;font-size:12.5px;line-height:1.55}
 .wl-notes li{margin:3px 0}
+
+/* 近リアルタイム気象（LIVE リレー） */
+#wx-live-pill[hidden]{display:none!important}
+.badge.live{color:#fff;background:var(--o-green,#34c759);letter-spacing:.04em}
+.badge.pack{color:var(--text-dim);background:var(--bg-elev);border:1px solid var(--line)}
+.badge.speci{color:#fff;background:var(--ifr,#c0392b);letter-spacing:.04em}
+.sub-label.speci-now{color:var(--ifr,#c0392b)}
+.raw.speci-now{box-shadow:inset 3px 0 0 var(--ifr,#c0392b);background:rgba(192,57,43,.08)}

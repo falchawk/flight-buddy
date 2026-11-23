@@ -38,6 +38,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import build_pack  # noqa: E402
 import schedule  # noqa: E402
+import swim_lock  # noqa: E402
 
 REPO = "falchawk/flight-buddy"
 RELEASE_TAG = "pack-data"
@@ -123,8 +124,12 @@ def refresh_swim(staging, parts):
     cfg = build_pack.read_json(os.path.join(ROOT, "config", "pack_config.json"), {}) or {}
     targets = build_pack.swim_targets(cfg)
     try:
-        r = subprocess.run(["node", SWIM_RUNNER, "--out", os.path.join(staging, "swim"), "--airports", ",".join(targets),
-                            "--parts", ",".join(parts)], capture_output=True, text=True, timeout=240)
+        with swim_lock.hold(timeout_s=180):
+            r = subprocess.run(["node", SWIM_RUNNER, "--out", os.path.join(staging, "swim"), "--airports", ",".join(targets),
+                                "--parts", ",".join(parts)], capture_output=True, text=True, timeout=240)
+    except TimeoutError:
+        log("SWIM ロック待ちタイムアウト")
+        return "fail(lock)", [], list(parts)
     except subprocess.TimeoutExpired:
         log("SWIM タイムアウト（240秒）")
         return "fail(timeout)", [], list(parts)

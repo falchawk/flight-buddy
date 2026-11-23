@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.35';
+  const APP_VERSION = '1.9.36';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { areaHide: 'fb.areaHide', notamMode: 'fb.notamMode', airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
@@ -114,6 +114,14 @@
     lb.addEventListener('click', close);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !lb.hidden) { e.preventDefault(); close(); } });
   }
+
+  function liveOn() { return !!(window.FBWxLive && window.FBWxLive.enabled()); }
+  function wxOf(icao) {
+    if (liveOn()) return window.FBWxLive.mergedWx(state.pack, icao);
+    return state.pack?.wx?.airports?.[icao] || null;
+  }
+  function liveTag(isLive) { return liveOn() ? window.FBWxLive.tag(!!isLive) : ''; }
+
   function renderStatus() {
     const online = navigator.onLine;
     const net = $('net-pill');
@@ -126,6 +134,11 @@
       pp.textContent = 'PACK なし'; pp.className = 'pill bad';
       $('status-text').textContent = state.downloading ? `パック保存中 ${state.downloading}` : (state.remoteError ? `パック未保存（${state.remoteError}）` : 'パック未保存');
       banner.classList.add('hidden');
+      const lp0 = $('wx-live-pill');
+      if (lp0) {
+        if (!liveOn()) lp0.hidden = true;
+        else { const info = window.FBWxLive.pill(); lp0.hidden = !!info.hidden; lp0.textContent = info.text; lp0.className = info.cls; }
+      }
       return;
     }
     const ageH = (Date.now() - new Date(m.generatedAt).getTime()) / 3600000;
@@ -138,6 +151,16 @@
     if (state.downloading) src += ` ／ 新しいパック保存中 ${state.downloading}`;
     if (m.sample) src += ' ／ SAMPLE含む';
     $('status-text').textContent = `パック ${fmtJst(m.generatedAt)}（${fmtUtc(m.generatedAt)}）・ ${src}`;
+    const lp = $('wx-live-pill');
+    if (lp) {
+      if (!liveOn()) { lp.hidden = true; }
+      else {
+        const info = window.FBWxLive.pill();
+        lp.hidden = !!info.hidden;
+        lp.textContent = info.text;
+        lp.className = info.cls;
+      }
+    }
     if (ageH > 3) {
       banner.textContent = ageH > 12 ? `⚠ パックが ${ageText(m.generatedAt)} のものです。` : `パックは ${ageText(m.generatedAt)} に作成されました。`;
       banner.className = `stale-banner${ageH > 12 ? ' bad' : ''}`;
@@ -242,9 +265,15 @@
   }
   function renderWxCards(list) {
     const wx = state.pack?.wx, atis = state.pack?.atis;
-    if (wx) list.insertAdjacentHTML('beforeend', `<p class="hint" style="margin:0 14px">取得 ${esc(fmtJst(wx.fetchedAt))} ／ 出所 ${esc(wx.source)}</p><div class="legend" style="margin:4px 14px">TAF：<span class="taf-token-becmg">BECMG</span> <span class="taf-token-tempo">TEMPO</span> <span class="taf-token-fm">FM</span> <span class="taf-token-prob">PROB30/40</span>（旧版と同じ色。ライトモードは見やすいよう同じ色相で濃いめ）。METAR の TEMPO/BECMG も同じ色。<span class="hl-ifr">赤</span>＝IFR/LIFR の要因（視程 5000m 未満・シーリング 1000ft 未満）。MVFR は強調しません。<br>飛行状態：IFR/VFR の境界は日本の航空法（施行規則第5条第4号）＝視程 5000m・雲高 300m(1000ft)。国土交通大臣が告示で指定した空港（管制圏内で 8km/450m。<b>告示空港: 8km/1500ft</b>）だけは 視程 8000m・雲高 1500ft(450m) が境界で、MVFR は 8000m〜5SM・1500〜3000ft（<b>現在、指定されている空港は 0 件</b>。AIP Japan ENR 1.2 で確認。指定されると各空港のカードに「告示空港: 8km/1500ft」と出ます）。日本に無い MVFR/LIFR は FAA 基準。VFR 視程 &gt;5SM かつ シーリング &gt;3000ft ／ MVFR 視程 5000m〜5SM または 1000〜3000ft ／ IFR 視程 &lt;5000m または &lt;1000ft ／ LIFR 視程 &lt;1SM または &lt;500ft。</div>`);
+    if (wx) {
+      let liveHint = '';
+      if (liveOn() && window.FBWxLive.receivedAt) {
+        const rec = window.FBWxLive.receivedAt;
+        liveHint = ` ／ LIVE ${navigator.onLine ? '更新' : '受信'} ${esc(fmtJst(rec))}（${esc(ageText(rec))}）`;
+      }
+      list.insertAdjacentHTML('beforeend', `<p class="hint" style="margin:0 14px">取得 ${esc(fmtJst(wx.fetchedAt))} ／ 出所 ${esc(wx.source)}${liveHint}</p><div class="legend" style="margin:4px 14px">TAF：<span class="taf-token-becmg">BECMG</span> <span class="taf-token-tempo">TEMPO</span> <span class="taf-token-fm">FM</span> <span class="taf-token-prob">PROB30/40</span>（旧版と同じ色。ライトモードは見やすいよう同じ色相で濃いめ）。METAR の TEMPO/BECMG も同じ色。<span class="hl-ifr">赤</span>＝IFR/LIFR の要因（視程 5000m 未満・シーリング 1000ft 未満）。MVFR は強調しません。<br>飛行状態：IFR/VFR の境界は日本の航空法（施行規則第5条第4号）＝視程 5000m・雲高 300m(1000ft)。国土交通大臣が告示で指定した空港（管制圏内で 8km/450m。<b>告示空港: 8km/1500ft</b>）だけは 視程 8000m・雲高 1500ft(450m) が境界で、MVFR は 8000m〜5SM・1500〜3000ft（<b>現在、指定されている空港は 0 件</b>。AIP Japan ENR 1.2 で確認。指定されると各空港のカードに「告示空港: 8km/1500ft」と出ます）。日本に無い MVFR/LIFR は FAA 基準。VFR 視程 &gt;5SM かつ シーリング &gt;3000ft ／ MVFR 視程 5000m〜5SM または 1000〜3000ft ／ IFR 視程 &lt;5000m または &lt;1000ft ／ LIFR 視程 &lt;1SM または &lt;500ft。</div>`); }
     for (const icao of mainAirports()) {
-      const e = wx?.airports?.[icao];
+      const e = wxOf(icao);
       const card = document.createElement('div'); card.className = 'card';
       let body;
       if (!e) body = `<p class="hint"><span class="badge na">${packHas(icao) ? '未ダウンロード' : 'パック未収録'}</span> ${esc(missText(icao))}</p>`;
@@ -252,19 +281,24 @@
       else {
         const latest = e.metar?.[0];
         const cat = latest ? (window.FBWx.flightCategory(latest.raw, icao) || latest.fltCat) : null;
+        const speci = !!(e.speci || (latest && window.FBWxLive && window.FBWxLive.isSpeci(latest)));
         body = `${e.carriedOver ? `<p class="hint"><span class="badge stale">STALE</span> 今回の取得に失敗したため前回の値です（${esc(fmtJst(e.fetchedAt))}取得）</p>` : (apProf(icao)?.foreign && e.fetchedAt ? `<p class="hint">METAR/TAF 取得 ${esc(fmtJst(e.fetchedAt))}（${esc(ageText(e.fetchedAt))}）・海外空港は1時間ごとに更新</p>` : '')}
-          <div class="sub-label">METAR ${latest ? `${esc(fmtUtc(latest.obsTime))}（${esc(fmtJst(latest.obsTime, false))}）` : ''} ${cat ? `<span class="badge ${cat}">${cat}</span>` : ''} <span class="vmc-basis${window.FBWx.limitsFor(icao).strict ? ' strict' : ''}" title="${window.FBWx.limitsFor(icao).faa ? '飛行状態の判定基準（FAA：IFR は 3SM 未満または 1,000ft 未満）' : '飛行状態の IFR 境界（航空法施行規則第5条第4号）'}">${esc(window.FBWx.limitsFor(icao).text)}</span> <span class="doc-status ${latest ? 'ok' : 'fail'}">${esc(e.metarSource || 'NONE')}</span></div>
-          ${latest ? `<div class="raw">${window.FBWx.highlight(latest.raw, icao)}</div>` : naBox('METAR 未取得')}
+          <div class="sub-label${speci ? ' speci-now' : ''}">${speci ? 'SPECI' : 'METAR'} ${latest ? `${esc(fmtUtc(latest.obsTime))}（${esc(fmtJst(latest.obsTime, false))}）` : ''} ${speci ? '<span class="badge speci">SPECI</span>' : ''} ${liveTag(e.live && e.live.metar)} ${cat ? `<span class="badge ${cat}">${cat}</span>` : ''} <span class="vmc-basis${window.FBWx.limitsFor(icao).strict ? ' strict' : ''}" title="${window.FBWx.limitsFor(icao).faa ? '飛行状態の判定基準（FAA：IFR は 3SM 未満または 1,000ft 未満）' : '飛行状態の IFR 境界（航空法施行規則第5条第4号）'}">${esc(window.FBWx.limitsFor(icao).text)}</span> <span class="doc-status ${latest ? 'ok' : 'fail'}">${esc(e.metarSource || 'NONE')}</span></div>
+          ${latest ? `<div class="raw${speci ? ' speci-now' : ''}">${window.FBWx.highlight(latest.raw, icao)}</div>` : naBox('METAR 未取得')}
           ${srcNotes(e, 'metar')}
           ${e.metar?.length > 1 ? `<details><summary>過去のMETAR（直近3時間・${e.metar.length - 1}件）</summary>${e.metar.slice(1).map((x) => `<div class="raw" style="margin-top:4px">${window.FBWx.highlight(x.raw, icao)}</div>`).join('')}</details>` : ''}
-          <div class="sub-label">TAF ${e.taf && e.taf.issueTime ? `発表 ${esc(fmtUtc(e.taf.issueTime))} ／ 有効 ${esc(fmtUtc(e.taf.validFrom))}〜${esc(fmtUtc(e.taf.validTo))}` : ''} <span class="doc-status ${e.taf ? 'ok' : 'fail'}">${esc(e.tafSource || 'NONE')}</span></div>
+          <div class="sub-label">TAF ${e.taf && e.taf.issueTime ? `発表 ${esc(fmtUtc(e.taf.issueTime))} ／ 有効 ${esc(fmtUtc(e.taf.validFrom))}〜${esc(fmtUtc(e.taf.validTo))}` : ''} ${liveTag(e.live && e.live.taf)} <span class="doc-status ${e.taf ? 'ok' : 'fail'}">${esc(e.tafSource || 'NONE')}</span></div>
           ${e.taf ? `<div class="raw">${window.FBWx.tafLines(e.taf.raw, icao)}</div>` : naBox('TAF 未取得')}
           ${srcNotes(e, 'taf')}`;
       }
-      const a = atis?.airports?.[icao];
+      const aLive = liveOn() ? window.FBWxLive.mergedAtis(state.pack, icao) : null;
+      const a = aLive ? (aLive.text ? { text: aLive.text } : null) : atis?.airports?.[icao];
+      const atisFetched = aLive ? aLive.fetchedAt : atis?.fetchedAt;
+      const atisLive = !!(aLive && aLive.live);
+      const atisReason = aLive ? aLive.reason : (atis?.reasons?.[icao]);
       if (!e && state.pack?.manifest?.airportFiles && !loaded(icao)) { /* 未ダウンロード：ATIS 欄も出さない */ } else
       if (apProf(icao)?.foreign) body += `<div class="sub-label">ATIS</div>${naBox('海外空港の ATIS は対象外（国内 SWIM のみ）')}`; else
-      body += `<div class="sub-label">ATIS ${a && atis.fetchedAt ? `<span class="hint">${esc(fmtJst(atis.fetchedAt))}取得</span>` : ''} <span class="doc-status ${a ? 'ok' : 'fail'}">${a ? 'SWIM' : '未取得'}</span></div>${a ? `<pre class="raw">${esc(a.text)}</pre>` : naBox(`未取得${atis?.reasons?.[icao] ? `（${atis.reasons[icao]}）` : (atis?.note ? `（${atis.note}）` : '')}`)}`;
+      body += `<div class="sub-label">ATIS ${a && atisFetched ? `<span class="hint">${esc(fmtJst(atisFetched))}取得</span>` : ''} ${liveTag(atisLive)} <span class="doc-status ${a ? 'ok' : 'fail'}">${a ? (aLive && aLive.source ? esc(aLive.source) : 'SWIM') : '未取得'}</span></div>${a ? `<pre class="raw">${esc(a.text)}</pre>` : naBox(`未取得${atisReason ? `（${atisReason}）` : (atis?.note ? `（${atis.note}）` : '')}`)}`;
       const fp = apProf(icao);
       card.innerHTML = `<div class="card-title"><span>${esc(apName(icao))} <span class="codes hint">${esc(apCodes(icao))}</span></span>${fp?.foreign ? `<span class="badge">${esc(countryJa(fp.country))}</span>` : ''}</div>${body}`;
       list.appendChild(card);
@@ -501,7 +535,7 @@
       const a = airportInfo(icao), p = prof[icao] || idx[icao];
       const lat = p?.lat ?? a?.lat, lon = p?.lon ?? a?.lon;
       if (lat == null || lon == null) continue;
-      const e = wx[icao], mt = e?.metar?.[0];
+      const e = liveOn() ? window.FBWxLive.mergedWx(state.pack, icao) : wx[icao], mt = e?.metar?.[0];
       // 選んでいない空港は一覧（index.json）の飛行状態だけ（METAR 本文などは選んだ空港の分だけダウンロード）
       const cat = mt ? (window.FBWx.flightCategory(mt.raw, icao) || mt.fltCat) : (idx[icao]?.fltCat || null);
       list.push({ icao, lat, lon, cat, sel: sel.includes(icao), name: apName(icao), codes: apCodes(icao),
@@ -510,8 +544,8 @@
           const nn = n?.items?.length;
           return `<div class="pop-title"><b>${esc(apName(icao))}</b> <span class="codes">${esc(apCodes(icao))}</span> ${cat ? `<span class="badge ${cat}">${cat}</span>` : '<span class="badge na">METARなし</span>'}</div>
             ${!e && state.pack?.manifest?.airportFiles ? `<p class="hint">${sel.includes(icao) ? esc(missText(icao)) : 'この空港は選択していません。SETTINGS で選ぶと METAR/TAF・NOTAM などをこの端末にダウンロードします。'}</p>` : ''}
-            ${mt ? `<div class="sub-label">METAR ${esc(fmtUtc(mt.obsTime))}</div><div class="raw">${window.FBWx.highlight(mt.raw, icao)}</div>` : ''}
-            ${e?.taf ? `<div class="sub-label">TAF</div><div class="raw">${window.FBWx.tafLines(e.taf.raw, icao)}</div>` : ''}
+            ${mt ? `<div class="sub-label">${(e.speci || (window.FBWxLive && window.FBWxLive.isSpeci(mt))) ? 'SPECI' : 'METAR'} ${esc(fmtUtc(mt.obsTime))} ${liveTag(e.live && e.live.metar)}</div><div class="raw${(e.speci || (window.FBWxLive && window.FBWxLive.isSpeci(mt))) ? ' speci-now' : ''}">${window.FBWx.highlight(mt.raw, icao)}</div>` : ''}
+            ${e?.taf ? `<div class="sub-label">TAF ${liveTag(e.live && e.live.taf)}</div><div class="raw">${window.FBWx.tafLines(e.taf.raw, icao)}</div>` : ''}
             ${e ? `<div class="hint" style="margin-top:6px">${state.pack?.notam?.ok ? `NOTAM ${nn != null ? nn + '件' : '未収録'}` : 'NOTAM 未取得'}</div>` : ''}`;
         } });
     }
@@ -830,7 +864,7 @@
     renderDuty();
   }
   function tafWindow(icao, date, hhmm, label) {
-    const e = state.pack?.wx?.airports?.[icao];
+    const e = wxOf(icao);
     const buf = Number(state.duty.buffer || 2);
     const win = hhmm ? (() => { const [h, m] = hhmm.split(':').map(Number); const t = h * 60 + m; const f = (x) => { x = ((x % 1440) + 1440) % 1440; return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; }; return `${f(t - buf * 60)}〜${f(t + buf * 60)}`; })() : '';
     const head = `<div class="sub-label">${esc(label)} ${esc(apCodes(icao))}${win ? ` ・ 時間帯 ${esc(win)}（現地）` : ''}</div>`;
@@ -875,7 +909,7 @@
       airports: wantedAirports().map((icao) => ({
         icao, label: `${icao} ${apName(icao)}`,
         profile: state.pack?.airports?.airports?.[icao] || null,
-        metar: state.pack?.wx?.airports?.[icao]?.metar?.[0] || null,
+        metar: (wxOf(icao)?.metar && wxOf(icao).metar[0]) || null,
       })),
     }));
   }
@@ -1093,6 +1127,11 @@
     }
     try { await navigator.storage?.persist?.(); } catch { /* ignore */ }
 
+    if (window.FBWxLive) {
+      window.FBWxLive.start({ onUpdate() {
+        try { renderStatus(); renderCharts(); renderMap(); renderDuty(); renderWind(); } catch (err) { console.warn(err); }
+      } });
+    }
     const packs = window.FBPack.list();
     if (packs.length) { state.packSource = 'cached'; await showPack(packs[0].packId); } else renderAll();
     refresh(false);
