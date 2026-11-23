@@ -212,7 +212,7 @@ const jobs = L.prefetchJobs();
 assert.strictEqual(jobs.length, 40, '20 areas × 2 products, never a subset');
 assert.strictEqual(jobs.filter((j) => j.product === 'nowcast').length, 20);
 assert.strictEqual(jobs.filter((j) => j.product === 'thunder').length, 20);
-assert.ok(jobs.every((j) => j.obsOnly), 'no watch: latest obs only');
+assert.ok(jobs.every((j) => !j.obsOnly), 'every region fetches obs + forecasts');
 assert.ok(L.AREAS.every((a) => jobs.some((j) => j.product === 'nowcast' && j.area === `a${a}`)));
 assert.ok(L.AREAS.every((a) => jobs.some((j) => j.product === 'thunder' && j.area === `a${a}`)));
 
@@ -220,14 +220,32 @@ const watched = L.prefetchJobs({ product: 'nowcast', area: 'a09' });
 assert.strictEqual(watched.length, 40);
 assert.strictEqual(watched[0].product, 'nowcast');
 assert.strictEqual(watched[0].area, 'a09');
-assert.strictEqual(watched[0].obsOnly, false, 'open region also fetches forecasts');
-assert.strictEqual(watched.filter((j) => !j.obsOnly).length, 1);
-assert.ok(watched.slice(1).every((j) => j.obsOnly));
+assert.ok(watched.every((j) => !j.obsOnly), 'forecasts for all regions, including unopened');
 
 const obsOnly = L.plannedRequests('nowcast', 'a09', new Date('2026-11-23T03:25:00Z'), { obsOnly: true });
 assert.strictEqual(obsOnly.length, 1);
 assert.strictEqual(obsOnly[0].kind, '実況');
 assert.ok(obsOnly[0].url.endsWith('_a09.png'));
+
+const t0325 = new Date('2026-11-23T03:25:00Z');
+assert.strictEqual(L.plannedRequests('nowcast', 'a00', t0325).length, 3, 'obs + forecasts for unopened region too');
+assert.strictEqual(L.plannedRequests('nowcast', 'a15', t0325).filter((r) => r.kind === '予想').length, 2);
+
+// 欠けた予想があれば、time.json が進んでいなくても取りに行く
+const obsOnlyRec = { latestTime: '2026-11-23T03:25:00Z', frames: [{ time: '2026-11-23T03:25:00Z', kind: '実況' }] };
+assert.strictEqual(L.shouldFetch(Date.parse('2026-11-23T03:25:00Z'), Date.parse('2026-11-23T03:15:00Z'), Date.parse('2026-11-23T03:25:00Z')), false);
+assert.ok(L.missingLiveForecasts(obsOnlyRec, 'nowcast', 'a00', t0325));
+assert.ok(L.shouldRefresh(Date.parse('2026-11-23T03:25:00Z'), Date.parse('2026-11-23T03:15:00Z'), Date.parse('2026-11-23T03:25:00Z'), obsOnlyRec, 'nowcast', 'a00', t0325));
+const fullRec = { latestTime: '2026-11-23T03:25:00Z', frames: L.plannedRequests('nowcast', 'a00', t0325).map((r) => ({ time: r.time, kind: r.kind })) };
+assert.ok(!L.missingLiveForecasts(fullRec, 'nowcast', 'a00', t0325));
+assert.ok(!L.shouldRefresh(Date.parse('2026-11-23T03:25:00Z'), Date.parse('2026-11-23T03:15:00Z'), Date.parse('2026-11-23T03:25:00Z'), fullRec, 'nowcast', 'a00', t0325));
+
+// 地域切替：同じ有効時刻を辿る。無ければ一番近い時刻（同距離なら後ろ）。未指定は最新実況。
+const byTime = L.mergeFrames(pack, live).frames;
+assert.strictEqual(L.indexAtTime(byTime, '2026-11-23T03:15:00Z'), byTime.findIndex((f) => f.time === '2026-11-23T03:15:00Z'));
+assert.strictEqual(L.indexAtTime(byTime, '2026-11-23T03:25:00Z'), byTime.findIndex((f) => f.time === '2026-11-23T03:25:00Z' && f.kind === '実況'));
+assert.strictEqual(L.indexAtTime(byTime, '2026-11-23T03:20:00Z'), byTime.findIndex((f) => f.time === '2026-11-23T03:25:00Z'), 'tie breaks toward the later frame');
+assert.strictEqual(L.indexAtTime(byTime, null), L.defaultObsIndex(byTime));
 
 // 先読み（実況のみ）では、まだ先の予想を捨てない
 const accKeepFc = L.accumulateLiveFrames(
@@ -271,7 +289,7 @@ assert.ok(peak <= 3, `peak concurrency ${peak} exceeds 3`);
 assert.ok(peak >= 2, `expected parallel workers, peak=${peak}`);
 assert.ok(Date.now() - t0 >= 40, 'pool should take multiple batches');
 
-// prefetchAll: time.json は製品あたり1回、PNG は最新実況40枚。開いている地域だけ予想も取る。
+// prefetchAll: time.json は製品あたり1回、全地域の実況と予想を取る。
 const fetches = [];
 let pngInflight = 0, pngPeak = 0;
 sandbox.fetch = async (url) => {
@@ -292,21 +310,27 @@ const pngReqs = fetches.filter((u) => /\.png$/.test(u));
 assert.strictEqual(timeReqs.filter((u) => u.endsWith('/rain/time.json')).length, 1);
 assert.strictEqual(timeReqs.filter((u) => u.endsWith('/thunder/time.json')).length, 1);
 assert.ok(pngPeak <= 3, `png peak ${pngPeak} exceeds 3`);
-// 39 regions obs-only + kanto nowcast (obs+2 forecasts). thunder kanto obs only.
 assert.strictEqual(pngReqs.filter((u) => /_f00_/.test(u)).length, 40, 'latest obs for every region and product');
-assert.ok(pngReqs.some((u) => /rain_20261123032500_f01_a09\.png$/.test(u)), 'open kanto nowcast also fetches forecast');
-assert.ok(pngReqs.some((u) => /rain_20261123032500_f07_a09\.png$/.test(u)));
-assert.ok(!pngReqs.some((u) => /_f01_a00/.test(u)), 'unopened regions do not fetch forecasts');
-assert.ok(!pngReqs.some((u) => /thunder_.*_f0[1-9]_/.test(u)), 'unopened thunder does not fetch forecasts');
+const expectNc = L.plannedRequests('nowcast', 'a00', new Date('2026-11-23T03:25:00Z'));
+const expectTh = L.plannedRequests('thunder', 'a00', new Date('2026-11-23T03:25:00Z'));
+assert.strictEqual(pngReqs.length, (expectNc.length + expectTh.length) * 20, 'obs+forecast for all 40 jobs');
 for (const a of L.AREAS) {
   assert.ok(pngReqs.some((u) => u.endsWith(`_f00_a${a}.png`) && u.includes('/rain/')), `missing rain obs a${a}`);
   assert.ok(pngReqs.some((u) => u.endsWith(`_f00_a${a}.png`) && u.includes('/thunder/')), `missing thunder obs a${a}`);
+  for (const r of expectNc.filter((x) => x.kind === '予想')) {
+    assert.ok(pngReqs.includes(r.url.replace('_a00.png', `_a${a}.png`)), `missing nowcast forecast a${a} ${r.url}`);
+  }
+  for (const r of expectTh.filter((x) => x.kind === '予想')) {
+    assert.ok(pngReqs.includes(r.url.replace('_a00.png', `_a${a}.png`)), `missing thunder forecast a${a} ${r.url}`);
+  }
 }
 assert.ok(L.get('nowcast', 'a00'), 'prefetched unopened region is cached');
 assert.ok(L.get('thunder', 'a15'), 'prefetched remote region is cached');
 assert.strictEqual(L.get('nowcast', 'a00').latestTime, '2026-11-23T03:25:00Z');
 assert.strictEqual(L.get('nowcast', 'a00').frames.filter((f) => f.kind === '実況').length, 1);
+assert.strictEqual(L.get('nowcast', 'a00').frames.filter((f) => f.kind === '予想').length, 2);
 assert.strictEqual(L.get('nowcast', 'a09').frames.filter((f) => f.kind === '予想').length, 2);
+assert.ok((L.get('thunder', 'a15').frames.filter((f) => f.kind === '予想').length) === expectTh.filter((r) => r.kind === '予想').length);
 
 // time.json が進まなければ再取得しない
 const before = fetches.length;
@@ -314,7 +338,18 @@ await L.prefetchAll('test-again');
 assert.strictEqual(fetches.filter((u) => /time\.json/.test(u)).length, 4, 'time.json polled again');
 assert.strictEqual(fetches.filter((u) => /\.png$/.test(u)).length, pngReqs.length, 'no png refetch if time unchanged');
 
-// time.json が進んだら最新実況を取り直す
+// 実況だけ残したキャッシュは、同じ latest でも欠けた予想を取りに行く
+const keptPng = fetches.filter((u) => /\.png$/.test(u)).length;
+const recA00 = L.get('nowcast', 'a00');
+recA00.frames = recA00.frames.filter((f) => f.kind === '実況');
+await L.prefetchAll('fill-forecasts');
+const filled = fetches.filter((u) => /\.png$/.test(u)).length - keptPng;
+assert.ok(filled >= 2, `expected to fill missing nowcast a00 forecasts, got ${filled}`);
+assert.ok(fetches.some((u) => /rain_20261123032500_f01_a00\.png$/.test(u)));
+assert.ok(fetches.some((u) => /rain_20261123032500_f07_a00\.png$/.test(u)));
+assert.strictEqual(L.get('nowcast', 'a00').frames.filter((f) => f.kind === '予想').length, 2);
+
+// time.json が進んだら最新実況と予想を取り直す
 sandbox.fetch = async (url) => {
   fetches.push(url);
   if (/time\.json/.test(url)) {
@@ -323,10 +358,14 @@ sandbox.fetch = async (url) => {
   return { ok: true, headers: { get: () => 'image/png' }, blob: async () => new Uint8Array([4, 5, 6]) };
 };
 await L.prefetchAll('test-advance');
-const pngAfter = fetches.filter((u) => /20261123033000_f00_/.test(u));
-assert.strictEqual(pngAfter.length, 40, 'new latest obs for all 40 when time.json advances');
+const pngAfterObs = fetches.filter((u) => /20261123033000_f00_/.test(u));
+assert.strictEqual(pngAfterObs.length, 40, 'new latest obs for all 40 when time.json advances');
+const expectNc330 = L.plannedRequests('nowcast', 'a00', new Date('2026-11-23T03:30:00Z'));
+const expectTh330 = L.plannedRequests('thunder', 'a00', new Date('2026-11-23T03:30:00Z'));
+assert.strictEqual(fetches.filter((u) => /20261123033000_/.test(u) && /\.png$/.test(u)).length, (expectNc330.length + expectTh330.length) * 20, 'new obs+forecast for all regions');
 assert.ok(L.get('nowcast', 'a00').frames.some((f) => f.time === '2026-11-23T03:25:00Z' && f.kind === '実況'), 'previous live obs kept until pruned');
 assert.ok(L.get('nowcast', 'a00').frames.some((f) => f.time === '2026-11-23T03:30:00Z' && f.kind === '実況'));
+assert.ok(L.get('nowcast', 'a15').frames.some((f) => f.kind === '予想' && f.time === '2026-11-23T04:00:00Z'));
 
 // unwatch しても先読みタイマー用の状態は落とさない（タイマーはテストでは未起動）
 L.unwatch();

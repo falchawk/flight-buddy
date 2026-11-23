@@ -1,7 +1,7 @@
 // レーダーエコー（ナウキャスト・雷ナウキャスト）の近リアルタイム表示
 // 気象庁 bosai/rain の time.json と地域別オーバーレイ PNG を直接取得する。
-// アプリが表示中のあいだ、雨・雷の全20地域（計40枚の最新実況）を低並列（3）で裏読みし IndexedDB に残す。
-// 開いている地域だけは予想コマも取る。地域は絞り込まない。パックのコマは矢印で残す。
+// アプリが表示中のあいだ、雨・雷の全20地域の最新実況と予想を低並列（3）で裏読みし IndexedDB に残す。
+// 地域は絞り込まない。パックのコマは矢印で残す。
 // METAR/ATIS 用の中継サーバーは使わない（気象の文字電文の速度に影響させない）。
 // パックのコマは残し、新しい実況と予想だけを時刻順に差し込む。
 (function (root) {
@@ -262,15 +262,14 @@
     await Promise.all(workers);
   }
 
-  // 全20地域×雨・雷。開いている地域だけ予想も取る。地域の絞り込み引数は持たない。
+  // 全20地域×雨・雷。実況も予想も取る。地域の絞り込み引数は持たない。
   function prefetchJobs(watch) {
     const jobs = [];
     const wProd = watch && watch.product;
     const wArea = watch ? areaCode(watch.area) : null;
     for (const prod of PRODUCT_IDS) {
       for (const area of AREAS) {
-        const isWatch = !!(wProd === prod && wArea === area);
-        jobs.push({ product: prod, area: `a${area}`, obsOnly: !isWatch });
+        jobs.push({ product: prod, area: `a${area}`, obsOnly: false });
       }
     }
     if (wProd && wArea) {
@@ -285,6 +284,46 @@
 
   function shouldFetch(jmaLatestMs, packLatestObsMs, lastLiveMs) {
     return isNewer(jmaLatestMs, packLatestObsMs) && isNewer(jmaLatestMs, lastLiveMs);
+  }
+
+  function frameTimesSet(frames) {
+    const s = new Set();
+    for (const fr of frames || []) {
+      const t = frameTimeMs(fr);
+      if (Number.isFinite(t)) s.add(t);
+    }
+    return s;
+  }
+
+  // 同じ latest でも予想コマが欠けていれば取りに行く（実況のみ先読みしていた端末の補完）。
+  function missingLiveForecasts(prev, productId, areaId, latest) {
+    if (!latest) return false;
+    const have = frameTimesSet(prev && prev.frames);
+    return plannedRequests(productId, areaId, latest).some((r) => {
+      if (r.kind !== '予想') return false;
+      const t = parseIso(r.time);
+      return Number.isFinite(t) && !have.has(t);
+    });
+  }
+
+  function shouldRefresh(jmaLatestMs, packLatestObsMs, lastLiveMs, prev, productId, areaId, latest) {
+    if (shouldFetch(jmaLatestMs, packLatestObsMs, lastLiveMs)) return true;
+    return missingLiveForecasts(prev, productId, areaId, latest);
+  }
+
+  // 地域を切り替えても同じ有効時刻のコマを出す。無ければ一番近い時刻。未指定なら最新実況。
+  function indexAtTime(frames, time) {
+    if (!frames || !frames.length) return 0;
+    const want = parseIso(time);
+    if (!Number.isFinite(want)) return defaultObsIndex(frames);
+    let best = -1, bestAbs = Infinity;
+    for (let i = 0; i < frames.length; i++) {
+      const t = frameTimeMs(frames[i]);
+      if (!Number.isFinite(t)) continue;
+      const d = Math.abs(t - want);
+      if (d < bestAbs || (d === bestAbs && i > best)) { bestAbs = d; best = i; }
+    }
+    return best >= 0 ? best : defaultObsIndex(frames);
   }
 
   function plannedRequests(productId, areaId, latest, opts) {
@@ -466,8 +505,12 @@
       } catch (e) { return prev || null; }
     }
     const jmaMs = +latest;
-    if (!shouldFetch(jmaMs, packLatest, lastLive)) return prev || null;
-    const reqs = plannedRequests(productId, areaId, latest, { obsOnly: !!(opts && opts.obsOnly) });
+    const obsOnly = !!(opts && opts.obsOnly);
+    if (!shouldRefresh(jmaMs, packLatest, lastLive, prev, productId, areaId, latest) && !obsOnly) {
+      return prev || null;
+    }
+    if (obsOnly && !shouldFetch(jmaMs, packLatest, lastLive)) return prev || null;
+    const reqs = plannedRequests(productId, areaId, latest, { obsOnly });
     const fetched = [];
     for (const req of reqs) {
       const blob = await fetchPng(req.url);
@@ -504,7 +547,7 @@
         const prev = get(j.product, j.area);
         const packLatest = latestObsTime(packFramesFor(j.product, j.area));
         const lastLive = prev ? parseIso(prev.latestTime) : NaN;
-        return shouldFetch(+latest[j.product], packLatest, lastLive);
+        return shouldRefresh(+latest[j.product], packLatest, lastLive, prev, j.product, j.area, latest[j.product]);
       });
       await pool(need, PREFETCH_CONCURRENCY, async (j) => {
         try {
@@ -584,6 +627,7 @@
     isLiveProduct, areaCode, parseIso, isNewer, ts14, toIsoZ, fmtJst, fmtJstHm, ageText,
     timeUrl, rainUrl, forecastSlots, offsetLabel, plannedRequests,
     isObs, latestObsTime, defaultObsIndex, mergeFrames, resolveIndex, accumulateLiveFrames, shouldFetch,
+    shouldRefresh, missingLiveForecasts, indexAtTime,
     pruneLiveFrames, pool, prefetchJobs, prefetchAll, readLatest,
     badgeText, badgeHtml, get, refresh, watch, unwatch, start, tick, hydrate,
     _state: state,

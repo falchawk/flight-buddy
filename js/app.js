@@ -1,6 +1,6 @@
 // Flight Buddy main
 (function () {
-  const APP_VERSION = '1.9.39';
+  const APP_VERSION = '1.9.40';
   const $ = (id) => document.getElementById(id);
   const esc = window.FBWx.esc;
   const LS = { areaHide: 'fb.areaHide', notamMode: 'fb.notamMode', airports: 'fb.airports', duty: 'fb.duty', tab: 'fb.tab', notamH: 'fb.notamHours', viewPack: 'fb.viewPack', chartSel: 'fb.chartSel', theme: 'fb.theme' };
@@ -308,6 +308,7 @@
   // ---------------------------------------------------------------- CHARTS（旧 Flight Buddy の8分類）
   const chartSel = lsGet(LS.chartSel, { cat: null, item: {}, variant: {}, group: {} });
   const frameIdx = {}; // `${cat}/${item}/${variant}` -> index（パック切替でリセット）
+  const radarSelTime = {}; // nowcast/thunder: 地域を切り替えても同じ有効時刻を保つ
   let chartsPackId = null;
   const saveSel = () => lsSet(LS.chartSel, chartSel);
   function chip(label, active, onclick, extra = '') {
@@ -383,7 +384,7 @@
     const ch = state.pack?.charts;
     const meta = $('charts-meta'), catsNav = $('chart-cats'), itemsNav = $('chart-items'), vbox = $('chart-variants'), body = $('chart-body');
     catsNav.innerHTML = ''; itemsNav.innerHTML = ''; vbox.innerHTML = ''; body.innerHTML = '';
-    if (state.pack?.manifest?.packId !== chartsPackId) { for (const k of Object.keys(frameIdx)) delete frameIdx[k]; chartsPackId = state.pack?.manifest?.packId; }
+    if (state.pack?.manifest?.packId !== chartsPackId) { for (const k of Object.keys(frameIdx)) delete frameIdx[k]; for (const k of Object.keys(radarSelTime)) delete radarSelTime[k]; chartsPackId = state.pack?.manifest?.packId; }
     // WX の最初のサブタブ＝BRIEF（旧・独立タブ）。最後に選んだサブタブは従来どおり覚えている。初めて開いた時の既定は BRIEF
     const cats = [{ id: 'brief', label: 'BRIEF' }, ...chartCats()];
     let cat = cats.find((c) => c.id === chartSel.cat) || cats[0];
@@ -478,15 +479,19 @@
     }
     if (!frames.length) { panel.innerHTML = head() + '<div class="chart-stage"><p class="hint">表示できるコマがありません。</p></div>'; body.appendChild(panel); return; }
     const fkey = `${key}/${v.id}`;
-    if (frameIdx[fkey] == null || frameIdx[fkey] >= frames.length) {
-      frameIdx[fkey] = radarLive
-        ? window.FBRadarLive.defaultObsIndex(frames)
-        : Math.min(v.defaultFrame ?? frames.length - 1, frames.length - 1);
+    if (radarLive) {
+      frameIdx[fkey] = window.FBRadarLive.indexAtTime(frames, radarSelTime[item.id]);
+    } else if (frameIdx[fkey] == null || frameIdx[fkey] >= frames.length) {
+      frameIdx[fkey] = Math.min(v.defaultFrame ?? frames.length - 1, frames.length - 1);
     }
     const carried = p.carriedOver || v.carriedOver;
-    const latestI = (cat.id === 'fxjp' || item.id === 'a30') ? latestAnalysisIndex(frames) : -1;
+    const isA30Latest = (cat.id === 'fxjp' || item.id === 'a30');
+    let latestI = radarLive
+      ? window.FBRadarLive.defaultObsIndex(frames)
+      : (isA30Latest ? latestAnalysisIndex(frames) : -1);
+    const latestAria = radarLive ? '最新の実況に戻る' : '最新の ANALYSIS に戻る';
     const latestBtnHtml = (latestI >= 0 && frames.length > 1)
-      ? '<button type="button" class="btn f-latest" aria-label="最新の ANALYSIS に戻る">最新</button>' : '';
+      ? `<button type="button" class="btn f-latest" aria-label="${latestAria}">最新</button>` : '';
     const credit = radarLive ? `<div class="chart-note hint">${esc(window.FBRadarLive.CREDIT)}</div>` : '';
     const note = p.note ? `<div class="chart-note hint">${esc(p.note.replace('アプリを開いた時に過去になったコマは自動で隠す。', ''))}</div>` : '';
     panel.innerHTML = head(carried ? ' <span class="badge carried">前回分</span>' : '')
@@ -495,13 +500,14 @@
       + note + credit;
     body.appendChild(panel);
     const stage = panel.querySelector('.chart-stage'), lbl = panel.querySelector('.lbl'), slider = panel.querySelector('.frame-slider');
-    const latestBtn = panel.querySelector('.f-latest');
+    const latestBtnEl = () => panel.querySelector('.f-latest');
     let tok = 0;
     const urlFn = state.pack.imageUrl;
     const show = async (i) => {
       if (!frames.length) return;
       i = Math.max(0, Math.min(frames.length - 1, i)); frameIdx[fkey] = i;
       const fr = frames[i];
+      if (radarLive && fr && fr.time) radarSelTime[item.id] = fr.time;
       const age = frameAge(fr);
       if (radarLive && lbl) {
         const badge = window.FBRadarLive.badgeHtml(fr, { online: navigator.onLine, receivedAt: fr.receivedAt });
@@ -510,6 +516,7 @@
         lbl.textContent = `${frames.length > 1 ? `${i + 1}/${frames.length} ・ ` : ''}${fr.label || ''}${age ? `（${age}）` : ''}`;
       }
       if (slider) { slider.max = String(Math.max(0, frames.length - 1)); slider.value = String(i); }
+      const latestBtn = latestBtnEl();
       if (latestBtn) {
         const atLatest = i === latestI;
         latestBtn.disabled = atLatest;
@@ -529,6 +536,7 @@
       const prev = panel.querySelector('.f-prev'), next = panel.querySelector('.f-next'), sl = panel.querySelector('.frame-slider');
       if (prev) prev.onclick = () => show(frameIdx[fkey] - 1);
       if (next) next.onclick = () => show(frameIdx[fkey] + 1);
+      const latestBtn = latestBtnEl();
       if (latestBtn) latestBtn.onclick = () => { if (latestI >= 0) show(latestI); };
       if (sl) sl.oninput = () => show(Number(sl.value));
     };
@@ -546,6 +554,17 @@
           const merged = window.FBRadarLive.mergeFrames(packFrames, rec);
           const nextI = window.FBRadarLive.resolveIndex(frames, frameIdx[fkey], merged.frames);
           frames = merged.frames;
+          latestI = window.FBRadarLive.defaultObsIndex(frames);
+          if (frames.length > 1 && latestI >= 0 && !latestBtnEl()) {
+            const html = `<button type="button" class="btn f-latest" aria-label="${latestAria}">最新</button>`;
+            const nxt = panel.querySelector('.f-next');
+            if (nxt) nxt.insertAdjacentHTML('beforebegin', html);
+            else {
+              const bar = panel.querySelector('.frame-bar');
+              if (bar) bar.insertAdjacentHTML('beforeend', html);
+            }
+            bindControls();
+          }
           if (slider) slider.max = String(Math.max(0, frames.length - 1));
           else if (frames.length > 1 && !panel.querySelector('.frame-slider')) {
             const bar = panel.querySelector('.frame-bar');
