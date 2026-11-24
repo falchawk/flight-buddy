@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""wx_live_poller の組み立て（SWIM 優先・AWC は失敗時のみ）と ATIS 時刻抽出。"""
+"""wx_live_poller の組み立て（METAR/TAF＝AWC だけ、ATIS＝SWIM を 120 秒以上あけて）と ATIS 時刻抽出。"""
 import datetime as dt
 import json
 import os
@@ -17,46 +17,44 @@ FIXTURE = ROOT / "scripts" / "fixtures" / "wx_live_swim.json"
 REF = dt.datetime(2026, 11, 23, 3, 20, tzinfo=UTC)
 
 
-class TestBuildPayload(unittest.TestCase):
-    def setUp(self):
-        self.cfg = w.load_cfg()
-        self.swim_raw = json.loads(FIXTURE.read_text())
-        self.swim = {"ok": True, "reason": None, "atis": self.swim_raw["atis"], "profile": self.swim_raw["profile"]}
+AWC_TT = {"metar": [{"raw": "METAR RJTT 230300Z 08005KT 9999 FEW030 15/05 Q1020", "obsTime": "2026-11-23T03:00:00Z",
+                     "source": "AWC", "type": "METAR", "fltCat": "VFR"}],
+          "taf": {"raw": "TAF RJTT 222300Z 2300/2406 08005KT 9999 FEW030", "issueTime": "2026-11-22T23:00:00Z",
+                  "validFrom": None, "validTo": None, "source": "AWC"}}
 
-    def test_swim_preferred(self):
-        payload, stats = w.build_payload(self.cfg, self.swim, {"airports": {}}, ref=REF)
+
+class TestBuildPayload(unittest.TestCase):
+    """2026-11-24 から METAR/TAF は AWC だけ、ATIS は SWIM。"""
+    def setUp(self):
+        self.cfg = {"atisAirports": ["RJTT"], "profileAirports": ["RJTT", "RJDC"]}
+        self.swim_raw = json.loads(FIXTURE.read_text())
+        self.atis = self.swim_raw["atis"]
+
+    def test_metar_taf_from_awc_atis_from_swim(self):
+        awc = {"fetchedAt": "2026-11-23T03:20:00Z", "airports": {"RJTT": AWC_TT, "RJDC": {"metar": [], "taf": None}}}
+        payload, stats = w.build_payload(self.cfg, self.atis, awc, ref=REF)
         self.assertEqual(payload["schema"], "flight-buddy-wx-live/1")
         tt = payload["airports"]["RJTT"]
-        self.assertEqual(tt["metarSource"], "SWIM")
-        self.assertTrue(tt["metar"][0]["raw"])
-        self.assertEqual(tt["metar"][0]["obsTime"], "2026-11-23T03:00:00Z")
-        self.assertEqual(tt["tafSource"], "SWIM")
+        self.assertEqual(tt["metarSource"], "AWC")
+        self.assertEqual(tt["tafSource"], "AWC")
         self.assertEqual(tt["atisSource"], "SWIM")
         self.assertTrue(tt["atis"]["text"].startswith("ATIS"))
-        self.assertGreater(stats["metarSwim"], 0)
+        self.assertIsNone(payload["airports"]["RJDC"]["metarSource"])
+        self.assertEqual(stats["metarAwc"], 1)
+        self.assertNotIn("SWIM（国交省）／失敗時のみ", payload["source"])
+        self.assertIn("AWC", payload["source"])
+
+    def test_swim_profile_text_is_never_used(self):
+        # 空港詳細（プロファイル）の METAR を渡す口は無い（AWC が空なら METAR は空）
+        payload, stats = w.build_payload(self.cfg, self.atis, {"airports": {}}, ref=REF)
+        self.assertEqual(payload["airports"]["RJTT"]["metar"], [])
         self.assertEqual(stats["metarAwc"], 0)
 
-    def test_awc_only_when_swim_missing(self):
-        # RJDC の METAR を欠かして AWC に倒す
-        prof = json.loads(json.dumps(self.swim_raw["profile"]))
-        prof["byIcao"]["RJDC"]["metarText"] = ""
-        if "RJDC" in prof.get("metarByIcao") or {}:
-            prof["metarByIcao"]["RJDC"]["text"] = ""
-        swim = {"ok": True, "atis": self.swim_raw["atis"], "profile": prof}
-        awc = {"fetchedAt": "2026-11-23T03:20:00Z", "airports": {
-            "RJDC": {"metar": [{"raw": "METAR RJDC 230300Z 13006KT 9999 FEW035 15/06 Q1028", "obsTime": "2026-11-23T03:00:00Z", "source": "AWC", "type": "METAR", "fltCat": "VFR"}], "taf": None}
-        }}
-        payload, stats = w.build_payload(self.cfg, swim, awc, ref=REF)
-        self.assertEqual(payload["airports"]["RJDC"]["metarSource"], "AWC")
-        self.assertEqual(payload["airports"]["RJTT"]["metarSource"], "SWIM")
-        self.assertGreaterEqual(stats["metarAwc"], 1)
-
-    def test_awc_not_used_when_swim_has_report(self):
-        awc = {"airports": {"RJTT": {"metar": [{"raw": "METAR RJTT 230330Z 00000KT 9999", "obsTime": "2026-11-23T03:30:00Z", "source": "AWC", "type": "METAR", "fltCat": "VFR"}], "taf": None}}}
-        payload, _ = w.build_payload(self.cfg, self.swim, awc, ref=REF)
-        # SWIM が取れているので、より新しい AWC があっても使わない
-        self.assertEqual(payload["airports"]["RJTT"]["metarSource"], "SWIM")
-        self.assertIn("230300Z", payload["airports"]["RJTT"]["metar"][0]["raw"])
+    def test_run_swim_refuses_profile(self):
+        with self.assertRaises(ValueError):
+            w.run_swim(["RJTT"], parts="profile")
+        with self.assertRaises(ValueError):
+            w.run_swim(["RJTT"], parts="atis,profile")
 
     def test_atis_meta(self):
         ident, tm = w.atis_meta("ATIS RJTT X\nM0300\nM\n230300Z 08005KT 50KM=\n", REF)
@@ -64,30 +62,52 @@ class TestBuildPayload(unittest.TestCase):
         self.assertEqual(tm, "2026-11-23T03:00:00Z")
 
     def test_speci_type(self):
-        e = w.metar_entry("SPECI RJTT 230317Z 08020G35KT 2000 TSRA=", REF, "SWIM")
+        e = w.metar_entry("SPECI RJTT 230317Z 08020G35KT 2000 TSRA=", REF, "AWC")
         self.assertEqual(e["type"], "SPECI")
         self.assertEqual(e["obsTime"], "2026-11-23T03:17:00Z")
 
-    def test_cycle_local_with_override(self):
-        cfg = {"atisAirports": ["RJTT"], "profileAirports": ["RJTT", "RJDC"]}
-        with tempfile.TemporaryDirectory() as td:
-            out = os.path.join(td, "live.json")
-            # skip network: inject swim, skip awc
-            payload, stats = w.build_payload(cfg, self.swim, {"airports": {}}, ref=REF)
-            w.write_json(out, payload)
-            d = json.loads(Path(out).read_text())
-            self.assertEqual(d["schema"], w.SCHEMA)
-            self.assertIn("RJTT", d["airports"])
+
+class TestAtisIntervalAndCycle(unittest.TestCase):
+    def test_atis_due_at_least_120s(self):
+        t0 = dt.datetime(2026, 11, 24, 10, 0, tzinfo=UTC)
+        st = {"lastAtisRequestAt": "2026-11-24T10:00:00Z"}
+        self.assertFalse(w.atis_due(st, {}, t0 + dt.timedelta(seconds=119)))
+        self.assertTrue(w.atis_due(st, {}, t0 + dt.timedelta(seconds=120)))
+        # 設定で短くしても 120 秒未満にはならない
+        self.assertFalse(w.atis_due(st, {"atisMinSeconds": 30}, t0 + dt.timedelta(seconds=60)))
+        self.assertTrue(w.atis_due({}, {}, t0))
+
+    def test_cycle_never_calls_swim_profile_and_respects_atis_interval(self):
+        calls = []
+        orig_run, orig_awc = w.run_swim, w.fetch_awc
+        w.run_swim = lambda icaos, **k: calls.append(("swim", tuple(icaos), k.get("parts", "atis"))) or {"ok": True, "atis": json.loads(FIXTURE.read_text())["atis"]}
+        w.fetch_awc = lambda icaos, hours=12: calls.append(("awc", len(icaos))) or {"fetchedAt": "x", "airports": {"RJTT": AWC_TT}, "ok": True, "error": None, "covered": list(icaos)}
+        try:
+            cfg = {"atisAirports": ["RJTT"], "profileAirports": ["RJTT", "RJDC"]}
+            with tempfile.TemporaryDirectory() as td:
+                out, cur = os.path.join(td, "live.json"), os.path.join(td, "cur.json")
+                t0 = dt.datetime(2026, 11, 24, 10, 0, tzinfo=UTC)
+                for sec in (0, 60, 119, 120, 200, 240):
+                    w.cycle(cfg, out, local_only=True, cursor_path=cur, kv_state_path=None, now=t0 + dt.timedelta(seconds=sec))
+                swim_calls = [c for c in calls if c[0] == "swim"]
+                self.assertEqual(len(swim_calls), 3)   # 0s, 120s, 240s
+                self.assertTrue(all(c[2] == "atis" for c in swim_calls))
+                self.assertEqual(len([c for c in calls if c[0] == "awc"]), 6)
+                d = json.loads(Path(out).read_text())
+                self.assertEqual(d["airports"]["RJTT"]["metarSource"], "AWC")
+                self.assertEqual(d["airports"]["RJTT"]["atisSource"], "SWIM")
+        finally:
+            w.run_swim, w.fetch_awc = orig_run, orig_awc
 
 
-
-class TestAllAirportsAndChunks(unittest.TestCase):
+class TestAllAirports(unittest.TestCase):
     def test_production_config_has_no_subset_lists(self):
         cfg = w.load_cfg()
         self.assertFalse(cfg.get("atisAirports"))
         self.assertFalse(cfg.get("profileAirports"))
-        self.assertEqual(int(cfg["pollSeconds"]), 90)
-        self.assertEqual(int(cfg["profileCycleSeconds"]), 180)
+        self.assertNotIn("profileCycleSeconds", cfg)
+        self.assertGreaterEqual(int(cfg["pollSeconds"]), 120)
+        self.assertGreaterEqual(w.atis_min_seconds(cfg), 120)
         self.assertEqual(int(cfg["kvMinWriteSeconds"]), 180)
         self.assertEqual(int(cfg["kvDailyWriteBudget"]), 600)
 
@@ -99,7 +119,7 @@ class TestAllAirportsAndChunks(unittest.TestCase):
         self.assertIn("ROIG", atis)
         self.assertEqual(len(set(atis)), 23)
 
-    def test_profile_is_all_domestic_swim_targets(self):
+    def test_all_domestic_airports(self):
         prof = w.profile_airports()
         self.assertGreaterEqual(len(prof), 134)
         self.assertTrue(all(x.startswith("RJ") or x.startswith("RO") for x in prof))
@@ -108,55 +128,29 @@ class TestAllAirportsAndChunks(unittest.TestCase):
         self.assertTrue(set(atis).issubset(set(watched)))
         self.assertGreaterEqual(len(watched), 134)
 
-    def test_chunk_size_and_wrap(self):
-        cfg = {"pollSeconds": 90, "profileCycleSeconds": 180}
-        self.assertEqual(w.profile_chunk_size(134, cfg), 67)
-        icaos = [f"A{i:03d}" for i in range(134)]
-        a, c1 = w.next_chunk(icaos, 0, 67)
-        b, c2 = w.next_chunk(icaos, c1, 67)
-        self.assertEqual(len(a), 67)
-        self.assertEqual(len(b), 67)
-        self.assertEqual(c2, (67 + 67) % 134)
-        self.assertEqual(sorted(set(a + b)), sorted(icaos))
-
-    def test_merge_keeps_old_metar_updates_atis(self):
+    def test_merge_keeps_uncovered_metar_and_unfetched_atis(self):
         prev = {"airports": {
-            "RJTT": {"metar": [{"raw": "OLD METAR"}], "taf": {"raw": "OLD TAF"},
-                     "metarSource": "SWIM", "tafSource": "SWIM",
-                     "atis": {"text": "OLD ATIS", "ident": "A"}, "atisSource": "SWIM",
-                     "atisReason": None, "atisFetchedAt": "2026-11-23T03:00:00Z"},
-            "RJDC": {"metar": [{"raw": "OLD DC"}], "taf": None, "metarSource": "SWIM",
-                     "tafSource": None, "atis": None, "atisSource": None,
-                     "atisReason": "対象外", "atisFetchedAt": None},
-        }}
+            "RJTT": {"metar": [{"raw": "OLD METAR"}], "taf": {"raw": "OLD TAF"}, "metarSource": "AWC", "tafSource": "AWC",
+                     "atis": {"text": "OLD ATIS", "ident": "A"}, "atisSource": "SWIM", "atisReason": None,
+                     "atisFetchedAt": "2026-11-23T03:00:00Z"},
+            "RJDC": {"metar": [{"raw": "OLD DC"}], "taf": None, "metarSource": "AWC", "tafSource": None,
+                     "atis": None, "atisSource": None, "atisReason": "対象外", "atisFetchedAt": None},
+        }, "fetchedAt": {"atis": "2026-11-23T03:00:00Z", "awc": "2026-11-23T03:00:00Z"}}
         payload = {"airports": {
-            "RJTT": {"metar": [{"raw": "NEW METAR"}], "taf": {"raw": "NEW TAF"},
-                     "metarSource": "SWIM", "tafSource": "SWIM",
-                     "atis": {"text": "NEW ATIS", "ident": "B"}, "atisSource": "SWIM",
-                     "atisReason": None, "atisFetchedAt": "2026-11-23T03:30:00Z"},
+            "RJTT": {"metar": [{"raw": "NEW METAR"}], "taf": {"raw": "NEW TAF"}, "metarSource": "AWC", "tafSource": "AWC",
+                     "atis": {"text": "NEW ATIS", "ident": "B"}, "atisSource": "SWIM", "atisReason": None,
+                     "atisFetchedAt": "2026-11-23T03:30:00Z"},
             "RJDC": {"metar": [], "taf": None, "metarSource": None, "tafSource": None,
                      "atis": None, "atisSource": None, "atisReason": "対象外", "atisFetchedAt": None},
-        }, "fetchedAt": {"atis": "2026-11-23T03:30:00Z"}}
-        # refresh only RJDC profile; ATIS ok so RJTT atis updates, RJTT metar stays old
-        out = w.merge_airports(prev, payload, refresh_profile=["RJDC"], atis_ok=True)
+        }, "fetchedAt": {"atis": "2026-11-23T03:30:00Z", "awc": "2026-11-23T03:30:00Z"}}
+        out = w.merge_airports(prev, payload, awc_covered=["RJDC"], atis_fresh=True)
         self.assertEqual(out["airports"]["RJTT"]["metar"][0]["raw"], "OLD METAR")
         self.assertEqual(out["airports"]["RJTT"]["atis"]["ident"], "B")
         self.assertEqual(out["airports"]["RJDC"]["metar"], [])
-        # ATIS failure keeps previous ATIS
-        out2 = w.merge_airports(prev, payload, refresh_profile=["RJTT"], atis_ok=False)
+        out2 = w.merge_airports(prev, payload, awc_covered=["RJTT"], atis_fresh=False)
         self.assertEqual(out2["airports"]["RJTT"]["metar"][0]["raw"], "NEW METAR")
         self.assertEqual(out2["airports"]["RJTT"]["atis"]["ident"], "A")
-
-    def test_refresh_profile_does_not_fill_other_metars(self):
-        cfg = {"atisAirports": ["RJTT"], "profileAirports": ["RJTT", "RJDC"]}
-        swim_raw = json.loads(FIXTURE.read_text())
-        swim = {"ok": True, "atis": swim_raw["atis"], "profile": swim_raw["profile"]}
-        payload, stats = w.build_payload(cfg, swim, {"airports": {}}, ref=REF, refresh_profile=["RJTT"])
-        self.assertEqual(payload["airports"]["RJTT"]["metarSource"], "SWIM")
-        self.assertIsNone(payload["airports"]["RJDC"]["metarSource"])
-        self.assertEqual(payload["airports"]["RJDC"]["metar"], [])
-        self.assertGreaterEqual(stats["metarSwim"], 1)
-
+        self.assertEqual(out2["fetchedAt"]["atis"], "2026-11-23T03:00:00Z")
 
 
 class TestKvWriteGate(unittest.TestCase):

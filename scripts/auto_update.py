@@ -11,6 +11,8 @@ Flight Buddy 自動更新（ルーティン用の入口）
          気象庁 / MetAir / n-kishou から plain HTTP で並列取得（ログイン不要。ブラウザ不要）
    - 取得元ごとの頻度（scripts/schedule.py。予定時刻を過ぎて未取得なら次の回で追いつく。失敗は60分あけて再試行）:
        毎回(15分)  METAR/TAF（SWIM 空港プロファイル→AWC→Ogimet）・ATIS・図
+                   2026-11-24〜 SWIM は fetchers/swim/lib/swimGuard.js：エラーを返した空港は6時間、データを返せない空港はずっと問い合わせない。
+                   ATIS は LIVE ポラーが5分以内に SWIM から取っていればそれを使う（重ねて問い合わせない）
        6時間ごと   SWIM NOTAM（00/06/12/18 JST）
        1日1回      空港情報＝SWIM AIP AD 2＋Lost Comm・NOAA 空港情報（04:00 JST）／時刻表＝全ソース（04:30 JST）
    - SWIM: fetchers/swim/run.js（wx-brief main のログイン・取得コード）。国内の全空港、同時4リクエストまで → /workspace/fb-staging/swim/swim.json。
@@ -24,6 +26,7 @@ Flight Buddy 自動更新（ルーティン用の入口）
 最後に1行サマリーを出力。失敗時は非0で終了。
 """
 import argparse
+import calendar
 import fcntl
 import json
 import os
@@ -123,10 +126,22 @@ def refresh_swim(staging, parts):
     t0 = time.time()
     cfg = build_pack.read_json(os.path.join(ROOT, "config", "pack_config.json"), {}) or {}
     targets = build_pack.swim_targets(cfg)
+    reused_atis = None
     try:
         with swim_lock.hold(timeout_s=180):
-            r = subprocess.run(["node", SWIM_RUNNER, "--out", os.path.join(staging, "swim"), "--airports", ",".join(targets),
-                                "--parts", ",".join(parts)], capture_output=True, text=True, timeout=240)
+            # LIVE ポラーが直近（LIVE_ATIS_REUSE_S 以内）に SWIM ATIS を取っていれば、それを使い ATIS は問い合わせない（同じ問い合わせを重ねない）
+            run_parts = list(parts)
+            if "atis" in run_parts:
+                reused_atis = live_atis_if_fresh()
+                if reused_atis:
+                    run_parts.remove("atis")
+            if run_parts:
+                r = subprocess.run(["node", SWIM_RUNNER, "--out", os.path.join(staging, "swim"), "--airports", ",".join(targets),
+                                    "--parts", ",".join(run_parts)], capture_output=True, text=True, timeout=240)
+            else:
+                r = subprocess.CompletedProcess([], 0, "SWIM OK fetched=none ok=none reused=atis", "")
+            if reused_atis:
+                inject_atis(os.path.join(staging, "swim", "swim.json"), reused_atis, targets)
     except TimeoutError:
         log("SWIM ロック待ちタイムアウト")
         return "fail(lock)", [], list(parts)
@@ -136,6 +151,10 @@ def refresh_swim(staging, parts):
     line = next((ln for ln in reversed(r.stdout.strip().splitlines()) if ln.startswith("SWIM ")), "")
     log(line or r.stderr.strip()[-300:])
     kv = dict(t.split("=", 1) for t in line.split()[2:] if "=" in t)
+    if reused_atis:
+        log(f"ATIS は LIVE ポラーの取得分（{reused_atis.get('fetchedAt')}）を使用（SWIM へは問い合わせない）")
+        for k in ("fetched", "ok"):
+            kv[k] = "+".join([p for p in kv.get(k, "").split("+") if p and p != "none"] + ["atis"])
     if line.startswith("SWIM SKIP"):
         return "skip(no-creds)", [], []
     if r.returncode == 0 and line.startswith("SWIM OK"):
@@ -145,6 +164,38 @@ def refresh_swim(staging, parts):
         return (f"ok(atis:{kv.get('atis', '?')},notam:{kv.get('notam', '?')},profile:{kv.get('profile', '?')},"
                 f"aip:{kv.get('aip', '?')},ad2:{kv.get('ad2', '?')},fetched:{kv.get('fetched', '?')},t:{time.time() - t0:.0f}s)"), ok, tried
     return f"fail({kv.get('reason', 'exit' + str(r.returncode))})", [], list(parts)
+
+
+LIVE_SWIM_JSON = os.environ.get("FB_WX_LIVE_SWIM_DIR", "/workspace/fb-staging/wx-live-swim") + "/swim.json"
+LIVE_ATIS_REUSE_S = 300
+
+
+def live_atis_if_fresh(path=LIVE_SWIM_JSON, max_age_s=LIVE_ATIS_REUSE_S):
+    """LIVE ポラー（scripts/wx_live_poller.py）が SWIM から取った ATIS が新しければ返す。"""
+    a = (build_pack.read_json(path, {}) or {}).get("atis") or {}
+    t = a.get("fetchedAt")
+    if not (a.get("ok") and t):
+        return None
+    try:
+        age = time.time() - calendar.timegm(time.strptime(t, "%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError:
+        return None
+    return a if 0 <= age <= max_age_s else None
+
+
+def inject_atis(swim_json, atis, targets):
+    d = build_pack.read_json(swim_json, {}) or {}
+    a = dict(atis)
+    by = dict(((d.get("atis") or {}).get("byIcao")) or {})   # ATIS 対象外の空港の理由などは前回分を残す
+    by.update(atis.get("byIcao") or {})
+    a["byIcao"] = by
+    a["airports"] = list(targets)
+    a["reusedFrom"] = "wx-live"
+    d["atis"] = a
+    tmp = swim_json + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False)
+    os.replace(tmp, swim_json)
 
 
 def refresh_duty_default(path):

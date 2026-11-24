@@ -47,7 +47,34 @@ def load_swim(staging):
         if p and p.get("fetchedAt") and _age_h(p["fetchedAt"]) > mx:
             d[part] = {"ok": False, "stale": True, "fetchedAt": p["fetchedAt"],
                        "error": f"SWIM の{ {'atis': 'ATIS', 'profile': '空港プロファイル', 'notam': 'NOTAM', 'aip': 'AIP'}[part] }が古いため不使用（{p['fetchedAt']}取得）"}
+    _drop_stale_airports(d)
     return d
+
+
+_STALE_NOTE = {"atis": "SWIM の ATIS はこの空港への問い合わせを一時的に止めていて、前回の取得が古いため表示していません。",
+               "profile": "SWIM の空港詳細はこの空港への問い合わせを一時的に止めていて、前回の取得が古いため表示していません。",
+               "notam": "SWIM の NOTAM はこの空港への問い合わせを一時的に止めていて、前回の取得が古いため表示していません。"}
+
+
+def _drop_stale_airports(d):
+    """空港ごとの取得時刻（fetchers/swim/run.js が、問い合わせを止めた空港の前回分に付ける）が MAX_AGE_H を超えたら使わない。
+    2026-11-24：エラーを返した空港は6時間、データを返せない空港はずっと問い合わせないため、空港ごとに古さが違う。"""
+    for part in ("atis", "profile"):
+        p = d.get(part) or {}
+        by = p.get("byIcao") or {}
+        for icao, e in list(by.items()):
+            if e and e.get("ok") and e.get("fetchedAt") and _age_h(e["fetchedAt"]) > MAX_AGE_H[part]:
+                by[icao] = {"ok": False, "reason": _STALE_NOTE[part], "skipped": e.get("skipped")}
+                for k in ("metarByIcao", "tafByIcao"):
+                    (p.get(k) or {}).pop(icao, None)
+    n = d.get("notam") or {}
+    at = n.get("fetchedAtByIcao") or {}
+    stale = {i for i, t in at.items() if _age_h(t) > MAX_AGE_H["notam"]}
+    if stale:
+        n["items"] = [it for it in n.get("items") or [] if it.get("icao") not in stale]
+        notes = n.setdefault("notesByIcao", {})
+        for i in stale:
+            notes[i] = _STALE_NOTE["notam"]
 
 
 def env_note(swim):
@@ -76,6 +103,8 @@ def notam_json(swim, airports):
                   "text": it.get("text") or "", "scopes": it.get("scopes")}
                  for it in n.get("items") or [] if it.get("icao") == icao]
         e = {"items": items}
+        if (n.get("fetchedAtByIcao") or {}).get(icao):
+            e["fetchedAt"] = n["fetchedAtByIcao"][icao]
         if not items:
             e["status"] = notes.get(icao) or (note or ("現在、有効なNOTAMはありません。" if n.get("ok") else (n.get("error") or "未取得")))
         out["airports"][icao] = e
@@ -88,7 +117,7 @@ def atis_json(swim):
     by = a.get("byIcao") or {}
     return {"ok": bool(a.get("ok")), "source": "SWIM（国交省）ATIS", "fetchedAt": a.get("fetchedAt"),
             "note": note or a.get("note") or a.get("error"),
-            "airports": {i: {"text": v.get("text")} for i, v in by.items() if v and v.get("ok") and v.get("text")},
+            "airports": {i: {"text": v.get("text"), "fetchedAt": v.get("fetchedAt") or a.get("fetchedAt")} for i, v in by.items() if v and v.get("ok") and v.get("text")},
             "reasons": {i: v.get("reason") for i, v in by.items() if v and not v.get("ok")}}
 
 
@@ -100,7 +129,7 @@ def profiles(swim):
     out = {}
     for icao in set((p.get("byIcao") or {}).keys()) | set((aip.get("byIcao") or {}).keys()):
         pr = dict((p.get("byIcao") or {}).get(icao) or {"ok": False, "reason": note or p.get("error") or "SWIM 空港プロファイルを取得できませんでした"})
-        pr["fetchedAt"] = p.get("fetchedAt")
+        pr["fetchedAt"] = pr.get("fetchedAt") or p.get("fetchedAt")   # 問い合わせを止めた空港は前回分の取得時刻
         if pr.get("ok"):  # 旧版の項目名に合わせる
             pr["sunriseJst"], pr["sunsetJst"] = pr.get("sunrise"), pr.get("sunset")
         lc = (aip.get("byIcao") or {}).get(icao)

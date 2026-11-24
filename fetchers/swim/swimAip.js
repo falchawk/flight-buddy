@@ -305,10 +305,10 @@ async function fetchLostCommForIcao(icao, dateCandidates, prev, deadline) {
       try {
         pdfRes = await swimFetch(pdfUrl);
       } catch (err) {
-        return { ok: false, reason: `PDF取得の通信エラー：${err.message}`, url: pdfUrl };
+        return { ok: false, reason: `PDF取得の通信エラー：${err.message}`, url: pdfUrl, errCode: (err && err.code) || 'FETCH_FAILED' };
       }
       if (!pdfRes.ok) {
-        return { ok: false, reason: `PDF取得エラー（HTTP ${pdfRes.status}）`, url: pdfUrl };
+        return { ok: false, reason: `PDF取得エラー（HTTP ${pdfRes.status}）`, url: pdfUrl, errCode: `HTTP_${pdfRes.status}` };
       }
       let pdfBuffer;
       try {
@@ -365,9 +365,9 @@ async function fetchLostCommProceduresByIcao(icaoCodes, prevByIcao = {}, deadlin
       const result = await fetchLostCommForIcao(icao, dateCandidates, prevByIcao[icao], deadline);
       byIcao[icao] = { ok: result.ok, text: result.ok ? result.text : null, url: result.url || null, reason: result.ok ? null : result.reason,
         final: Boolean(result.final), pending: Boolean(result.pending), reused: Boolean(result.reused), fetchedAt: result.reused ? (result.fetchedAt || null) : new Date().toISOString(),
-        ad2: result.ad2 || null, menuHash: result.menuHash || null, etag: result.etag || null, lastModified: result.lastModified || null };
+        errCode: result.errCode || null, ad2: result.ad2 || null, menuHash: result.menuHash || null, etag: result.etag || null, lastModified: result.lastModified || null };
     } catch (err) {
-      byIcao[icao] = { ok: false, text: null, url: null, reason: `想定外のエラー：${err.message}` };
+      byIcao[icao] = { ok: false, text: null, url: null, reason: `想定外のエラー：${err.message}`, errCode: (err && err.code) || 'ERROR' };
     }
   };
   await Promise.all(Array.from({ length: 3 }, async () => { while (next < requestedIcaos.length) await one(requestedIcaos[next++]); }));

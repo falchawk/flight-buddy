@@ -307,7 +307,7 @@ async function ensureLoggedIn() {
     // 止めてしまうことがないように）。
     const timeoutPromise = new Promise((_resolve, reject) => {
       setTimeout(() => {
-        reject(makeError('TIMEOUT', `SWIMログイン処理が${OVERALL_LOGIN_TIMEOUT_MS / 1000}秒以内に終わりませんでした。`));
+        reject(makeError('LOGIN_TIMEOUT', `SWIMログイン処理が${OVERALL_LOGIN_TIMEOUT_MS / 1000}秒以内に終わりませんでした。`));
       }, OVERALL_LOGIN_TIMEOUT_MS);
     });
     loginPromise = Promise.race([performLogin(), timeoutPromise]).finally(() => {

@@ -84,6 +84,7 @@ const SWIM_REASON_LABELS = {
   NOTAM_HTTP_ERROR: 'NOTAM取得失敗',
   NOTAM_RESPONSE_ERROR: 'NOTAM応答エラー',
   TIMEOUT: 'タイムアウト',
+  LOGIN_TIMEOUT: 'ログインのタイムアウト',
 };
 function shortSwimLabel(err) {
   return (err && err.code && SWIM_REASON_LABELS[err.code]) || '取得失敗';
@@ -203,24 +204,26 @@ async function fetchNotamForIcao(icao, scope) {
 
 // FIR（RJJJ）単位のエンルート NOTAM と警報（制限・危険・訓練空域、無人機、花火、航空ショー等）。空域タブ用。
 // 2026-11-19 実地確認：fir='RJJJ' ＋ スコープを1つだけ選ぶ（enroute 595件 / warning 683件）。続けて呼ぶと fetch failed になることがあるので間隔を空けて1回だけ再試行する。
-async function fetchNotamArea() {
-  const items = []; const notes = [];
-  for (const scope of ['enroute', 'warning']) {
+// 2026-11-24：エラーを返した相手に同じ回で再試行しない（scope ごとに1回だけ。失敗したら lib/swimGuard.js で6時間止める）。
+async function fetchNotamArea(scopes = ['enroute', 'warning']) {
+  const items = []; const notes = []; const scopeErrors = {};
+  for (const scope of scopes) {
     let ok = false;
-    for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+    for (let attempt = 0; attempt < 1 && !ok; attempt++) {
       try {
-        await new Promise((r) => setTimeout(r, attempt ? 4000 : 1500));
+        await new Promise((r) => setTimeout(r, 1500));
         const list = await fetchNotamForIcao('RJJJ', scope);
         items.push(...list.map((n) => ({ ...n, areaScope: scope })));
         ok = true;
         console.log(`[SWIM] 空域NOTAM取得成功 ${scope}: ${list.length}件`);
       } catch (err) {
         console.error(`[SWIM] 空域NOTAM取得失敗 ${scope}:`, err && err.httpStatus ? `HTTP ${err.httpStatus}` : '', err && err.message);
-        if (attempt) notes.push(`${scope}: ${err && err.message}`);
+        notes.push(`${scope}: ${err && err.message}`);
+        scopeErrors[scope] = (err && err.code) || 'ERROR';
       }
     }
   }
-  return { ok: notes.length === 0 && items.length > 0, items, note: notes.length ? `SWIM 空域NOTAM：${notes.join(' / ')}` : null };
+  return { ok: notes.length === 0 && items.length > 0, items, scopeErrors, note: notes.length ? `SWIM 空域NOTAM：${notes.join(' / ')}` : null };
 }
 
 // 失敗理由を空港ごとに割り当てるための道具（atisByIcao側の
@@ -275,6 +278,7 @@ function fetchNotamFromSwim(icaoCodes) {
 async function fetchNotamFromSwimAsync(requestedIcaos) {
   const items = [];
   const notesByIcao = {};
+  const errCodeByIcao = {}; // Flight Buddy: 空港ごとの6時間停止（lib/swimGuard.js）に使う
   console.log('[SWIM] NOTAM取得開始 対象空港:', requestedIcaos.join(','));
 
   await Promise.all(requestedIcaos.map(async (icao) => {
@@ -286,6 +290,7 @@ async function fetchNotamFromSwimAsync(requestedIcaos) {
       const label = shortSwimLabel(err);
       const httpPart = err && err.httpStatus ? `HTTP ${err.httpStatus}` : 'HTTP不明';
       notesByIcao[icao] = `SWIM NOTAM：${httpPart}：${label}`;
+      errCodeByIcao[icao] = (err && err.code) || 'ERROR';
       console.error(`[SWIM] NOTAM取得失敗 ${icao}:`, httpPart, label, '-', err && err.message);
     }
   }));
@@ -296,6 +301,7 @@ async function fetchNotamFromSwimAsync(requestedIcaos) {
     items,
     note: anyOk ? null : 'SWIM NOTAM：どの空港のNOTAMも取得できませんでした。',
     notesByIcao,
+    errCodeByIcao,
     attempted: true,
   };
 }
@@ -509,7 +515,7 @@ async function fetchAirportProfilesFromSwim(icaoCodes) {
     } catch (err) {
       const label = shortSwimLabel(err);
       const httpPart = err && err.httpStatus ? `HTTP ${err.httpStatus}` : 'HTTP不明';
-      byIcao[icao] = { ok: false, reason: `SWIM 空港プロファイル：${httpPart}：${label}` };
+      byIcao[icao] = { ok: false, reason: `SWIM 空港プロファイル：${httpPart}：${label}`, errCode: (err && err.code) || 'ERROR' };
       console.error(`[SWIM] 空港プロファイル取得失敗 ${icao}:`, httpPart, label, '-', err && err.message);
     }
   }));
@@ -699,6 +705,7 @@ async function fetchSwimAtisPart(requestedIcaos, supportedIcaos, unsupportedIcao
     const label = shortSwimLabel(err);
     console.error('[SWIM] ATIS取得失敗:', label, '-', err.message);
     return {
+      atisErrorCode: (err && err.code) || 'ERROR', // Flight Buddy: 6時間停止の判定用
       metar: null,
       taf: null,
       atis: unavailable(`${label}：${err.message}`, label),
