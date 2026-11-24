@@ -10,7 +10,7 @@ SWIM の ATIS / METAR / SPECI / TAF を箱側の通常プロセス（`scripts/wx
 - Worker: `relay/src/worker.js`（読み取り専用。書き込みは Cloudflare API）
 - アプリ: `js/wx-live.js`。`js/wx-relay-config.js` の `FB_WX_RELAY_URL` が空なら無効（今の公開版は空のまま）
 
-対象は SWIM が対応する国内空港のすべて（METAR/SPECI/TAF ＝ pack の japan_all のうち RJ**/RO**、ATIS ＝ `fetchers/swim/swim.js` の `ATIS_SUPPORTED_ICAO`）。路線や SETTINGS 既定などの部分集合には絞らない。間隔は `config/wx_relay.json`（ATIS は 90 秒ごと、1リクエストで全対応空港。METAR/TAF は空港ごとのリクエストなので約 3 分で全件一周。初回のみ全件を一度取る。全件一括の実測は約16秒）。
+対象は SWIM が対応する国内空港のすべて（METAR/SPECI/TAF ＝ pack の japan_all のうち RJ**/RO**、ATIS ＝ `fetchers/swim/swim.js` の `ATIS_SUPPORTED_ICAO`）。路線や SETTINGS 既定などの部分集合には絞らない。間隔は `config/wx_relay.json`（ATIS は 90 秒ごと、1リクエストで全対応空港。METAR/TAF は空港ごとのリクエストなので約 3 分で全件一周。初回のみ全件を一度取る。全件一括の実測は約16秒）。KV への書き込みは、空港の報の内容が変わったときに限り、最短 180 秒ごと（`kvMinWriteSeconds`）。UTC 日あたり 600 回（`kvDailyWriteBudget`）を超えたらその日は書かない。無料枠の書き込み上限（1,000 回/日）を超えないようにするため。
 
 ## ボックスが入れ替わったとき
 

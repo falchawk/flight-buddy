@@ -1,6 +1,8 @@
 {
   "schema": "flight-buddy-wx-relay-config/1",
-  "_note": "近リアルタイム気象リレー（ATIS・METAR/SPECI・TAF）。秘密情報は書かない。対象は SWIM が対応する国内空港のすべて（METAR/SPECI/TAF＝pack の japan_all のうち RJ**/RO**、ATIS＝swim.js の ATIS_SUPPORTED_ICAO）。路線や SETTINGS 既定などの部分集合には絞らない。空港リストはここに固定せず、実行時に解決する。ATIS は locationList の1リクエストで全対応空港を取る。METAR/TAF プロファイルは空港ごとに1リクエスト（並列は SWIM_MAX_PARALLEL、既定4）。実測では 134 空港の atis+profile 一括が約16秒。負荷を抑えるため ATIS は pollSeconds ごと、プロファイルは profileCycleSeconds に分割して一周する。初回（出力が空のとき）だけ全件を一度取る。このポラーは箱上の通常プロセスで、モデルや LLM は呼ばない。",
+  "_note": "近リアルタイム気象リレー（ATIS・METAR/SPECI・TAF）。秘密情報は書かない。対象は SWIM が対応する国内空港のすべて（METAR/SPECI/TAF＝pack の japan_all のうち RJ**/RO**、ATIS＝swim.js の ATIS_SUPPORTED_ICAO）。路線や SETTINGS 既定などの部分集合には絞らない。空港リストはここに固定せず、実行時に解決する。ATIS は locationList の1リクエストで全対応空港を取る。METAR/TAF プロファイルは空港ごとに1リクエスト（並列は SWIM_MAX_PARALLEL、既定4）。実測では 134 空港の atis+profile 一括が約16秒。負荷を抑えるため ATIS は pollSeconds ごと、プロファイルは profileCycleSeconds に分割して一周する。初回（出力が空のとき）だけ全件を一度取る。このポラーは箱上の通常プロセスで、モデルや LLM は呼ばない。 KV への書き込みは、空港の報の内容が変わったときに限り、最短 kvMinWriteSeconds（既定180秒）ごと。UTC 日あたり kvDailyWriteBudget（既定600）を超えたらその日は書かない。無料枠の書き込み上限を守るため。",
   "pollSeconds": 90,
-  "profileCycleSeconds": 180
+  "profileCycleSeconds": 180,
+  "kvMinWriteSeconds": 180,
+  "kvDailyWriteBudget": 600
 }

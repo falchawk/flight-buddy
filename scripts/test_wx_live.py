@@ -88,6 +88,8 @@ class TestAllAirportsAndChunks(unittest.TestCase):
         self.assertFalse(cfg.get("profileAirports"))
         self.assertEqual(int(cfg["pollSeconds"]), 90)
         self.assertEqual(int(cfg["profileCycleSeconds"]), 180)
+        self.assertEqual(int(cfg["kvMinWriteSeconds"]), 180)
+        self.assertEqual(int(cfg["kvDailyWriteBudget"]), 600)
 
     def test_atis_supported_is_swim_set(self):
         atis = w.atis_supported_icaos()
@@ -155,6 +157,118 @@ class TestAllAirportsAndChunks(unittest.TestCase):
         self.assertEqual(payload["airports"]["RJDC"]["metar"], [])
         self.assertGreaterEqual(stats["metarSwim"], 1)
 
+
+
+class TestKvWriteGate(unittest.TestCase):
+    def _payload(self, metar_raw="METAR RJTT 230300Z", generated="2026-11-24T00:00:00Z",
+                 atis_fetched="2026-11-24T00:00:00Z"):
+        return {
+            "schema": w.SCHEMA,
+            "generatedAt": generated,
+            "fetchedAt": {"atis": generated, "profile": generated, "awc": None},
+            "swimOk": True,
+            "swimReason": None,
+            "stats": {"metarSwim": 1},
+            "airports": {
+                "RJTT": {
+                    "metar": [{"raw": metar_raw, "obsTime": "2026-11-23T03:00:00Z"}],
+                    "taf": None,
+                    "atis": {"text": "ATIS RJTT X", "ident": "X", "time": "2026-11-23T03:00:00Z"},
+                    "atisFetchedAt": atis_fetched,
+                }
+            },
+        }
+
+    def test_hash_ignores_volatile_timestamps_and_stats(self):
+        a = self._payload(generated="2026-11-24T00:00:00Z", atis_fetched="2026-11-24T00:00:00Z")
+        b = self._payload(generated="2026-11-24T00:01:30Z", atis_fetched="2026-11-24T00:01:30Z")
+        b["stats"] = {"metarSwim": 99}
+        b["swimOk"] = False
+        b["swimReason"] = "flicker"
+        b["fetchedAt"]["profile"] = "2026-11-24T00:01:30Z"
+        self.assertEqual(w.payload_content_hash(a), w.payload_content_hash(b))
+
+    def test_hash_changes_when_report_changes(self):
+        a = self._payload("METAR RJTT 230300Z")
+        b = self._payload("METAR RJTT 230400Z")
+        c = self._payload("METAR RJTT 230300Z")
+        c["airports"]["RJTT"]["atis"]["ident"] = "Y"
+        self.assertNotEqual(w.payload_content_hash(a), w.payload_content_hash(b))
+        self.assertNotEqual(w.payload_content_hash(a), w.payload_content_hash(c))
+
+    def test_skip_unchanged(self):
+        p = self._payload()
+        now = dt.datetime(2026, 11, 24, 0, 10, tzinfo=UTC)
+        st = {"utcDay": "2026-11-24", "writesToday": 3, "lastWriteAt": "2026-11-24T00:07:00Z",
+              "lastWrittenHash": w.payload_content_hash(p), "pending": False}
+        should, reason, st2 = w.decide_kv_write({}, p, st, now=now)
+        self.assertFalse(should)
+        self.assertEqual(reason, "skip(unchanged)")
+        self.assertEqual(st2["writesToday"], 3)
+        self.assertFalse(st2["pending"])
+
+    def test_wait_then_put_latest(self):
+        cfg = {"kvMinWriteSeconds": 180, "kvDailyWriteBudget": 600}
+        p1 = self._payload("OLD")
+        p2 = self._payload("NEW1")
+        p3 = self._payload("NEW2")
+        t0 = dt.datetime(2026, 11, 24, 0, 0, tzinfo=UTC)
+        st = w.mark_kv_written({"utcDay": "2026-11-24", "writesToday": 0}, p1, now=t0)
+        should, reason, st = w.decide_kv_write(cfg, p2, st, now=t0 + dt.timedelta(seconds=90))
+        self.assertFalse(should)
+        self.assertEqual(reason, "skip(wait)")
+        self.assertTrue(st["pending"])
+        # 待ち時間中の更新は捨てず、間隔後の周期で最新を書く
+        should, reason, st = w.decide_kv_write(cfg, p3, st, now=t0 + dt.timedelta(seconds=180))
+        self.assertTrue(should)
+        self.assertEqual(reason, "put")
+        st = w.mark_kv_written(st, p3, now=t0 + dt.timedelta(seconds=180))
+        self.assertEqual(st["lastWrittenHash"], w.payload_content_hash(p3))
+        self.assertNotEqual(st["lastWrittenHash"], w.payload_content_hash(p2))
+        self.assertEqual(st["writesToday"], 2)
+
+    def test_budget_blocks_until_utc_reset(self):
+        cfg = {"kvMinWriteSeconds": 0, "kvDailyWriteBudget": 2}
+        p1 = self._payload("A")
+        p2 = self._payload("B")
+        t0 = dt.datetime(2026, 11, 24, 23, 59, tzinfo=UTC)
+        st = {"utcDay": "2026-11-24", "writesToday": 2, "lastWriteAt": "2026-11-24T23:50:00Z",
+              "lastWrittenHash": w.payload_content_hash(p1), "pending": False}
+        should, reason, st = w.decide_kv_write(cfg, p2, st, now=t0)
+        self.assertFalse(should)
+        self.assertEqual(reason, "skip(budget)")
+        self.assertTrue(st["pending"])
+        t1 = dt.datetime(2026, 11, 25, 0, 0, tzinfo=UTC)
+        should, reason, st = w.decide_kv_write(cfg, p2, st, now=t1)
+        self.assertTrue(should)
+        self.assertEqual(reason, "put")
+        st = w.mark_kv_written(st, p2, now=t1)
+        self.assertEqual(st["utcDay"], "2026-11-25")
+        self.assertEqual(st["writesToday"], 1)
+
+    def test_defaults_and_worst_case_under_budget(self):
+        self.assertEqual(w.kv_min_write_seconds({}), 180)
+        self.assertEqual(w.kv_daily_write_budget({}), 600)
+        cfg = w.load_cfg()
+        self.assertEqual(w.kv_min_write_seconds(cfg), 180)
+        self.assertEqual(w.kv_daily_write_budget(cfg), 600)
+        # 内容が毎回変わっても 24h / 180s = 480 回で、日次上限 600 より少ない
+        self.assertLessEqual(86400 // w.kv_min_write_seconds(cfg), w.kv_daily_write_budget(cfg))
+
+    def test_state_file_roundtrip_and_day_roll(self):
+        p = self._payload("X")
+        t0 = dt.datetime(2026, 11, 24, 23, 50, tzinfo=UTC)
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(td, "kv-state.json")
+            st = w.mark_kv_written({"utcDay": "2026-11-24", "writesToday": 5}, p, now=t0)
+            w.write_json(path, st)
+            loaded = w.load_kv_write_state(path, now=t0)
+            self.assertEqual(loaded["writesToday"], 6)
+            self.assertEqual(loaded["lastWrittenHash"], w.payload_content_hash(p))
+            rolled = w.load_kv_write_state(path, now=dt.datetime(2026, 11, 25, 0, 0, tzinfo=UTC))
+            self.assertEqual(rolled["utcDay"], "2026-11-25")
+            self.assertEqual(rolled["writesToday"], 0)
+            self.assertEqual(rolled["lastWrittenHash"], loaded["lastWrittenHash"])
 
 
 if __name__ == "__main__":

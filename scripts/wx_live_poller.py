@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -34,6 +35,7 @@ SWIM_RUNNER = os.path.join(ROOT, "fetchers", "swim", "run.js")
 OUT_DEFAULT = os.environ.get("FB_WX_LIVE_FILE", "/workspace/fb-staging/wx-live.json")
 STAGING = os.environ.get("FB_WX_LIVE_SWIM_DIR", "/workspace/fb-staging/wx-live-swim")
 CURSOR_PATH = os.environ.get("FB_WX_LIVE_CURSOR", "/workspace/fb-staging/wx-live-cursor.json")
+KV_STATE_PATH = os.environ.get("FB_WX_LIVE_KV_STATE", "/workspace/fb-staging/wx-live-kv-state.json")
 LOCK = os.environ.get("FB_WX_LIVE_LOCK", "/tmp/flight-buddy-wx-live.lock")
 SCHEMA = "flight-buddy-wx-live/1"
 UA = "FlightBuddyWxLive/1.0 (+https://falchawk.github.io/flight-buddy/)"
@@ -94,6 +96,16 @@ def profile_cycle_seconds(cfg):
     poll = poll_seconds(cfg)
     cycle = int((cfg or {}).get("profileCycleSeconds") or 180)
     return max(poll, cycle)
+
+
+def kv_min_write_seconds(cfg):
+    v = (cfg or {}).get("kvMinWriteSeconds")
+    return 180 if v is None else max(0, int(v))
+
+
+def kv_daily_write_budget(cfg):
+    v = (cfg or {}).get("kvDailyWriteBudget")
+    return 600 if v is None else max(0, int(v))
 
 
 def profile_chunk_size(n, cfg):
@@ -474,6 +486,104 @@ def read_json(path):
         return {}
 
 
+# 内容比較から外す（毎回変わる時刻や、周期ごとの統計。空港の報そのものではない）
+_KV_VOLATILE_KEYS = frozenset({
+    "generatedAt", "fetchedAt", "atisFetchedAt", "stats", "swimOk", "swimReason",
+})
+
+
+def content_for_hash(payload):
+    """KV に上げる中身のうち、揮発的な時刻・統計を除いた木。"""
+    if isinstance(payload, dict):
+        return {k: content_for_hash(v) for k, v in payload.items() if k not in _KV_VOLATILE_KEYS}
+    if isinstance(payload, list):
+        return [content_for_hash(x) for x in payload]
+    return payload
+
+
+def payload_content_hash(payload):
+    canonical = json.dumps(content_for_hash(payload), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def utc_day(t=None):
+    t = t or now_utc()
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=UTC)
+    return t.astimezone(UTC).strftime("%Y-%m-%d")
+
+
+def kv_state_for_day(state, now=None):
+    """UTC 日が変わっていたら当日カウンタだけリセット。ハッシュと保留は引き継ぐ。"""
+    now = now or now_utc()
+    day = utc_day(now)
+    st = dict(state or {})
+    if st.get("utcDay") != day:
+        st["utcDay"] = day
+        st["writesToday"] = 0
+        st["budgetLogged"] = False
+    return st
+
+
+def load_kv_write_state(path, now=None):
+    raw = read_json(path) if path and os.path.isfile(path) else {}
+    return kv_state_for_day(raw, now=now)
+
+
+def parse_iso_utc(s):
+    if not s:
+        return None
+    if isinstance(s, dt.datetime):
+        t = s
+        return t if t.tzinfo else t.replace(tzinfo=UTC)
+    t = dt.datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+    return t if t.tzinfo else t.replace(tzinfo=UTC)
+
+
+def decide_kv_write(cfg, payload, state, now=None):
+    """内容が変わり、最短間隔を過ぎ、日次上限未満なら書く。更新は捨てず、間隔後の周期に回す。
+
+    戻り値: (should_write, reason, new_state)
+    reason は put / skip(unchanged) / skip(wait) / skip(budget)
+    """
+    now = now or now_utc()
+    st = kv_state_for_day(state, now=now)
+    digest = payload_content_hash(payload)
+    if digest != st.get("lastWrittenHash"):
+        st["pending"] = True
+    else:
+        st["pending"] = False
+
+    if not st.get("pending"):
+        return False, "skip(unchanged)", st
+
+    budget = kv_daily_write_budget(cfg)
+    writes = int(st.get("writesToday") or 0)
+    if writes >= budget:
+        if not st.get("budgetLogged"):
+            log("KV 日次書き込み上限に達したので UTC 0時まで書き込みを停止",
+                f"writesToday={writes} budget={budget}")
+            st["budgetLogged"] = True
+        return False, "skip(budget)", st
+
+    last = parse_iso_utc(st.get("lastWriteAt"))
+    min_s = kv_min_write_seconds(cfg)
+    if last is not None and (now - last).total_seconds() < min_s:
+        return False, "skip(wait)", st
+    return True, "put", st
+
+
+def mark_kv_written(state, payload, now=None):
+    now = now or now_utc()
+    st = kv_state_for_day(state, now=now)
+    st["writesToday"] = int(st.get("writesToday") or 0) + 1
+    st["lastWriteAt"] = iso(now)
+    st["lastWrittenHash"] = payload_content_hash(payload)
+    st["pending"] = False
+    st["budgetLogged"] = False
+    return st
+
+
 def merge_airports(prev, payload, refresh_profile, atis_ok):
     """チャンク更新：今回取った METAR/TAF と、成功したときの ATIS だけ上書き。失敗分は前回を残す。"""
     prev_ap = (prev or {}).get("airports") or {}
@@ -503,7 +613,7 @@ def merge_airports(prev, payload, refresh_profile, atis_ok):
 
 
 def cycle(cfg, out_path, local_only=False, skip_awc=False, skip_swim=False, swim_override=None,
-          cursor_path=CURSOR_PATH):
+          cursor_path=CURSOR_PATH, kv_state_path=KV_STATE_PATH):
     t0 = time.time()
     atis_list, prof_list = watched(cfg)
     prev = read_json(out_path) if os.path.isfile(out_path) else {}
@@ -553,8 +663,20 @@ def cycle(cfg, out_path, local_only=False, skip_awc=False, skip_swim=False, swim
         write_json(cursor_path, {"profileCursor": next_cursor, "lastMode": mode,
                                  "lastChunk": profile_chunk, "updatedAt": payload.get("generatedAt")})
     kv = "skip(local)"
+    kv_state = load_kv_write_state(kv_state_path) if kv_state_path else kv_state_for_day({})
+    writes_today = int(kv_state.get("writesToday") or 0)
     if not local_only:
-        kv = put_kv(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+        should, kv, kv_state = decide_kv_write(cfg, payload, kv_state)
+        if should:
+            result = put_kv(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+            if result == "ok":
+                kv_state = mark_kv_written(kv_state, payload)
+                kv = "put"
+            else:
+                kv = result
+        if kv_state_path:
+            write_json(kv_state_path, kv_state)
+        writes_today = int(kv_state.get("writesToday") or 0)
     dt_s = time.time() - t0
     # 値に空白を入れない1行サマリー（途中で切れても読める）
     print(f"WX-LIVE {'OK' if swim.get('ok') or stats['metarAwc'] or stats['atis'] else 'FAIL'} "
@@ -562,7 +684,8 @@ def cycle(cfg, out_path, local_only=False, skip_awc=False, skip_swim=False, swim
           f"atis={stats['atis']} "
           f"metarSwim={stats['metarSwim']} metarAwc={stats['metarAwc']} "
           f"tafSwim={stats['tafSwim']} tafAwc={stats['tafAwc']} speci={stats['speci']} "
-          f"swim={'ok' if swim.get('ok') else swim.get('reason') or 'fail'} kv={kv} t={dt_s:.0f}s", flush=True)
+          f"swim={'ok' if swim.get('ok') else swim.get('reason') or 'fail'} "
+          f"kv={kv} writesToday={writes_today} t={dt_s:.0f}s", flush=True)
     return 0 if (swim.get("ok") or stats["metarAwc"] or stats["atis"] or bool((prev.get("airports") or {}) and payload.get("airports"))) else 1
 
 
