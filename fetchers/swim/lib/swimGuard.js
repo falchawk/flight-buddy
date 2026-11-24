@@ -16,7 +16,7 @@ const BACKOFF_H = 6;
 const SEED_EXCLUDE = { profile: ['RJBH', 'RJNN', 'RJTD', 'RJTX', 'ROHF'] };
 const SERVICES = ['atis', 'profile', 'notam', 'aip'];
 // 空港に依らない失敗（ログイン・設定）は空港の backoff にしない
-const NON_AIRPORT_CODES = new Set(['ENV_MISSING', 'LOGIN_PAGE_FETCH_FAILED', 'LOGIN_RESPONSE_UNREADABLE', 'LOGIN_FAILED', 'NO_REDIRECT_URL', 'REDIRECT_FAILED', 'LOGIN_TIMEOUT']);
+const NON_AIRPORT_CODES = new Set(['ENV_MISSING', 'LOGIN_PAGE_FETCH_FAILED', 'LOGIN_RESPONSE_UNREADABLE', 'LOGIN_FAILED', 'NO_REDIRECT_URL', 'REDIRECT_FAILED', 'LOGIN_TIMEOUT', 'PROFILE_DISABLED']);
 
 const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, 'Z');
 
@@ -99,6 +99,13 @@ function seedEverOk(st, prev, nowMs = Date.now()) {
   for (const [i, v] of Object.entries((p.aip && p.aip.byIcao) || {})) if (v && (v.ok || v.final)) put('aip', i, v.fetchedAt || p.aip.fetchedAt);
 }
 
+// SWIM 空港詳細（プロファイル）のスイッチ（config/swim.json の profileEnabled）。true と明記されている時だけ問い合わせてよい。
+const SWIM_CONFIG = process.env.FB_SWIM_CONFIG || path.join(__dirname, '..', '..', '..', 'config', 'swim.json');
+const PROFILE_DISABLED_NOTE = '空港詳細（SWIM）は現在停止中です。';
+function profileEnabled(p = SWIM_CONFIG) {
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')).profileEnabled === true; } catch (_e) { return false; }
+}
+
 function summary(st, nowMs = Date.now()) {
   const out = {};
   for (const s of SERVICES) {
@@ -109,4 +116,4 @@ function summary(st, nowMs = Date.now()) {
   return out;
 }
 
-module.exports = { STATE_PATH, BACKOFF_H, SEED_EXCLUDE, load, save, blocked, split, markOk, markError, isAirportError, skipNote, summary, seedEverOk, iso };
+module.exports = { STATE_PATH, BACKOFF_H, SEED_EXCLUDE, load, save, blocked, split, markOk, markError, isAirportError, skipNote, summary, seedEverOk, iso, profileEnabled, PROFILE_DISABLED_NOTE, SWIM_CONFIG };

@@ -21,6 +21,9 @@ const out = path.join(td, 'swim');
 const state = path.join(td, 'state.json');
 const jar = path.join(td, 'jar', 'cookies.json');
 const log = path.join(td, 'calls.log');
+const cfgOn = path.join(td, 'swim-on.json');
+fs.writeFileSync(cfgOn, JSON.stringify({ profileEnabled: true }));
+let cfgPath = cfgOn;
 fs.mkdirSync(out, { recursive: true });
 fs.mkdirSync(path.dirname(jar), { recursive: true });
 fs.writeFileSync(jar, JSON.stringify({ loggedIn: true, cookies: [{ name: 'S', value: 'stub', domain: 'web.swim.mlit.go.jp', hostOnly: true }] }));
@@ -33,7 +36,7 @@ fs.writeFileSync(path.join(out, 'swim.json'), JSON.stringify({
 const AIRPORTS = 'RJTT,RJAA,RJBH,RJXX';
 const run = (parts, plan) => {
   fs.writeFileSync(log, '');
-  const env = { ...process.env, SWIM_USER: 'stub', SWIM_PASS: 'stub', SWIM_COOKIE_JAR: jar, FB_SWIM_AIRPORT_STATE: state, SWIM_STUB_LOG: log, SWIM_STUB_PLAN: JSON.stringify(plan || {}) };
+  const env = { ...process.env, SWIM_USER: 'stub', SWIM_PASS: 'stub', SWIM_COOKIE_JAR: jar, FB_SWIM_AIRPORT_STATE: state, SWIM_STUB_LOG: log, SWIM_STUB_PLAN: JSON.stringify(plan || {}), FB_SWIM_CONFIG: cfgPath };
   const so = execFileSync('node', ['-r', STUB, RUN, '--out', out, '--airports', AIRPORTS, '--parts', parts], { env, encoding: 'utf8' });
   return { line: so.trim().split('\n').filter((l) => l.startsWith('SWIM ')).pop(), calls: fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean), swim: JSON.parse(fs.readFileSync(path.join(out, 'swim.json'), 'utf8')), st: JSON.parse(fs.readFileSync(state, 'utf8')) };
 };
@@ -84,6 +87,31 @@ fs.writeFileSync(state, JSON.stringify(st));
 r = run('atis,profile', {});
 assert.strictEqual(r.calls.filter((c) => c.startsWith('atis ')).length, 1);
 assert.deepStrictEqual(r.calls.filter((c) => c.startsWith('profile ')).map((c) => c.split(' ')[1]).sort(), ['RJAA', 'RJTT'], 'RJXX は除外のまま、RJAA は再開');
+
+// 空港詳細の停止（config/swim.json profileEnabled=false）：backoff が切れていても、エラー歴が無くても一切問い合わせない
+for (const cfg of [path.join(ROOT, 'config', 'swim.json'), path.join(td, 'missing.json')]) {
+  cfgPath = cfg;
+  r = run('atis,profile,notam', {});
+  assert.strictEqual(r.calls.filter((c) => c.startsWith('profile ')).length, 0, `profile disabled (${cfg})`);
+  assert.ok(r.calls.some((c) => c.startsWith('atis ')) && r.calls.some((c) => c.startsWith('notam ')), 'ATIS・NOTAM は従来どおり');
+  for (const i of ['RJTT', 'RJAA', 'RJXX', 'RJBH']) {
+    assert.strictEqual(r.swim.profile.byIcao[i].ok, false);
+    assert.strictEqual(r.swim.profile.byIcao[i].reason, '空港詳細（SWIM）は現在停止中です。');
+  }
+  assert.deepStrictEqual(r.swim.profile.metarByIcao, {});
+}
+assert.strictEqual(JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'swim.json'), 'utf8')).profileEnabled, false, '航空局の了承までは false のまま');
+// swim.js 側の二重の止め具（run.js を通らない呼び出しでも問い合わせない）
+process.env.FB_SWIM_CONFIG = path.join(ROOT, 'config', 'swim.json');
+process.env.SWIM_USER = 'x'; process.env.SWIM_PASS = 'x';
+let fetched = 0; const realFetch = globalThis.fetch; globalThis.fetch = async () => { fetched++; throw new Error('no'); };
+const swimMod = require(path.join(ROOT, 'fetchers', 'swim', 'swim.js'));
+swimMod.fetchAirportProfilesFromSwim(['RJTT', 'RJAA']).then((pr) => {
+  assert.strictEqual(fetched, 0);
+  assert.strictEqual(pr.disabled, true);
+  globalThis.fetch = realFetch;
+  console.log('profile disabled OK');
+});
 
 // skipNote / split
 const g = guard.load(path.join(td, 'none.json'));

@@ -411,6 +411,12 @@ function formatHHmmUtcToJst(str) {
 }
 
 async function fetchAirportProfileForIcao(icao) {
+  // Flight Buddy（2026-11-24）：config/swim.json の profileEnabled が true でなければ、空港詳細には絶対に問い合わせない
+  if (!require('./lib/swimGuard').profileEnabled()) {
+    const err = new Error('空港詳細（SWIM）は現在停止中です。');
+    err.code = 'PROFILE_DISABLED';
+    throw err;
+  }
   const now = new Date();
   const to = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   const res = await swimFetch(AIRPORT_DETAIL_URL, {
@@ -496,6 +502,9 @@ async function fetchAirportProfilesFromSwim(icaoCodes) {
     return { ok: false, byIcao: {}, metarByIcao: {}, tafByIcao: {}, attempted: false };
   }
 
+  if (!require('./lib/swimGuard').profileEnabled()) {
+    return { ok: false, byIcao: unavailableAirportProfileByIcao(requestedIcaos, '空港詳細（SWIM）は現在停止中です。'), metarByIcao: {}, tafByIcao: {}, attempted: false, disabled: true };
+  }
   const byIcao = {};
   const metarByIcao = {};
   const tafByIcao = {};

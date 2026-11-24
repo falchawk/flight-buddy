@@ -92,6 +92,12 @@ const now = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
           // バッチがエラーの時は、前回の成功分を残す（取得時刻つき）
           if (r.atisErrorCode) for (const i of sup) { const e = pb[i]; if (e && e.ok) byIcao[i] = { ...e, fetchedAt: pPrevAt('atis', e), lastError: r.atis && r.atis.note }; }
           res.atis = { fetchedAt: at, airports: AIRPORTS, ok: Boolean(r.atis && r.atis.ok), merged: true, note: r.atis && r.atis.note, byIcao };
+        } else if (part === 'profile' && !guard.profileEnabled()) {
+          // 2026-11-24〜 航空局の了承まで空港詳細は完全に停止（config/swim.json profileEnabled=false）。問い合わせず、前回分も出さない
+          skippedLog.profile = AIRPORTS.length;
+          const byIcao = {};
+          for (const i of AIRPORTS) byIcao[i] = { ok: false, reason: guard.PROFILE_DISABLED_NOTE, disabled: true };
+          res.profile = { fetchedAt: at, airports: AIRPORTS, ok: false, merged: true, disabled: true, note: guard.PROFILE_DISABLED_NOTE, byIcao, metarByIcao: {}, tafByIcao: {} };
         } else if (part === 'profile') {
           const { allowed, skipped } = guard.split(gst, 'profile', AIRPORTS);
           skippedLog.profile = Object.keys(skipped).length;

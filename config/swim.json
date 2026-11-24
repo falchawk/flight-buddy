@@ -1,0 +1,5 @@
+{
+  "schema": "flight-buddy-swim-config/1",
+  "_note": "SWIM の部品ごとのスイッチ（秘密情報は書かない）。profileEnabled=false のあいだ、SWIM の空港詳細（空港プロファイル。https://web.swim.mlit.go.jp/f2appr/web/FLV806/LGV220）には auto_update・LIVE ポラー・手動実行のどこからも一切問い合わせない（6時間後の再試行も無し）。2026-11-24 航空局からの連絡を受けて停止。再開は航空局の了承後に大橋さんの指示で true にする。ATIS・NOTAM・AIP には関係しない。ファイルが無い・読めない時も停止扱い。",
+  "profileEnabled": false
+}
